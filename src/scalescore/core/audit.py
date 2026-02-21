@@ -7,7 +7,7 @@ according to compliance requirements (typically 1+ year).
 """
 
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from scalescore.core.logging import get_logger
@@ -15,7 +15,7 @@ from scalescore.core.logging import get_logger
 _audit_logger = get_logger("scalescore.audit")
 
 
-class AuditEventType(str, Enum):
+class AuditEventType(StrEnum):
     """Types of audit events for SOC2 compliance."""
 
     # Authentication events

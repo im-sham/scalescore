@@ -6,12 +6,12 @@ the readiness scores that are the primary output of ScaleScore.
 """
 
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
-class RiskLevel(str, Enum):
+class RiskLevel(StrEnum):
     """Risk severity levels."""
 
     LOW = "low"
@@ -20,7 +20,7 @@ class RiskLevel(str, Enum):
     CRITICAL = "critical"
 
 
-class ConstraintType(str, Enum):
+class ConstraintType(StrEnum):
     """Types of scaling constraints."""
 
     CAPACITY = "capacity"  # System/facility capacity limits
@@ -31,7 +31,7 @@ class ConstraintType(str, Enum):
     TIMELINE = "timeline"  # Schedule conflicts
 
 
-class FunctionalArea(str, Enum):
+class FunctionalArea(StrEnum):
     """Organizational functional areas for scoring."""
 
     ENGINEERING = "engineering"
@@ -280,12 +280,36 @@ class ScoreHistoryPoint(BaseModel):
     high_risks: int
 
 
+class ScoreHistoryTrendWindow(BaseModel):
+    """Trend summary for a fixed lookback window."""
+
+    days: int
+    delta: float | None = None
+    direction: str | None = None
+    compared_report_id: str | None = None
+
+
+class ScoreHistoryComparison(BaseModel):
+    """Comparison between the latest and previous assessment snapshots."""
+
+    current_report_id: str | None = None
+    previous_report_id: str | None = None
+    score_delta: float | None = None
+    risk_delta: int | None = None
+    critical_risk_delta: int | None = None
+    generated_at_delta_hours: float | None = None
+
+
 class ScoreHistoryResponse(BaseModel):
     """Response model for organization score-history timelines."""
 
     org_id: str
     points: list[ScoreHistoryPoint] = Field(default_factory=list)
     count: int = 0
+    trend_7d: ScoreHistoryTrendWindow = Field(default_factory=lambda: ScoreHistoryTrendWindow(days=7))
+    trend_30d: ScoreHistoryTrendWindow = Field(default_factory=lambda: ScoreHistoryTrendWindow(days=30))
+    trend_90d: ScoreHistoryTrendWindow = Field(default_factory=lambda: ScoreHistoryTrendWindow(days=90))
+    comparison: ScoreHistoryComparison = Field(default_factory=ScoreHistoryComparison)
 
 
 class ScaleScoreReport(BaseModel):

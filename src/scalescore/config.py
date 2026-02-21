@@ -155,7 +155,13 @@ class StorageSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="STORAGE_")
 
     assessments_db_path: str = ".local/scalescore/assessments.sqlite3"
-    refresh_tokens_db_path: str = ".local/scalescore/auth.sqlite3"
+    auth_db_path: str = ".local/scalescore/auth.sqlite3"
+    # Backward-compatible override for deployments still using the old variable name.
+    refresh_tokens_db_path: str | None = None
+
+    @property
+    def effective_auth_db_path(self) -> str:
+        return self.refresh_tokens_db_path or self.auth_db_path
 
 
 class Settings(BaseSettings):

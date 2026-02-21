@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from uuid import uuid4
 
 from scalescore.models.scaling import (
@@ -12,7 +12,7 @@ from scalescore.models.scaling import (
 )
 
 
-class RecommendationType(str, Enum):
+class RecommendationType(StrEnum):
     EXPAND_CAPACITY = "expand_capacity"
     ADD_REDUNDANCY = "add_redundancy"
     ACCELERATE_HIRING = "accelerate_hiring"

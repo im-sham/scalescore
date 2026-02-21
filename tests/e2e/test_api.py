@@ -1,4 +1,5 @@
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -7,13 +8,17 @@ from scalescore.api.main import app
 client = TestClient(app)
 
 
-def _auth_headers() -> dict[str, str]:
+def _login(email: str = "dev@example.com", password: str = "dev") -> dict:
     response = client.post(
         "/api/v1/auth/login",
-        json={"email": "dev@example.com", "password": "dev"},
+        json={"email": email, "password": password},
     )
     assert response.status_code == 200
-    token = response.json()["access_token"]
+    return response.json()
+
+
+def _auth_headers() -> dict[str, str]:
+    token = _login()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -150,15 +155,14 @@ def test_list_assessments_and_score_history(tmp_path: Path) -> None:
     assert history_payload["org_id"] == "org_1"
     assert history_payload["count"] >= 1
     assert history_payload["points"]
+    assert "trend_7d" in history_payload
+    assert "trend_30d" in history_payload
+    assert "trend_90d" in history_payload
+    assert "comparison" in history_payload
 
 
 def test_refresh_flow_returns_usable_access_token() -> None:
-    login_response = client.post(
-        "/api/v1/auth/login",
-        json={"email": "dev@example.com", "password": "dev"},
-    )
-    assert login_response.status_code == 200
-    refresh_token = login_response.json()["refresh_token"]
+    refresh_token = _login()["refresh_token"]
 
     refresh_response = client.post(
         "/api/v1/auth/refresh",
@@ -172,3 +176,129 @@ def test_refresh_flow_returns_usable_access_token() -> None:
         headers={"Authorization": f"Bearer {refreshed_access_token}"},
     )
     assert list_response.status_code == 200
+
+
+def test_signup_then_login() -> None:
+    email = f"user-{uuid4().hex[:8]}@example.com"
+    signup_response = client.post(
+        "/api/v1/auth/signup",
+        json={
+            "email": email,
+            "password": "strong-password",
+            "tenant_id": "tenant-signup",
+            "org_id": "org-signup",
+            "roles": ["analyst"],
+        },
+    )
+    assert signup_response.status_code == 201
+    payload = signup_response.json()
+    assert payload["email"] == email
+    assert payload["tenant_id"] == "tenant-signup"
+
+    login_response = client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": "strong-password"},
+    )
+    assert login_response.status_code == 200
+    assert "access_token" in login_response.json()
+
+
+def test_api_key_authentication_flow() -> None:
+    token = _login()["access_token"]
+    create_key_response = client.post(
+        "/api/v1/auth/api-keys",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"name": "e2e key"},
+    )
+    assert create_key_response.status_code == 201
+    key_payload = create_key_response.json()
+    api_key = key_payload["api_key"]
+    key_id = key_payload["key_id"]
+
+    api_key_list_response = client.get(
+        "/api/v1/assessments",
+        headers={"X-API-Key": api_key},
+    )
+    assert api_key_list_response.status_code == 200
+
+    revoke_response = client.delete(
+        f"/api/v1/auth/api-keys/{key_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert revoke_response.status_code == 200
+
+    revoked_key_response = client.get(
+        "/api/v1/assessments",
+        headers={"X-API-Key": api_key},
+    )
+    assert revoked_key_response.status_code == 401
+
+
+def test_organization_crud_flow() -> None:
+    headers = _auth_headers()
+    organization_payload = {
+        "id": f"org-{uuid4().hex[:8]}",
+        "name": "Roadrunner Inc",
+        "type": "organization",
+        "headcount_current": 120,
+        "revenue_current": 2_500_000,
+        "burn_rate_monthly": 120_000,
+        "runway_months": 18,
+    }
+
+    create_response = client.post(
+        "/api/v1/organizations",
+        json=organization_payload,
+        headers=headers,
+    )
+    assert create_response.status_code == 200
+    org_id = create_response.json()["id"]
+
+    list_response = client.get("/api/v1/organizations", headers=headers)
+    assert list_response.status_code == 200
+    assert any(item["id"] == org_id for item in list_response.json())
+
+    update_payload = {**organization_payload, "name": "Roadrunner Holdings"}
+    update_response = client.put(
+        f"/api/v1/organizations/{org_id}",
+        json=update_payload,
+        headers=headers,
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["name"] == "Roadrunner Holdings"
+
+    delete_response = client.delete(f"/api/v1/organizations/{org_id}", headers=headers)
+    assert delete_response.status_code == 200
+
+    get_deleted_response = client.get(f"/api/v1/organizations/{org_id}", headers=headers)
+    assert get_deleted_response.status_code == 404
+
+
+def test_csv_import_persists_entities(tmp_path: Path) -> None:
+    headers = _auth_headers()
+    teams_file = tmp_path / "teams.csv"
+    teams_file.write_text(
+        "id,org_id,name,function,headcount_current,parent_team_id,manager_id\n"
+        "team_import_1,org_1,Growth,growth,12,,mgr_9\n",
+        encoding="utf-8",
+    )
+
+    with teams_file.open("rb") as fh:
+        import_response = client.post(
+            "/api/v1/import/csv",
+            params={"entity_type": "teams"},
+            files={"file": ("teams.csv", fh, "text/csv")},
+            headers=headers,
+        )
+    assert import_response.status_code == 200
+    payload = import_response.json()
+    assert payload["status"] == "imported"
+    assert payload["imported_count"] == 1
+
+    list_response = client.get(
+        "/api/v1/entities/teams",
+        params={"org_id": "org_1"},
+        headers=headers,
+    )
+    assert list_response.status_code == 200
+    assert any(item["id"] == "team_import_1" for item in list_response.json())

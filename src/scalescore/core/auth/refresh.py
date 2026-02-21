@@ -289,4 +289,4 @@ class RefreshTokenService:
 
 @lru_cache
 def get_sqlite_refresh_token_repository() -> SQLiteRefreshTokenRepository:
-    return SQLiteRefreshTokenRepository(settings.storage.refresh_tokens_db_path)
+    return SQLiteRefreshTokenRepository(settings.storage.effective_auth_db_path)

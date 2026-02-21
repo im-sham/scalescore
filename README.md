@@ -155,17 +155,18 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the complete implementation plan.
 | Bottleneck detection | ✅ Complete |
 | Recommendation engine | ✅ Complete |
 | CSV import | ✅ Complete |
-| FastAPI endpoints | ⚠️ Partial (core assessment flow complete) |
-| Auth foundation | ✅ Implemented (JWT + refresh + RBAC guards) |
+| FastAPI endpoints | ✅ Expanded (assessments + auth + org/entity CRUD + trend history) |
+| Auth foundation | ✅ Implemented (JWT + refresh + RBAC guards + user/API key persistence) |
 | Streamlit dashboard | ✅ Complete |
 | Assessment persistence | ✅ Implemented (SQLite snapshots + retrieval endpoint) |
+| Security scanning | ✅ Implemented (dependency audit in CI) |
 
-### Next Focus: Phase 2 Platform Completion
+### Next Focus: Phase 3 Scale & Integration
 
-- User model + API key support for service-to-service auth
-- API surface completion for organization/entity CRUD
-- Trend analytics (7d/30d/90d deltas + comparative summaries)
-- OpsOrchestra integration readiness
+- Webhook endpoints and OpsOrchestra connector groundwork
+- Async/background assessment execution for larger datasets
+- Expanded scoring pillars (financial/people/customer)
+- API/SDK documentation and production runbooks
 
 ---
 

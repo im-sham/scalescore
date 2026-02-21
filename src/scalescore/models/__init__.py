@@ -18,8 +18,10 @@ from .scaling import (
     RiskIndicator,
     RiskLevel,
     ScaleScoreReport,
+    ScoreHistoryComparison,
     ScoreHistoryPoint,
     ScoreHistoryResponse,
+    ScoreHistoryTrendWindow,
 )
 
 __all__ = [
@@ -40,6 +42,8 @@ __all__ = [
     "RiskIndicator",
     "ReadinessScore",
     "ScoreHistoryPoint",
+    "ScoreHistoryTrendWindow",
+    "ScoreHistoryComparison",
     "ScoreHistoryResponse",
     "ScaleScoreReport",
 ]

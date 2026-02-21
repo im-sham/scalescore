@@ -19,11 +19,11 @@ Usage:
     )
 """
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class ErrorCode(str, Enum):
+class ErrorCode(StrEnum):
     """
     Stable error codes for API consumers.
 
@@ -68,6 +68,8 @@ class ErrorCode(str, Enum):
     INVALID_REFRESH_TOKEN = "SCALE_4007"
     REFRESH_TOKEN_EXPIRED = "SCALE_4008"
     TOKEN_REUSE_DETECTED = "SCALE_4009"
+    INVALID_API_KEY = "SCALE_4010"
+    API_KEY_EXPIRED = "SCALE_4011"
 
     # Infrastructure errors (5xxx)
     DATABASE_ERROR = "SCALE_5000"

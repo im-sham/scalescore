@@ -127,7 +127,7 @@ These principles apply to ALL roadmap items:
 - [x] Reports persist and can be retrieved by ID
 - [x] 70%+ test coverage on core modules
 - [x] Compelling 10-minute demo walkthrough possible
-- [ ] No critical security vulnerabilities (dependency scan clean)
+- [x] No critical security vulnerabilities (dependency scan clean)
 
 ---
 
@@ -141,8 +141,8 @@ These principles apply to ALL roadmap items:
 | Item | Description | Priority | ADR |
 |------|-------------|----------|-----|
 | JWT authentication | Token-based API auth | HIGH | ADR-0011 |
-| API key support | Service-to-service auth | HIGH | - |
-| User model | Basic user with org association | HIGH | - |
+| API key support | Service-to-service auth | HIGH (✅ implemented) | - |
+| User model | Basic user with org association | HIGH (✅ implemented) | - |
 | Role-based access | Viewer / Analyst / Admin / Super Admin roles | MEDIUM | ADR-0011 |
 | Session management | Token refresh + logout with SQLite-backed refresh token persistence | MEDIUM | ADR-0011 |
 
@@ -155,8 +155,8 @@ These principles apply to ALL roadmap items:
 | GET /assessments/{id} | Retrieve stored assessment | HIGH (✅ implemented) |
 | GET /assessments | List assessments with pagination | HIGH (✅ implemented) |
 | GET /scores/{org_id}/history | Score trend over time | HIGH (✅ implemented; baseline timeline) |
-| Organization CRUD | Full entity management | MEDIUM |
-| Entity CRUD | Manage teams, systems, etc. | MEDIUM |
+| Organization CRUD | Full entity management | MEDIUM (✅ implemented) |
+| Entity CRUD | Manage teams, systems, etc. | MEDIUM (✅ implemented) |
 | Webhook endpoints | OpsOrchestra integration prep | LOW |
 
 ### v0.6.0 - Analytics & Trends
@@ -164,16 +164,16 @@ These principles apply to ALL roadmap items:
 | Item | Description | Priority |
 |------|-------------|----------|
 | Score history storage | Track scores over time | HIGH |
-| Trend calculation | 7d, 30d, 90d trends | HIGH |
-| Comparative analysis | Score vs. previous assessment | MEDIUM |
+| Trend calculation | 7d, 30d, 90d trends | HIGH (✅ implemented) |
+| Comparative analysis | Score vs. previous assessment | MEDIUM (✅ implemented) |
 | Executive summary | Auto-generated narrative | MEDIUM |
 | PDF export | Downloadable report | LOW |
 
 ### Phase 2 Success Criteria
 
-- [ ] User can sign up, authenticate, run assessments
+- [x] User can sign up, authenticate, run assessments
 - [x] Historical assessments queryable
-- [ ] Trend analysis shows score progression
+- [x] Trend analysis shows score progression
 - [ ] API documentation complete (OpenAPI)
 - [ ] Security audit passed (OWASP top 10)
 
@@ -277,9 +277,9 @@ We prevent tech debt by:
 
 | Item | Level | Description | Target |
 |------|-------|-------------|--------|
-| API key + user model gaps | High | Service auth and user persistence not implemented | v0.4.1 |
-| API surface incomplete | High | Organization/entity CRUD and webhooks pending | v0.5.0 |
-| Trend analytics still basic | Medium | History endpoint exists but 7d/30d/90d analytics not yet implemented | v0.6.0 |
+| Webhook endpoints pending | Medium | OpsOrchestra integration hooks not implemented yet | v0.5.1 |
+| Executive summary generation | Medium | Narrative summary automation pending | v0.6.1 |
+| PDF export pipeline | Medium | Report export endpoint not implemented | v0.6.1 |
 | Filesystem `dataset_path` mode remains dev-only | Medium | Must stay disabled outside development | v0.4.1 |
 | OpsOrchestra connector not implemented | Medium | Integration path defined but connector code pending | v0.7.0 |
 

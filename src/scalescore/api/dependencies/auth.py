@@ -5,15 +5,17 @@ from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 
 from scalescore.config import settings
 from scalescore.core.audit import audit_access_denied
 from scalescore.core.auth.jwt import JWTService, TokenPayload
 from scalescore.core.auth.roles import Permission, get_permissions
 from scalescore.core.exceptions import AuthenticationError
+from scalescore.storage.auth_repository import SQLiteAuthRepository, get_auth_repository
 
 security = HTTPBearer(auto_error=False)
+api_key_security = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 @lru_cache
@@ -33,31 +35,56 @@ def _get_dev_user() -> TokenPayload:
 
 
 Credentials = Annotated[HTTPAuthorizationCredentials | None, Depends(security)]
+APIKeyCredentials = Annotated[str | None, Depends(api_key_security)]
 JWTServiceDep = Annotated[JWTService, Depends(get_jwt_service)]
+AuthRepositoryDep = Annotated[SQLiteAuthRepository, Depends(get_auth_repository)]
 
 
 async def get_current_user(
     credentials: Credentials,
+    api_key: APIKeyCredentials,
     jwt_service: JWTServiceDep,
+    auth_repository: AuthRepositoryDep,
 ) -> TokenPayload:
     if settings.is_development() and settings.auth.skip_auth:
         return _get_dev_user()
 
-    if not credentials:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "AUTHENTICATION_REQUIRED", "message": "Missing authorization header"},
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    if credentials:
+        try:
+            return jwt_service.verify_token(credentials.credentials)
+        except AuthenticationError as err:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=err.to_dict(),
+                headers={"WWW-Authenticate": "Bearer"},
+            ) from err
 
-    try:
-        return jwt_service.verify_token(credentials.credentials)
-    except AuthenticationError as err:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=err.to_dict(),
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from err
+    if api_key:
+        try:
+            principal = auth_repository.authenticate_api_key(api_key)
+            return TokenPayload(
+                sub=principal.user_id,
+                tenant_id=principal.tenant_id,
+                email=principal.email,
+                roles=principal.roles,
+                exp=principal.expires_at or datetime(2099, 12, 31, tzinfo=UTC),
+                iat=datetime.now(UTC),
+            )
+        except AuthenticationError as err:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=err.to_dict(),
+                headers={"WWW-Authenticate": "Bearer"},
+            ) from err
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail={
+            "code": "AUTHENTICATION_REQUIRED",
+            "message": "Missing Bearer token or X-API-Key header",
+        },
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 
 CurrentUser = Annotated[TokenPayload, Depends(get_current_user)]

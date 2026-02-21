@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 
-class Permission(str, Enum):
+class Permission(StrEnum):
     ASSESSMENT_CREATE = "assessment:create"
     ASSESSMENT_READ = "assessment:read"
     ASSESSMENT_DELETE = "assessment:delete"
@@ -16,7 +16,7 @@ class Permission(str, Enum):
     AUDIT_VIEW = "audit:view"
 
 
-class Role(str, Enum):
+class Role(StrEnum):
     VIEWER = "viewer"
     ANALYST = "analyst"
     ADMIN = "admin"

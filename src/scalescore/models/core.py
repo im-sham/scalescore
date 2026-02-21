@@ -6,12 +6,12 @@ enabling seamless integration when ScaleScore operates as an OpsOrchestra module
 """
 
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class EntityType(str, Enum):
+class EntityType(StrEnum):
     """Entity type enumeration, aligned with OpsOrchestra entity types."""
 
     ORGANIZATION = "organization"
