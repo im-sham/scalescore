@@ -1,5 +1,7 @@
 # ScaleScore
 
+[![CI](https://github.com/im-sham/scalescore/actions/workflows/ci.yml/badge.svg)](https://github.com/im-sham/scalescore/actions/workflows/ci.yml)
+
 **Operational Readiness Prediction System**
 
 > Know where you'll break before you break.
