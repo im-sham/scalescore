@@ -7,6 +7,7 @@ from scalescore.core.exceptions import (
     MultipleOrganizationsError,
     OrganizationRequiredError,
 )
+from scalescore.core.reporting import generate_executive_summary
 from scalescore.models.core import Facility, Organization, System, Team, Vendor
 from scalescore.models.scaling import (
     CapacityConstraint,
@@ -121,9 +122,11 @@ def run_assessment(
         high_risks=high_risks,
         total_constraints=len(constraints),
         total_recommendations=len(recommendations),
+        executive_summary="",
         key_findings=_generate_key_findings(constraints, risks),
         immediate_actions=_generate_immediate_actions(recommendations),
     )
+    report.executive_summary = generate_executive_summary(report)
 
     return report
 

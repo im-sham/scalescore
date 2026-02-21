@@ -164,6 +164,14 @@ class StorageSettings(BaseSettings):
         return self.refresh_tokens_db_path or self.auth_db_path
 
 
+class IntegrationSettings(BaseSettings):
+    """Integration settings for external systems (for example OpsOrchestra)."""
+
+    model_config = SettingsConfigDict(env_prefix="INTEGRATION_")
+
+    opsorchestra_webhook_secret: SecretStr | None = None
+
+
 class Settings(BaseSettings):
     """
     Main application settings.
@@ -205,6 +213,7 @@ class Settings(BaseSettings):
     server: ServerSettings = Field(default_factory=ServerSettings)
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
+    integration: IntegrationSettings = Field(default_factory=IntegrationSettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
     scoring: ScoringSettings = Field(default_factory=ScoringSettings)
     features: FeatureFlags = Field(default_factory=FeatureFlags)

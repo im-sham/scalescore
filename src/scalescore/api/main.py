@@ -1,3 +1,4 @@
+import hmac
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -5,7 +6,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, status
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile, status
+from fastapi.responses import Response
+from pydantic import BaseModel, Field
 
 from scalescore.api.dependencies.auth import RequirePermission
 from scalescore.api.exception_handlers import register_exception_handlers
@@ -14,11 +17,17 @@ from scalescore.api.v1.auth import router as auth_router
 from scalescore.config import settings
 from scalescore.connectors.csv_connector import CSVConnector
 from scalescore.core.assessment import run_assessment_from_csv
-from scalescore.core.audit import AuditEventType, audit_assessment_created, audit_log
+from scalescore.core.audit import (
+    AuditEventType,
+    audit_assessment_created,
+    audit_data_export,
+    audit_log,
+)
 from scalescore.core.auth.jwt import TokenPayload
 from scalescore.core.auth.roles import Permission
 from scalescore.core.exceptions import AssessmentNotFoundError
 from scalescore.core.logging import get_logger, setup_logging
+from scalescore.core.reporting import render_report_pdf
 from scalescore.models.core import (
     BaseEntity,
     EntityType,
@@ -89,6 +98,9 @@ CanCreateAssessments = Annotated[
 CanReadAssessments = Annotated[
     TokenPayload, Depends(RequirePermission(Permission.ASSESSMENT_READ))
 ]
+CanExportReports = Annotated[
+    TokenPayload, Depends(RequirePermission(Permission.REPORT_EXPORT))
+]
 CanManageOrganizations = Annotated[
     TokenPayload, Depends(RequirePermission(Permission.ORGANIZATION_MANAGE))
 ]
@@ -122,6 +134,16 @@ ENTITY_TYPE_ALIASES: dict[str, EntityType] = {
 }
 
 
+class OpsOrchestraWebhookEvent(BaseModel):
+    event_type: str = Field(min_length=1)
+    tenant_id: str = Field(min_length=1)
+    event_id: str | None = None
+    occurred_at: datetime | None = None
+    entity_type: str | None = None
+    entity_id: str | None = None
+    entity: dict[str, Any] | None = None
+
+
 def _dataset_path_for_development(dataset_path: str) -> Path:
     if not settings.is_development():
         raise HTTPException(
@@ -142,6 +164,27 @@ def _dataset_path_for_development(dataset_path: str) -> Path:
             },
         )
     return resolved
+
+
+def _validate_opsorchestra_webhook_secret(provided_secret: str | None) -> None:
+    configured_secret = settings.integration.opsorchestra_webhook_secret
+    if configured_secret is None:
+        if settings.is_production():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "code": "WEBHOOK_SECRET_NOT_CONFIGURED",
+                    "message": "Webhook secret must be configured in production",
+                },
+            )
+        return
+
+    expected = configured_secret.get_secret_value()
+    if not provided_secret or not hmac.compare_digest(provided_secret, expected):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "INVALID_WEBHOOK_SECRET", "message": "Webhook secret is invalid"},
+        )
 
 
 def _normalize_entity_type(entity_type: str, *, allow_organizations: bool = True) -> EntityType:
@@ -342,6 +385,41 @@ async def get_assessment(
         resource_id=assessment_id,
     )
     return report
+
+
+@app.get("/api/v1/assessments/{assessment_id}/export/pdf")
+async def export_assessment_pdf(
+    assessment_id: str,
+    current_user: CanExportReports,
+    repository: AssessmentRepositoryDep,
+) -> Response:
+    report = repository.get_report(assessment_id, tenant_id=current_user.tenant_id)
+    if report is None:
+        raise AssessmentNotFoundError(assessment_id)
+
+    pdf_content = render_report_pdf(report)
+    audit_log(
+        AuditEventType.REPORT_EXPORTED,
+        actor_id=current_user.sub,
+        tenant_id=current_user.tenant_id,
+        resource_type="assessment_pdf",
+        resource_id=assessment_id,
+    )
+    audit_data_export(
+        user_id=current_user.sub,
+        tenant_id=current_user.tenant_id,
+        export_type="assessment_pdf",
+        record_count=1,
+    )
+    return Response(
+        content=pdf_content,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="scalescore-assessment-{assessment_id}.pdf"'
+            )
+        },
+    )
 
 
 @app.get("/api/v1/assessments", response_model=list[ScaleScoreReport])
@@ -662,6 +740,85 @@ async def import_from_csv(
         "filename": file.filename,
         "imported_count": imported_count,
         "imported_ids": imported_ids,
+    }
+
+
+@app.post("/api/v1/webhooks/opsorchestra")
+async def opsorchestra_webhook(
+    event: OpsOrchestraWebhookEvent,
+    repository: EntityRepositoryDep,
+    x_webhook_secret: Annotated[str | None, Header(alias="X-Webhook-Secret")] = None,
+) -> dict[str, Any]:
+    _validate_opsorchestra_webhook_secret(x_webhook_secret)
+
+    event_type = event.event_type.strip().lower()
+    action = "ignored"
+    resource_id = event.entity_id
+    parsed_type: EntityType | None = None
+    if event.entity_type:
+        parsed_type = _normalize_entity_type(event.entity_type)
+
+    if event_type in {"entity.created", "entity.updated"}:
+        if parsed_type is None or not event.entity:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "INVALID_WEBHOOK_PAYLOAD",
+                    "message": "entity_type and entity payload are required for upsert events",
+                },
+            )
+        payload = dict(event.entity)
+        if "id" not in payload:
+            payload["id"] = event.entity_id
+        if not payload.get("id"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "INVALID_WEBHOOK_PAYLOAD",
+                    "message": "entity_id is required for upsert events",
+                },
+            )
+        entity = _coerce_entity_payload(parsed_type, payload)
+        saved = repository.upsert_entity(entity, tenant_id=event.tenant_id)
+        action = "upserted"
+        resource_id = saved.id
+
+    elif event_type == "entity.deleted":
+        if parsed_type is None or not event.entity_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "INVALID_WEBHOOK_PAYLOAD",
+                    "message": "entity_type and entity_id are required for delete events",
+                },
+            )
+        deleted = repository.delete_entity(
+            event.entity_id,
+            tenant_id=event.tenant_id,
+            entity_type=parsed_type.value,
+        )
+        action = "deleted" if deleted else "not_found"
+
+    audit_log(
+        AuditEventType.DATA_IMPORTED,
+        actor_id="opsorchestra-webhook",
+        tenant_id=event.tenant_id,
+        resource_type=f"webhook:{event_type}",
+        resource_id=resource_id,
+        details={
+            "event_id": event.event_id,
+            "event_type": event_type,
+            "action": action,
+            "entity_type": parsed_type.value if parsed_type else None,
+        },
+    )
+
+    return {
+        "status": "processed",
+        "event_type": event_type,
+        "action": action,
+        "entity_type": parsed_type.value if parsed_type else None,
+        "entity_id": resource_id,
     }
 
 

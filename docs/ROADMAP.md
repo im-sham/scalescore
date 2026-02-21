@@ -157,7 +157,7 @@ These principles apply to ALL roadmap items:
 | GET /scores/{org_id}/history | Score trend over time | HIGH (✅ implemented; baseline timeline) |
 | Organization CRUD | Full entity management | MEDIUM (✅ implemented) |
 | Entity CRUD | Manage teams, systems, etc. | MEDIUM (✅ implemented) |
-| Webhook endpoints | OpsOrchestra integration prep | LOW |
+| Webhook endpoints | OpsOrchestra integration prep | LOW (✅ implemented) |
 
 ### v0.6.0 - Analytics & Trends
 
@@ -166,8 +166,8 @@ These principles apply to ALL roadmap items:
 | Score history storage | Track scores over time | HIGH |
 | Trend calculation | 7d, 30d, 90d trends | HIGH (✅ implemented) |
 | Comparative analysis | Score vs. previous assessment | MEDIUM (✅ implemented) |
-| Executive summary | Auto-generated narrative | MEDIUM |
-| PDF export | Downloadable report | LOW |
+| Executive summary | Auto-generated narrative | MEDIUM (✅ implemented) |
+| PDF export | Downloadable report | LOW (✅ implemented) |
 
 ### Phase 2 Success Criteria
 
@@ -277,11 +277,10 @@ We prevent tech debt by:
 
 | Item | Level | Description | Target |
 |------|-------|-------------|--------|
-| Webhook endpoints pending | Medium | OpsOrchestra integration hooks not implemented yet | v0.5.1 |
-| Executive summary generation | Medium | Narrative summary automation pending | v0.6.1 |
-| PDF export pipeline | Medium | Report export endpoint not implemented | v0.6.1 |
 | Filesystem `dataset_path` mode remains dev-only | Medium | Must stay disabled outside development | v0.4.1 |
 | OpsOrchestra connector not implemented | Medium | Integration path defined but connector code pending | v0.7.0 |
+| Async task queue | Medium | Large assessments still run synchronously | v0.8.0 |
+| Scheduled assessments | Medium | Periodic run automation not implemented | v0.8.0 |
 
 ---
 

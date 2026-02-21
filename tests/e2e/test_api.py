@@ -81,6 +81,8 @@ def test_create_assessment(tmp_path: Path) -> None:
     payload = response.json()
     assert payload["org_id"] == "org_1"
     assert payload["overall_score"] >= 0
+    assert payload["executive_summary"]
+    assert "overall score" in payload["executive_summary"].lower()
 
     get_response = client.get(
         f"/api/v1/assessments/{payload['report_id']}",
@@ -159,6 +161,27 @@ def test_list_assessments_and_score_history(tmp_path: Path) -> None:
     assert "trend_30d" in history_payload
     assert "trend_90d" in history_payload
     assert "comparison" in history_payload
+
+
+def test_export_assessment_pdf(tmp_path: Path) -> None:
+    _write_dataset(tmp_path)
+    headers = _auth_headers()
+    create_response = client.post(
+        "/api/v1/assessments",
+        params={"dataset_path": str(tmp_path)},
+        headers=headers,
+    )
+    assert create_response.status_code == 200
+    report_id = create_response.json()["report_id"]
+
+    export_response = client.get(
+        f"/api/v1/assessments/{report_id}/export/pdf",
+        headers=headers,
+    )
+    assert export_response.status_code == 200
+    assert export_response.headers["content-type"] == "application/pdf"
+    assert "attachment" in export_response.headers["content-disposition"].lower()
+    assert export_response.content.startswith(b"%PDF")
 
 
 def test_refresh_flow_returns_usable_access_token() -> None:
@@ -302,3 +325,52 @@ def test_csv_import_persists_entities(tmp_path: Path) -> None:
     )
     assert list_response.status_code == 200
     assert any(item["id"] == "team_import_1" for item in list_response.json())
+
+
+def test_opsorchestra_webhook_upsert_and_delete_entity() -> None:
+    upsert_response = client.post(
+        "/api/v1/webhooks/opsorchestra",
+        json={
+            "event_type": "entity.updated",
+            "tenant_id": "dev-tenant",
+            "event_id": f"evt-{uuid4().hex[:8]}",
+            "entity_type": "team",
+            "entity_id": "team_hook_1",
+            "entity": {
+                "id": "team_hook_1",
+                "org_id": "org_1",
+                "name": "Webhook Team",
+                "function": "operations",
+                "headcount_current": 9,
+            },
+        },
+    )
+    assert upsert_response.status_code == 200
+    assert upsert_response.json()["action"] == "upserted"
+
+    list_response = client.get(
+        "/api/v1/entities/teams",
+        params={"org_id": "org_1"},
+        headers=_auth_headers(),
+    )
+    assert list_response.status_code == 200
+    assert any(item["id"] == "team_hook_1" for item in list_response.json())
+
+    delete_response = client.post(
+        "/api/v1/webhooks/opsorchestra",
+        json={
+            "event_type": "entity.deleted",
+            "tenant_id": "dev-tenant",
+            "event_id": f"evt-{uuid4().hex[:8]}",
+            "entity_type": "team",
+            "entity_id": "team_hook_1",
+        },
+    )
+    assert delete_response.status_code == 200
+    assert delete_response.json()["action"] in {"deleted", "not_found"}
+
+    get_response = client.get(
+        "/api/v1/entities/teams/team_hook_1",
+        headers=_auth_headers(),
+    )
+    assert get_response.status_code == 404

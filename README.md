@@ -163,7 +163,7 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the complete implementation plan.
 
 ### Next Focus: Phase 3 Scale & Integration
 
-- Webhook endpoints and OpsOrchestra connector groundwork
+- OpsOrchestra connector implementation and bidirectional sync
 - Async/background assessment execution for larger datasets
 - Expanded scoring pillars (financial/people/customer)
 - API/SDK documentation and production runbooks
