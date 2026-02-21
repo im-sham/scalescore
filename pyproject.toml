@@ -1,0 +1,111 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "scalescore"
+version = "0.1.0"
+description = "Operational Readiness Prediction System - Know where you'll break before you break"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "Shamim Rehman", email = "shamim.a.rehman@gmail.com" }
+]
+keywords = [
+    "operations",
+    "scaling",
+    "readiness",
+    "risk-assessment",
+    "growth",
+    "ai",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "httpx>=0.24.0",
+    "networkx>=3.0",
+    "pandas>=2.0.0",
+    "streamlit>=1.28.0",
+    "plotly>=5.18.0",
+    "structlog>=24.0.0",
+    "PyJWT>=2.8.0",
+    "cryptography>=41.0.0",
+    "python-multipart>=0.0.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+
+opsorchestra = [
+    "opsorchestra>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/im-sham/scalescore"
+Documentation = "https://github.com/im-sham/scalescore#readme"
+Repository = "https://github.com/im-sham/scalescore"
+Issues = "https://github.com/im-sham/scalescore/issues"
+
+[project.scripts]
+scalescore = "scalescore.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/scalescore"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+]
+markers = [
+    "unit: Unit tests (fast, isolated)",
+    "integration: Integration tests (require dependencies)",
+    "e2e: End-to-end tests (full system)",
+    "performance: Performance tests (slow)",
+    "slow: Tests that take >1s",
+]

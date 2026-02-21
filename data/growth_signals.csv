@@ -1,0 +1,4 @@
+id,org_id,signal_type,title,target_date,magnitude,magnitude_type,confidence,affected_areas
+sig_hc,org_acme,headcount_plan,Double headcount,2026-12-31,100,percentage,0.8,engineering|sales|operations|people
+sig_rev,org_acme,revenue_target,Increase revenue to $50M,2026-12-31,100,percentage,0.7,sales|finance
+sig_launch,org_acme,product_launch,New enterprise offering,2026-09-30,50,percentage,0.6,product|engineering|operations

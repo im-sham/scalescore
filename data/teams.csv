@@ -1,0 +1,7 @@
+id,org_id,name,function,headcount_current,parent_team_id,manager_id
+team_eng,org_acme,Engineering,engineering,60,,mgr_1
+team_sales,org_acme,Sales,sales,35,,mgr_2
+team_ops,org_acme,Operations,operations,25,,mgr_3
+team_fin,org_acme,Finance,finance,10,,mgr_4
+team_people,org_acme,People,people,8,,mgr_5
+team_prod,org_acme,Product,product,12,,mgr_6

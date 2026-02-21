@@ -1,0 +1,5 @@
+id,org_id,name,vendor_type,annual_cost,is_critical,alternatives
+ven_cloud,org_acme,AWS,saas,1200000,true,Azure|GCP
+ven_pay,org_acme,Stripe,saas,450000,true,Adyen|Braintree
+ven_ship,org_acme,ShipBob,logistics,380000,false,Flexport|ShipHero
+ven_hr,org_acme,Workday,saas,300000,false,UKG|BambooHR
