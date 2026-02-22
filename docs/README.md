@@ -14,6 +14,7 @@ docs/
 ├── ROADMAP.md                  # Implementation roadmap with milestones
 ├── SECURITY.md                 # Security architecture and compliance
 ├── CONTRIBUTING.md             # Development standards and practices
+├── OPERATOR_QUICKSTART.md      # Non-technical onboarding flow
 ├── architecture/
 │   └── ADR_GAP_ANALYSIS.md     # Historical architect assessment snapshot
 ├── adr/
@@ -34,6 +35,9 @@ docs/
 | [ROADMAP.md](./ROADMAP.md) | Implementation phases, milestones, and priorities | All stakeholders |
 | [SECURITY.md](./SECURITY.md) | Security architecture, compliance, data handling | Engineering, Security, Compliance |
 | [CONTRIBUTING.md](./CONTRIBUTING.md) | Development standards, code style, PR process | Engineering |
+| [OPERATOR_QUICKSTART.md](./OPERATOR_QUICKSTART.md) | 15-minute operator flow with CSV-based assessment | Operations, Customer Teams |
+| [../GOVERNANCE.md](../GOVERNANCE.md) | Governance model, maintainer responsibilities, decision process | Maintainers, Contributors |
+| [../CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) | Community standards and moderation expectations | All contributors |
 
 ---
 

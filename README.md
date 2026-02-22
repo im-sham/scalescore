@@ -12,6 +12,8 @@
 
 ScaleScore predicts where your organization will hit scaling bottlenecks before they happen. It combines organizational data with heuristic models derived from 15+ years of scaling experience to produce actionable readiness scores and recommendations.
 
+ScaleScore is open source and can run standalone. It is also designed to integrate with OpsOrchestra/Mila as an orchestration layer for execution.
+
 ### The Problem
 
 High-growth companies consistently encounter the same failure modes:
@@ -40,11 +42,18 @@ ScaleScore ingests your organizational data and produces:
 git clone https://github.com/im-sham/scalescore.git
 cd scalescore
 
-# Install dependencies
-pip install -e .
+# Create and activate virtual environment
+python -m venv .venv
+source .venv/bin/activate
 
-# Run the demo
-python -m scalescore.demo
+# Install dependencies
+pip install -e ".[dev]"
+
+# Use development defaults (AUTH_SKIP_AUTH=true for local UI/API flow)
+cp .env.example .env
+
+# Run a CLI assessment on demo data
+scalescore --dataset-path data
 
 # Start the API server
 uvicorn scalescore.api.main:app --reload
@@ -52,6 +61,22 @@ uvicorn scalescore.api.main:app --reload
 # Launch the dashboard
 streamlit run ui/streamlit_app.py
 ```
+
+---
+
+## Choose Your Path
+
+### Technical Teams
+
+- Start with this README and [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).
+- Use the API and CLI for integration workflows.
+- Follow [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and ADRs for extension decisions.
+
+### Operational Teams
+
+- Start with [docs/OPERATOR_QUICKSTART.md](docs/OPERATOR_QUICKSTART.md) to run an assessment in about 15 minutes.
+- Use the sample CSV structures in [`data/`](data/).
+- Focus on "top risks" and "top recommendations" outputs to drive weekly operating reviews.
 
 ---
 
@@ -75,7 +100,7 @@ streamlit run ui/streamlit_app.py
 
 ---
 
-## OpsOrchestra Integration
+## OpsOrchestra / Mila Integration
 
 ScaleScore is designed to operate **standalone OR as an OpsOrchestra module**.
 
@@ -84,7 +109,7 @@ ScaleScore is designed to operate **standalone OR as an OpsOrchestra module**.
 | **Standalone** | CSV, direct API | Own JWT | SQLite/Postgres |
 | **Integrated** | OpsOrchestra knowledge graph | Tenant context | Shared DB |
 
-When integrated, ScaleScore becomes the "strategic layer" of OpsOrchestra:
+When integrated, ScaleScore becomes the "strategic layer" for OpsOrchestra/Mila:
 - **Layer 1 (OpsOrchestra):** What does the org know?
 - **Layer 2 (OpsOrchestra):** How does the org work?
 - **Layer 3 (ScaleScore):** Where will the org break?
@@ -138,6 +163,9 @@ scalescore/
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Implementation roadmap with milestones |
 | [docs/SECURITY.md](docs/SECURITY.md) | Security architecture and SOC2 alignment |
 | [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) | Development standards and practices |
+| [docs/OPERATOR_QUICKSTART.md](docs/OPERATOR_QUICKSTART.md) | Non-technical onboarding and 15-minute assessment flow |
+| [GOVERNANCE.md](GOVERNANCE.md) | Project governance, roles, and decision model |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community behavior expectations and enforcement |
 | [docs/adr/](docs/adr/) | Architecture Decision Records |
 
 ---

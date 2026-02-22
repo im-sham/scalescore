@@ -77,3 +77,7 @@ logs/
 tmp/
 temp/
 .local/
+
+# Internal planning docs (keep out of public repository)
+docs/_internal/
+*.internal.md

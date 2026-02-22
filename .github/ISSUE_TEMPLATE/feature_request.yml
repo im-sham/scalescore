@@ -1,0 +1,38 @@
+name: Feature request
+description: Propose a new capability or improvement.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing an idea.
+        Please describe user impact and expected behavior clearly.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What user problem are you trying to solve?
+      placeholder: As an operations lead, I need ...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe your suggested approach.
+      placeholder: Add a new endpoint, connector, or workflow ...
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other options did you consider?
+  - type: textarea
+    id: success
+    attributes:
+      label: Success criteria
+      description: How would we know this is successful?
+      placeholder: Measurable outcomes, KPI movement, or user workflow impact.
