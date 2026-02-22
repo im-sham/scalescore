@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from jwt.algorithms import RSAAlgorithm
 
+from scalescore.config import settings
 from scalescore.core.auth.opsorchestra import OpsOrchestraAuthService
 from scalescore.core.exceptions import AuthenticationError, ErrorCode, ScaleScoreError
 
@@ -125,8 +126,14 @@ def test_verify_parent_token_via_jwks(monkeypatch: pytest.MonkeyPatch) -> None:
     jwk = json.loads(RSAAlgorithm.to_jwk(private_key.public_key()))
     jwk["kid"] = kid
 
-    def _fake_httpx_get(url: str, timeout: float, headers: dict[str, str]) -> httpx.Response:
+    def _fake_httpx_get(
+        url: str,
+        timeout: float,
+        headers: dict[str, str],
+        follow_redirects: bool,
+    ) -> httpx.Response:
         assert "jwks" in url
+        assert follow_redirects is False
         return httpx.Response(
             status_code=200,
             json={"keys": [jwk]},
@@ -183,7 +190,12 @@ def test_verify_parent_token_jwks_fetch_failure(monkeypatch: pytest.MonkeyPatch)
         headers={"kid": "ops-key-1"},
     )
 
-    def _failing_httpx_get(url: str, timeout: float, headers: dict[str, str]) -> httpx.Response:
+    def _failing_httpx_get(
+        url: str,
+        timeout: float,
+        headers: dict[str, str],
+        follow_redirects: bool,
+    ) -> httpx.Response:
         raise httpx.ConnectError("failed", request=httpx.Request("GET", url))
 
     monkeypatch.setattr("scalescore.core.auth.opsorchestra.httpx.get", _failing_httpx_get)
@@ -284,3 +296,72 @@ def test_verify_parent_token_uses_defaults_when_optional_claims_disabled(tmp_pat
     payload = service.verify_parent_token(token)
     assert payload.email == "ops-user-1@opsorchestra.local"
     assert payload.roles == ["viewer"]
+
+
+def test_verify_parent_token_uses_fallback_claims(tmp_path) -> None:
+    public_key_path = tmp_path / "opsorchestra-public.pem"
+    private_key = _write_public_key(public_key_path)
+    now = datetime.now(UTC)
+    token = jwt.encode(
+        {
+            "sub": "ops-user-1",
+            "tid": "tenant-ops",
+            "upn": "ops@example.com",
+            "scp": "admin analyst",
+            "iat": now,
+            "exp": now + timedelta(minutes=10),
+            "iss": "opsorchestra",
+            "aud": "scalescore-api",
+        },
+        private_key,
+        algorithm="RS256",
+    )
+
+    service = OpsOrchestraAuthService(
+        public_key_path=str(public_key_path),
+        issuer="opsorchestra",
+        audience="scalescore-api",
+    )
+    payload = service.verify_parent_token(token)
+    assert payload.tenant_id == "tenant-ops"
+    assert payload.email == "ops@example.com"
+    assert payload.roles == ["admin", "analyst"]
+
+
+def test_verify_parent_token_requires_iat_claim(tmp_path) -> None:
+    public_key_path = tmp_path / "opsorchestra-public.pem"
+    private_key = _write_public_key(public_key_path)
+    now = datetime.now(UTC)
+    token = jwt.encode(
+        {
+            "sub": "ops-user-1",
+            "tenant_id": "tenant-ops",
+            "email": "ops@example.com",
+            "roles": ["admin"],
+            "exp": now + timedelta(minutes=10),
+            "iss": "opsorchestra",
+            "aud": "scalescore-api",
+        },
+        private_key,
+        algorithm="RS256",
+    )
+
+    service = OpsOrchestraAuthService(
+        public_key_path=str(public_key_path),
+        issuer="opsorchestra",
+        audience="scalescore-api",
+    )
+    with pytest.raises(AuthenticationError) as exc_info:
+        service.verify_parent_token(token)
+    assert exc_info.value.code == ErrorCode.INVALID_TOKEN
+
+
+def test_jwks_url_requires_https_outside_development(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "environment", "staging")
+    monkeypatch.setattr(settings.integration, "opsorchestra_allow_private_network", False)
+
+    with pytest.raises(ValueError, match="must use https"):
+        OpsOrchestraAuthService(
+            public_key_path=None,
+            jwks_url="http://opsorchestra.example/jwks",
+        )

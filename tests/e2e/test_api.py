@@ -1,3 +1,4 @@
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -8,6 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
+from scalescore.api import main as api_main
 from scalescore.api.main import app
 from scalescore.config import settings
 from scalescore.connectors.opsorchestra_connector import OpsOrchestraConnector
@@ -16,6 +18,7 @@ from scalescore.core.auth.opsorchestra import (
     get_opsorchestra_auth_service,
 )
 from scalescore.core.exceptions import ErrorCode, ScaleScoreError
+from scalescore.core.rate_limit import get_rate_limiter
 from scalescore.models.core import Organization, Team
 
 client = TestClient(app)
@@ -32,6 +35,30 @@ def _login(email: str = "dev@example.com", password: str = "dev") -> dict:
 
 def _auth_headers() -> dict[str, str]:
     token = _login()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _signup_and_auth_headers(*, tenant_id: str | None = None) -> dict[str, str]:
+    email = f"user-{uuid4().hex[:8]}@example.com"
+    tenant = tenant_id or f"tenant-{uuid4().hex[:8]}"
+    signup_response = client.post(
+        "/api/v1/auth/signup",
+        json={
+            "email": email,
+            "password": "strong-password",
+            "tenant_id": tenant,
+            "org_id": "org-async-tests",
+            "roles": ["analyst"],
+        },
+    )
+    assert signup_response.status_code == 201
+
+    login_response = client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": "strong-password"},
+    )
+    assert login_response.status_code == 200
+    token = login_response.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -66,6 +93,25 @@ def _write_dataset(tmp_path: Path) -> None:
         "sig_1,org_1,headcount_plan,Scale,2026-12-31,100,percentage,0.8,engineering|operations\n",
         encoding="utf-8",
     )
+
+
+def _upload_files(tmp_path: Path) -> dict[str, tuple[str, str, str]]:
+    return {
+        "organizations": (
+            "organizations.csv",
+            (tmp_path / "organizations.csv").read_text(),
+            "text/csv",
+        ),
+        "teams": ("teams.csv", (tmp_path / "teams.csv").read_text(), "text/csv"),
+        "systems": ("systems.csv", (tmp_path / "systems.csv").read_text(), "text/csv"),
+        "vendors": ("vendors.csv", (tmp_path / "vendors.csv").read_text(), "text/csv"),
+        "facilities": ("facilities.csv", (tmp_path / "facilities.csv").read_text(), "text/csv"),
+        "growth_signals": (
+            "growth_signals.csv",
+            (tmp_path / "growth_signals.csv").read_text(),
+            "text/csv",
+        ),
+    }
 
 
 def _issue_opsorchestra_token(
@@ -132,22 +178,7 @@ def test_create_assessment(tmp_path: Path) -> None:
 def test_create_assessment_from_upload(tmp_path: Path) -> None:
     _write_dataset(tmp_path)
 
-    files = {
-        "organizations": (
-            "organizations.csv",
-            (tmp_path / "organizations.csv").read_text(),
-            "text/csv",
-        ),
-        "teams": ("teams.csv", (tmp_path / "teams.csv").read_text(), "text/csv"),
-        "systems": ("systems.csv", (tmp_path / "systems.csv").read_text(), "text/csv"),
-        "vendors": ("vendors.csv", (tmp_path / "vendors.csv").read_text(), "text/csv"),
-        "facilities": ("facilities.csv", (tmp_path / "facilities.csv").read_text(), "text/csv"),
-        "growth_signals": (
-            "growth_signals.csv",
-            (tmp_path / "growth_signals.csv").read_text(),
-            "text/csv",
-        ),
-    }
+    files = _upload_files(tmp_path)
 
     response = client.post("/api/v1/assessments/upload", files=files)
 
@@ -163,6 +194,192 @@ def test_create_assessment_from_upload(tmp_path: Path) -> None:
     payload = authorized_response.json()
     assert payload["org_id"] == "org_1"
     assert payload["overall_score"] >= 0
+
+
+def test_create_async_assessment_from_upload(tmp_path: Path, monkeypatch) -> None:
+    _write_dataset(tmp_path)
+    monkeypatch.setattr(settings.features, "enable_async_assessments", True)
+    headers = _auth_headers()
+
+    files = _upload_files(tmp_path)
+
+    create_response = client.post(
+        "/api/v1/assessments/async/upload",
+        files=files,
+        headers=headers,
+    )
+    assert create_response.status_code == 202
+    payload = create_response.json()
+    assert payload["status"] in {"queued", "processing", "completed"}
+    assert payload["progress_stage"] == "queued"
+    assert payload["progress_percentage"] == 0
+    job_id = payload["job_id"]
+
+    final_payload: dict | None = None
+    for _ in range(80):
+        status_response = client.get(
+            f"/api/v1/assessments/async/{job_id}",
+            headers=headers,
+        )
+        assert status_response.status_code == 200
+        status_payload = status_response.json()
+        if status_payload["status"] in {"completed", "failed"}:
+            final_payload = status_payload
+            break
+        time.sleep(0.1)
+
+    assert final_payload is not None
+    assert final_payload["status"] == "completed"
+    assert final_payload["progress_stage"] == "completed"
+    assert final_payload["progress_percentage"] == 100
+    report_id = final_payload["report_id"]
+    assert report_id
+
+    report_response = client.get(
+        f"/api/v1/assessments/{report_id}",
+        headers=headers,
+    )
+    assert report_response.status_code == 200
+    assert report_response.json()["report_id"] == report_id
+
+
+def test_async_assessment_submit_rate_limit_enforced(tmp_path: Path, monkeypatch) -> None:
+    _write_dataset(tmp_path)
+    monkeypatch.setattr(settings.features, "enable_async_assessments", True)
+    monkeypatch.setattr(settings.async_assessment, "submit_rate_limit_requests", 1)
+    monkeypatch.setattr(settings.async_assessment, "submit_rate_limit_window_seconds", 60)
+    rate_limiter = get_rate_limiter()
+    rate_limiter.clear()
+    headers = _signup_and_auth_headers()
+
+    files = _upload_files(tmp_path)
+    first_response = client.post(
+        "/api/v1/assessments/async/upload",
+        files=files,
+        headers=headers,
+    )
+    assert first_response.status_code == 202
+
+    second_response = client.post(
+        "/api/v1/assessments/async/upload",
+        files=files,
+        headers=headers,
+    )
+    assert second_response.status_code == 429
+    assert second_response.json()["detail"]["code"] == "RATE_LIMITED"
+    rate_limiter.clear()
+
+
+def test_async_assessment_queue_limit_enforced(tmp_path: Path, monkeypatch) -> None:
+    _write_dataset(tmp_path)
+    monkeypatch.setattr(settings.features, "enable_async_assessments", True)
+    monkeypatch.setattr(settings.async_assessment, "mode", "poll")
+    monkeypatch.setattr(settings.async_assessment, "max_outstanding_jobs_per_tenant", 1)
+    headers = _signup_and_auth_headers(tenant_id=f"tenant-queue-{uuid4().hex[:8]}")
+    files = _upload_files(tmp_path)
+
+    first_response = client.post(
+        "/api/v1/assessments/async/upload",
+        files=files,
+        headers=headers,
+    )
+    assert first_response.status_code == 202
+
+    second_response = client.post(
+        "/api/v1/assessments/async/upload",
+        files=files,
+        headers=headers,
+    )
+    assert second_response.status_code == 429
+    assert second_response.json()["detail"]["code"] == "ASYNC_QUEUE_LIMIT_REACHED"
+
+
+def test_async_assessment_upload_file_size_limit(tmp_path: Path, monkeypatch) -> None:
+    _write_dataset(tmp_path)
+    monkeypatch.setattr(settings.features, "enable_async_assessments", True)
+    monkeypatch.setattr(settings.async_assessment, "max_upload_bytes_per_file", 20)
+    headers = _signup_and_auth_headers()
+    files = _upload_files(tmp_path)
+
+    response = client.post(
+        "/api/v1/assessments/async/upload",
+        files=files,
+        headers=headers,
+    )
+    assert response.status_code == 413
+    payload = response.json()
+    assert payload["detail"]["code"] == "UPLOAD_FILE_TOO_LARGE"
+
+
+def test_async_assessment_broker_mode_enqueues_job(tmp_path: Path, monkeypatch) -> None:
+    _write_dataset(tmp_path)
+    monkeypatch.setattr(settings.features, "enable_async_assessments", True)
+    monkeypatch.setattr(settings.async_assessment, "mode", "broker")
+    enqueued_job_ids: list[str] = []
+
+    class FakeBroker:
+        def enqueue(self, job_id: str) -> None:
+            enqueued_job_ids.append(job_id)
+
+    monkeypatch.setattr(api_main, "get_async_assessment_broker", lambda: FakeBroker())
+    headers = _signup_and_auth_headers(tenant_id=f"tenant-broker-{uuid4().hex[:8]}")
+    files = _upload_files(tmp_path)
+
+    response = client.post(
+        "/api/v1/assessments/async/upload",
+        files=files,
+        headers=headers,
+    )
+    assert response.status_code == 202
+    payload = response.json()
+    assert enqueued_job_ids == [payload["job_id"]]
+
+
+def test_scheduled_assessment_crud_flow(tmp_path: Path, monkeypatch) -> None:
+    _write_dataset(tmp_path)
+    monkeypatch.setattr(settings.features, "enable_async_assessments", True)
+    monkeypatch.setattr(settings.features, "enable_scheduled_assessments", True)
+    headers = _signup_and_auth_headers(tenant_id=f"tenant-schedule-{uuid4().hex[:8]}")
+    files = _upload_files(tmp_path)
+
+    create_response = client.post(
+        "/api/v1/assessments/schedules/upload",
+        data={
+            "name": "Daily tenant assessment",
+            "cadence": "daily",
+            "run_hour_utc": "3",
+            "run_minute_utc": "15",
+        },
+        files=files,
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    schedule_payload = create_response.json()
+    assert schedule_payload["status"] == "active"
+    assert schedule_payload["cadence"] == "daily"
+    schedule_id = schedule_payload["schedule_id"]
+
+    list_response = client.get(
+        "/api/v1/assessments/schedules",
+        headers=headers,
+    )
+    assert list_response.status_code == 200
+    listed = list_response.json()
+    assert any(item["schedule_id"] == schedule_id for item in listed)
+
+    pause_response = client.post(
+        f"/api/v1/assessments/schedules/{schedule_id}/pause",
+        headers=headers,
+    )
+    assert pause_response.status_code == 200
+    assert pause_response.json()["status"] == "paused"
+
+    resume_response = client.post(
+        f"/api/v1/assessments/schedules/{schedule_id}/resume",
+        headers=headers,
+    )
+    assert resume_response.status_code == 200
+    assert resume_response.json()["status"] == "active"
 
 
 def test_list_assessments_and_score_history(tmp_path: Path) -> None:
@@ -489,6 +706,27 @@ def test_signup_then_login() -> None:
     )
     assert login_response.status_code == 200
     assert "access_token" in login_response.json()
+
+
+def test_login_rate_limit_enforced(monkeypatch) -> None:
+    rate_limiter = get_rate_limiter()
+    rate_limiter.clear()
+    monkeypatch.setattr(settings.auth, "login_rate_limit_requests", 1)
+    monkeypatch.setattr(settings.auth, "login_rate_limit_window_seconds", 60)
+
+    first = client.post(
+        "/api/v1/auth/login",
+        json={"email": "dev@example.com", "password": "dev"},
+    )
+    assert first.status_code == 200
+
+    second = client.post(
+        "/api/v1/auth/login",
+        json={"email": "dev@example.com", "password": "dev"},
+    )
+    assert second.status_code == 429
+    assert second.json()["detail"]["code"] == "RATE_LIMITED"
+    rate_limiter.clear()
 
 
 def test_auth_me_requires_authentication() -> None:

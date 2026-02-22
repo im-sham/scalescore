@@ -15,6 +15,8 @@ docs/
 ├── ROADMAP.md                  # Implementation roadmap with milestones
 ├── SECURITY.md                 # Security architecture and compliance
 ├── SECURITY_BASELINE.md        # Executed checks and current security posture
+├── SECURITY_OWASP_API_TOP10_AUDIT.md # OWASP API Top 10 control audit evidence
+├── STAGING_VALIDATION.md       # Release-gate validation runbook for staging
 ├── CONTRIBUTING.md             # Development standards and practices
 ├── OPERATOR_QUICKSTART.md      # Non-technical onboarding flow
 ├── architecture/
@@ -38,6 +40,8 @@ docs/
 | [ROADMAP.md](./ROADMAP.md) | Implementation phases, milestones, and priorities | All stakeholders |
 | [SECURITY.md](./SECURITY.md) | Security architecture, compliance, data handling | Engineering, Security, Compliance |
 | [SECURITY_BASELINE.md](./SECURITY_BASELINE.md) | Baseline scan/test results and current risks | Engineering, Security |
+| [SECURITY_OWASP_API_TOP10_AUDIT.md](./SECURITY_OWASP_API_TOP10_AUDIT.md) | OWASP API Top 10 mapping and pass/fail evidence | Engineering, Security |
+| [STAGING_VALIDATION.md](./STAGING_VALIDATION.md) | Staging smoke checks and release exit criteria | Engineering, Operations |
 | [CONTRIBUTING.md](./CONTRIBUTING.md) | Development standards, code style, PR process | Engineering |
 | [OPERATOR_QUICKSTART.md](./OPERATOR_QUICKSTART.md) | 15-minute operator flow with CSV-based assessment | Operations, Customer Teams |
 | [../GOVERNANCE.md](../GOVERNANCE.md) | Governance model, maintainer responsibilities, decision process | Maintainers, Contributors |

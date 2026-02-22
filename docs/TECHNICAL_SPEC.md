@@ -669,6 +669,8 @@ When OpsOrchestra integration auth mode is enabled, protected routes can also ac
 | Method | Path | Purpose |
 |--------|------|---------|
 | `POST` | `/api/v1/import/csv` | Import entity records from CSV |
+| `POST` | `/api/v1/assessments/async/upload` | Queue async assessment from CSV upload |
+| `GET` | `/api/v1/assessments/async/{job_id}` | Poll async assessment status |
 | `POST` | `/api/v1/integrations/opsorchestra/pull` | Pull and import entities from OpsOrchestra graph export |
 | `POST` | `/api/v1/webhooks/opsorchestra` | Receive OpsOrchestra entity events |
 | `POST` | `/api/v1/assessments/{assessment_id}/sync/opsorchestra` | Push assessment summary and top findings to OpsOrchestra |
@@ -716,7 +718,7 @@ sig_hc,org_acme,headcount_plan,Double headcount,2026-12-31,100,percentage,0.8,en
 
 ### 7.3 OpsOrchestra Integration API
 
-Current integration surface includes a webhook ingestion endpoint:
+Current integration surface includes pull, webhook ingestion, and outbound sync endpoints:
 
 - `POST /api/v1/integrations/opsorchestra/pull`
 - `POST /api/v1/webhooks/opsorchestra`
@@ -734,6 +736,12 @@ Security model:
   - `INTEGRATION_OPSORCHESTRA_AUTH_ENABLED=true`
   - one of `INTEGRATION_OPSORCHESTRA_JWT_PUBLIC_KEY_PATH` or `INTEGRATION_OPSORCHESTRA_JWKS_URL`
   - claim requirements controlled by `INTEGRATION_OPSORCHESTRA_REQUIRE_EMAIL_CLAIM` and `INTEGRATION_OPSORCHESTRA_REQUIRE_ROLES_CLAIM`
+- Remote integration URL hardening:
+  - HTTPS required in staging/production for JWKS, graph export, and outbound sync URLs
+  - Private/localhost targets blocked by default unless explicitly enabled
+- Connector resilience and bounds:
+  - bounded retries/backoff for transient remote failures
+  - per-entity-type graph payload limits during import
 
 ---
 
@@ -774,8 +782,9 @@ The authoritative, continuously updated roadmap lives in `docs/ROADMAP.md`.
 
 Current snapshot (February 2026):
 - Phase 1 MVP foundation: complete.
-- Phase 2 platform maturity: substantially complete (auth, CRUD, trend analytics, summaries, PDF export, webhook ingestion).
-- Current focus: Phase 3 scale and integration (OpsOrchestra connector, async assessment execution, expanded scoring pillars).
+- Phase 2 platform maturity: complete, including OWASP API Top 10 self-audit evidence and auth throttling controls.
+- Phase 3 v0.7 integration hardening: in progress with connector transport hardening, stricter URL controls, and SSO-claim fallback alignment.
+- Phase 3 v0.8 async slice: queue flow expanded with execution modes (`poll`, `background`, `broker`), `scalescore-worker` runtime, async upload abuse controls, scheduled assessment baseline, and stage-based async progress fields.
 
 ---
 

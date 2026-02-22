@@ -1,12 +1,25 @@
 import hmac
+import shutil
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Annotated, Any
+from uuid import uuid4
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile, status
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -21,6 +34,8 @@ from scalescore.connectors.opsorchestra_connector import (
     get_opsorchestra_connector,
 )
 from scalescore.core.assessment import run_assessment_from_csv
+from scalescore.core.async_assessment import AsyncAssessmentWorker
+from scalescore.core.async_broker import AsyncAssessmentBrokerError, get_async_assessment_broker
 from scalescore.core.audit import (
     AuditEventType,
     audit_assessment_created,
@@ -31,7 +46,12 @@ from scalescore.core.auth.jwt import TokenPayload
 from scalescore.core.auth.roles import Permission
 from scalescore.core.exceptions import AssessmentNotFoundError
 from scalescore.core.logging import get_logger, setup_logging
+from scalescore.core.rate_limit import SlidingWindowRateLimiter, get_rate_limiter
 from scalescore.core.reporting import render_report_pdf
+from scalescore.core.scheduled_assessment import (
+    ScheduledAssessmentDispatcher,
+    async_assessment_dataset_directory,
+)
 from scalescore.models.core import (
     BaseEntity,
     EntityType,
@@ -52,9 +72,22 @@ from scalescore.storage.assessment_repository import (
     AssessmentRepository,
     get_assessment_repository,
 )
+from scalescore.storage.async_assessment_repository import (
+    AsyncAssessmentJob,
+    AsyncAssessmentJobRepository,
+    AsyncAssessmentStatus,
+    get_async_assessment_job_repository,
+)
 from scalescore.storage.entity_repository import (
     EntityRepository,
     get_entity_repository,
+)
+from scalescore.storage.scheduled_assessment_repository import (
+    ScheduledAssessment,
+    ScheduledAssessmentCadence,
+    ScheduledAssessmentRepository,
+    ScheduledAssessmentStatus,
+    get_scheduled_assessment_repository,
 )
 
 setup_logging()
@@ -62,15 +95,63 @@ setup_logging()
 logger = get_logger(__name__)
 
 
+def _build_async_assessment_worker() -> AsyncAssessmentWorker:
+    return AsyncAssessmentWorker(
+        job_repository=get_async_assessment_job_repository(),
+        assessment_repository=get_assessment_repository(),
+        poll_interval_seconds=settings.async_assessment.worker_poll_interval_seconds,
+    )
+
+
+def _build_scheduled_assessment_dispatcher() -> ScheduledAssessmentDispatcher:
+    enqueue_job = _enqueue_async_assessment_job if settings.async_assessment.mode == "broker" else None
+    return ScheduledAssessmentDispatcher(
+        schedule_repository=get_scheduled_assessment_repository(),
+        job_repository=get_async_assessment_job_repository(),
+        enqueue_job=enqueue_job,
+        dispatch_interval_seconds=settings.async_assessment.scheduled_dispatch_poll_interval_seconds,
+        dispatch_batch_size=settings.async_assessment.scheduled_dispatch_batch_size,
+    )
+
+
+async def _process_async_assessment_queue_once() -> None:
+    if settings.async_assessment.mode != "poll":
+        return
+    # Process at most one queued job per poll request. This keeps behavior deterministic
+    # across environments where long-lived background tasks may not persist between requests.
+    worker = _build_async_assessment_worker()
+    await worker.process_next_job()
+
+
+async_assessment_runtime_worker: AsyncAssessmentWorker | None = None
+scheduled_assessment_runtime_dispatcher: ScheduledAssessmentDispatcher | None = None
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    global async_assessment_runtime_worker, scheduled_assessment_runtime_dispatcher
     logger.info(
         "application_started",
         host=settings.server.host,
         port=settings.server.port,
     )
-    yield
-    logger.info("application_shutdown")
+    if settings.features.enable_async_assessments and settings.async_assessment.mode == "background":
+        async_assessment_runtime_worker = _build_async_assessment_worker()
+        await async_assessment_runtime_worker.start()
+        if settings.features.enable_scheduled_assessments:
+            scheduled_assessment_runtime_dispatcher = _build_scheduled_assessment_dispatcher()
+            await scheduled_assessment_runtime_dispatcher.start()
+
+    try:
+        yield
+    finally:
+        if scheduled_assessment_runtime_dispatcher is not None:
+            await scheduled_assessment_runtime_dispatcher.stop()
+            scheduled_assessment_runtime_dispatcher = None
+        if async_assessment_runtime_worker is not None:
+            await async_assessment_runtime_worker.stop()
+            async_assessment_runtime_worker = None
+        logger.info("application_shutdown")
 
 
 app = FastAPI(
@@ -109,6 +190,13 @@ CanManageOrganizations = Annotated[
     TokenPayload, Depends(RequirePermission(Permission.ORGANIZATION_MANAGE))
 ]
 AssessmentRepositoryDep = Annotated[AssessmentRepository, Depends(get_assessment_repository)]
+AsyncAssessmentJobRepositoryDep = Annotated[
+    AsyncAssessmentJobRepository, Depends(get_async_assessment_job_repository)
+]
+ScheduledAssessmentRepositoryDep = Annotated[
+    ScheduledAssessmentRepository, Depends(get_scheduled_assessment_repository)
+]
+RateLimiterDep = Annotated[SlidingWindowRateLimiter, Depends(get_rate_limiter)]
 EntityRepositoryDep = Annotated[EntityRepository, Depends(get_entity_repository)]
 OpsOrchestraConnectorDep = Annotated[OpsOrchestraConnector, Depends(get_opsorchestra_connector)]
 
@@ -147,6 +235,41 @@ class OpsOrchestraWebhookEvent(BaseModel):
     entity_type: str | None = None
     entity_id: str | None = None
     entity: dict[str, Any] | None = None
+
+
+class AsyncAssessmentJobResponse(BaseModel):
+    job_id: str
+    tenant_id: str
+    submitted_by: str
+    status: str
+    progress_stage: str
+    progress_percentage: int
+    progress_message: str | None = None
+    report_id: str | None = None
+    org_id: str | None = None
+    error_message: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+
+class ScheduledAssessmentResponse(BaseModel):
+    schedule_id: str
+    tenant_id: str
+    created_by: str
+    name: str
+    status: str
+    cadence: str
+    run_hour_utc: int
+    run_minute_utc: int
+    run_day_of_week: int | None = None
+    next_run_at: datetime
+    last_run_at: datetime | None = None
+    last_job_id: str | None = None
+    last_error: str | None = None
+    created_at: datetime
+    updated_at: datetime
 
 
 def _dataset_path_for_development(dataset_path: str) -> Path:
@@ -318,6 +441,143 @@ def _csv_loader_for_entity_type(entity_type: EntityType) -> Callable[[str | Path
     return loader
 
 
+def _async_assessment_dataset_directory(job_id: str) -> Path:
+    return async_assessment_dataset_directory(job_id)
+
+
+def _scheduled_assessment_dataset_directory(schedule_id: str) -> Path:
+    storage_root = Path(settings.storage.assessments_db_path).resolve().parent
+    return storage_root / "scheduled_assessments" / schedule_id / "dataset"
+
+
+def _async_assessment_job_response(job: AsyncAssessmentJob) -> AsyncAssessmentJobResponse:
+    return AsyncAssessmentJobResponse(
+        job_id=job.job_id,
+        tenant_id=job.tenant_id,
+        submitted_by=job.submitted_by,
+        status=job.status.value,
+        progress_stage=job.progress_stage,
+        progress_percentage=job.progress_percentage,
+        progress_message=job.progress_message,
+        report_id=job.report_id,
+        org_id=job.org_id,
+        error_message=job.error_message,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+        started_at=job.started_at,
+        completed_at=job.completed_at,
+    )
+
+
+def _scheduled_assessment_response(schedule: ScheduledAssessment) -> ScheduledAssessmentResponse:
+    return ScheduledAssessmentResponse(
+        schedule_id=schedule.schedule_id,
+        tenant_id=schedule.tenant_id,
+        created_by=schedule.created_by,
+        name=schedule.name,
+        status=schedule.status.value,
+        cadence=schedule.cadence.value,
+        run_hour_utc=schedule.run_hour_utc,
+        run_minute_utc=schedule.run_minute_utc,
+        run_day_of_week=schedule.run_day_of_week,
+        next_run_at=schedule.next_run_at,
+        last_run_at=schedule.last_run_at,
+        last_job_id=schedule.last_job_id,
+        last_error=schedule.last_error,
+        created_at=schedule.created_at,
+        updated_at=schedule.updated_at,
+    )
+
+
+def _request_ip(request: Request) -> str:
+    if request.client:
+        return request.client.host
+    return "unknown"
+
+
+def _enforce_rate_limit(
+    *,
+    rate_limiter: SlidingWindowRateLimiter,
+    key: str,
+    limit: int,
+    window_seconds: int,
+) -> None:
+    decision = rate_limiter.allow(
+        key,
+        limit=limit,
+        window_seconds=window_seconds,
+    )
+    if decision.allowed:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail={
+            "code": "RATE_LIMITED",
+            "message": "Rate limit exceeded, retry later",
+            "retry_after_seconds": decision.retry_after_seconds,
+        },
+        headers={"Retry-After": str(decision.retry_after_seconds)},
+    )
+
+
+def _enforce_async_assessment_queue_limit(
+    *,
+    job_repository: AsyncAssessmentJobRepository,
+    tenant_id: str,
+) -> None:
+    outstanding_jobs = job_repository.count_jobs(
+        tenant_id=tenant_id,
+        statuses={AsyncAssessmentStatus.QUEUED, AsyncAssessmentStatus.PROCESSING},
+    )
+    queue_limit = settings.async_assessment.max_outstanding_jobs_per_tenant
+    if outstanding_jobs < queue_limit:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail={
+            "code": "ASYNC_QUEUE_LIMIT_REACHED",
+            "message": (
+                "Outstanding async assessment queue limit reached for tenant. "
+                "Retry after existing jobs complete."
+            ),
+            "max_outstanding_jobs_per_tenant": queue_limit,
+        },
+    )
+
+
+def _enqueue_async_assessment_job(job_id: str) -> None:
+    if settings.async_assessment.mode != "broker":
+        return
+    broker = get_async_assessment_broker()
+    broker.enqueue(job_id)
+
+
+def _parse_schedule_cadence(value: str) -> ScheduledAssessmentCadence:
+    try:
+        return ScheduledAssessmentCadence(value.strip().lower())
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "INVALID_SCHEDULE_CADENCE",
+                "message": "cadence must be one of: daily, weekly",
+            },
+        ) from err
+
+
+def _parse_schedule_status(value: str) -> ScheduledAssessmentStatus:
+    try:
+        return ScheduledAssessmentStatus(value.strip().lower())
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "INVALID_SCHEDULE_STATUS",
+                "message": "status must be one of: active, paused",
+            },
+        ) from err
+
+
 @app.post("/api/v1/assessments", response_model=ScaleScoreReport)
 async def create_assessment(
     dataset_path: str,
@@ -370,6 +630,352 @@ async def create_assessment_from_upload(
         organization_id=report.org_id,
     )
     return report
+
+
+@app.post(
+    "/api/v1/assessments/async/upload",
+    response_model=AsyncAssessmentJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def create_async_assessment_from_upload(
+    request: Request,
+    current_user: CanCreateAssessments,
+    job_repository: AsyncAssessmentJobRepositoryDep,
+    rate_limiter: RateLimiterDep,
+    organizations: UploadFile = ORGANIZATIONS_FILE,  # noqa: B008
+    teams: UploadFile = TEAMS_FILE,  # noqa: B008
+    systems: UploadFile = SYSTEMS_FILE,  # noqa: B008
+    vendors: UploadFile = VENDORS_FILE,  # noqa: B008
+    facilities: UploadFile = FACILITIES_FILE,  # noqa: B008
+    growth_signals: UploadFile = GROWTH_SIGNALS_FILE,  # noqa: B008
+) -> AsyncAssessmentJobResponse:
+    if not settings.features.enable_async_assessments:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "ASYNC_ASSESSMENTS_DISABLED",
+                "message": "Async assessment processing is not enabled",
+            },
+        )
+
+    _enforce_rate_limit(
+        rate_limiter=rate_limiter,
+        key=f"async_assessment:submit:{current_user.tenant_id}:{_request_ip(request)}",
+        limit=settings.async_assessment.submit_rate_limit_requests,
+        window_seconds=settings.async_assessment.submit_rate_limit_window_seconds,
+    )
+    _enforce_async_assessment_queue_limit(
+        job_repository=job_repository,
+        tenant_id=current_user.tenant_id,
+    )
+
+    files = {
+        "organizations.csv": organizations,
+        "teams.csv": teams,
+        "systems.csv": systems,
+        "vendors.csv": vendors,
+        "facilities.csv": facilities,
+        "growth_signals.csv": growth_signals,
+    }
+    job_id = f"job_{uuid4().hex[:16]}"
+    dataset_directory = _async_assessment_dataset_directory(job_id)
+    max_upload_bytes = settings.async_assessment.max_upload_bytes_per_file
+    dataset_directory.mkdir(parents=True, exist_ok=True)
+    try:
+        for filename, upload in files.items():
+            content = await upload.read()
+            if not content:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={
+                        "code": "EMPTY_UPLOAD_FILE",
+                        "message": f"{filename} is empty",
+                    },
+                )
+            if len(content) > max_upload_bytes:
+                raise HTTPException(
+                    status_code=413,
+                    detail={
+                        "code": "UPLOAD_FILE_TOO_LARGE",
+                        "message": f"{filename} exceeds max upload size",
+                        "max_upload_bytes_per_file": max_upload_bytes,
+                    },
+                )
+            (dataset_directory / filename).write_bytes(content)
+
+        job = job_repository.create_job(
+            job_id=job_id,
+            tenant_id=current_user.tenant_id,
+            submitted_by=current_user.sub,
+            dataset_path=str(dataset_directory),
+        )
+        try:
+            _enqueue_async_assessment_job(job.job_id)
+        except AsyncAssessmentBrokerError as err:
+            job_repository.mark_failed(
+                job_id=job.job_id,
+                error_message="Failed to enqueue async assessment job for broker processing",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "code": "ASYNC_BROKER_UNAVAILABLE",
+                    "message": (
+                        "Async assessment broker unavailable. "
+                        "Job was marked failed and can be retried."
+                    ),
+                },
+            ) from err
+    except Exception:
+        shutil.rmtree(dataset_directory, ignore_errors=True)
+        raise
+
+    audit_log(
+        AuditEventType.ASSESSMENT_CREATED,
+        actor_id=current_user.sub,
+        tenant_id=current_user.tenant_id,
+        resource_type="async_assessment_job",
+        resource_id=job.job_id,
+    )
+    return _async_assessment_job_response(job)
+
+
+@app.get(
+    "/api/v1/assessments/async/{job_id}",
+    response_model=AsyncAssessmentJobResponse,
+)
+async def get_async_assessment_job(
+    job_id: str,
+    current_user: CanReadAssessments,
+    job_repository: AsyncAssessmentJobRepositoryDep,
+) -> AsyncAssessmentJobResponse:
+    await _process_async_assessment_queue_once()
+
+    job = job_repository.get_job(job_id, tenant_id=current_user.tenant_id)
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "ASYNC_ASSESSMENT_JOB_NOT_FOUND",
+                "message": "Async assessment job not found",
+            },
+        )
+
+    audit_log(
+        AuditEventType.ASSESSMENT_VIEWED,
+        actor_id=current_user.sub,
+        tenant_id=current_user.tenant_id,
+        resource_type="async_assessment_job",
+        resource_id=job_id,
+    )
+    return _async_assessment_job_response(job)
+
+
+@app.post(
+    "/api/v1/assessments/schedules/upload",
+    response_model=ScheduledAssessmentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_scheduled_assessment_from_upload(
+    request: Request,
+    current_user: CanCreateAssessments,
+    schedule_repository: ScheduledAssessmentRepositoryDep,
+    rate_limiter: RateLimiterDep,
+    name: str = Form(..., min_length=1, max_length=200),  # noqa: B008
+    cadence: str = Form(...),  # noqa: B008
+    run_hour_utc: int = Form(..., ge=0, le=23),  # noqa: B008
+    run_minute_utc: int = Form(..., ge=0, le=59),  # noqa: B008
+    run_day_of_week: int | None = Form(default=None, ge=0, le=6),  # noqa: B008
+    organizations: UploadFile = ORGANIZATIONS_FILE,  # noqa: B008
+    teams: UploadFile = TEAMS_FILE,  # noqa: B008
+    systems: UploadFile = SYSTEMS_FILE,  # noqa: B008
+    vendors: UploadFile = VENDORS_FILE,  # noqa: B008
+    facilities: UploadFile = FACILITIES_FILE,  # noqa: B008
+    growth_signals: UploadFile = GROWTH_SIGNALS_FILE,  # noqa: B008
+) -> ScheduledAssessmentResponse:
+    if not settings.features.enable_async_assessments:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "ASYNC_ASSESSMENTS_DISABLED",
+                "message": "Async assessment processing is not enabled",
+            },
+        )
+    if not settings.features.enable_scheduled_assessments:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "SCHEDULED_ASSESSMENTS_DISABLED",
+                "message": "Scheduled assessments are not enabled",
+            },
+        )
+
+    _enforce_rate_limit(
+        rate_limiter=rate_limiter,
+        key=f"scheduled_assessment:create:{current_user.tenant_id}:{_request_ip(request)}",
+        limit=settings.async_assessment.submit_rate_limit_requests,
+        window_seconds=settings.async_assessment.submit_rate_limit_window_seconds,
+    )
+
+    parsed_cadence = _parse_schedule_cadence(cadence)
+    if parsed_cadence == ScheduledAssessmentCadence.WEEKLY and run_day_of_week is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "RUN_DAY_OF_WEEK_REQUIRED",
+                "message": "run_day_of_week is required when cadence=weekly",
+            },
+        )
+
+    files = {
+        "organizations.csv": organizations,
+        "teams.csv": teams,
+        "systems.csv": systems,
+        "vendors.csv": vendors,
+        "facilities.csv": facilities,
+        "growth_signals.csv": growth_signals,
+    }
+    schedule_id = f"schedule_{uuid4().hex[:16]}"
+    dataset_directory = _scheduled_assessment_dataset_directory(schedule_id)
+    max_upload_bytes = settings.async_assessment.max_upload_bytes_per_file
+    dataset_directory.mkdir(parents=True, exist_ok=True)
+    try:
+        for filename, upload in files.items():
+            content = await upload.read()
+            if not content:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={
+                        "code": "EMPTY_UPLOAD_FILE",
+                        "message": f"{filename} is empty",
+                    },
+                )
+            if len(content) > max_upload_bytes:
+                raise HTTPException(
+                    status_code=413,
+                    detail={
+                        "code": "UPLOAD_FILE_TOO_LARGE",
+                        "message": f"{filename} exceeds max upload size",
+                        "max_upload_bytes_per_file": max_upload_bytes,
+                    },
+                )
+            (dataset_directory / filename).write_bytes(content)
+
+        schedule = schedule_repository.create_schedule(
+            schedule_id=schedule_id,
+            tenant_id=current_user.tenant_id,
+            created_by=current_user.sub,
+            name=name,
+            cadence=parsed_cadence,
+            run_hour_utc=run_hour_utc,
+            run_minute_utc=run_minute_utc,
+            run_day_of_week=run_day_of_week if parsed_cadence == ScheduledAssessmentCadence.WEEKLY else None,
+            dataset_path=str(dataset_directory),
+        )
+    except Exception:
+        shutil.rmtree(dataset_directory, ignore_errors=True)
+        raise
+
+    audit_log(
+        AuditEventType.CONFIG_CHANGED,
+        actor_id=current_user.sub,
+        tenant_id=current_user.tenant_id,
+        resource_type="scheduled_assessment",
+        resource_id=schedule.schedule_id,
+    )
+    return _scheduled_assessment_response(schedule)
+
+
+@app.get(
+    "/api/v1/assessments/schedules",
+    response_model=list[ScheduledAssessmentResponse],
+)
+async def list_scheduled_assessments(
+    current_user: CanReadAssessments,
+    schedule_repository: ScheduledAssessmentRepositoryDep,
+    status_filter: str | None = Query(default=None, alias="status"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> list[ScheduledAssessmentResponse]:
+    parsed_status = _parse_schedule_status(status_filter) if status_filter else None
+    schedules = schedule_repository.list_schedules(
+        tenant_id=current_user.tenant_id,
+        status=parsed_status,
+        limit=limit,
+        offset=offset,
+    )
+    return [_scheduled_assessment_response(schedule) for schedule in schedules]
+
+
+@app.get(
+    "/api/v1/assessments/schedules/{schedule_id}",
+    response_model=ScheduledAssessmentResponse,
+)
+async def get_scheduled_assessment(
+    schedule_id: str,
+    current_user: CanReadAssessments,
+    schedule_repository: ScheduledAssessmentRepositoryDep,
+) -> ScheduledAssessmentResponse:
+    schedule = schedule_repository.get_schedule(schedule_id, tenant_id=current_user.tenant_id)
+    if schedule is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "SCHEDULED_ASSESSMENT_NOT_FOUND",
+                "message": "Scheduled assessment not found",
+            },
+        )
+    return _scheduled_assessment_response(schedule)
+
+
+@app.post(
+    "/api/v1/assessments/schedules/{schedule_id}/pause",
+    response_model=ScheduledAssessmentResponse,
+)
+async def pause_scheduled_assessment(
+    schedule_id: str,
+    current_user: CanCreateAssessments,
+    schedule_repository: ScheduledAssessmentRepositoryDep,
+) -> ScheduledAssessmentResponse:
+    schedule = schedule_repository.update_status(
+        schedule_id=schedule_id,
+        tenant_id=current_user.tenant_id,
+        status=ScheduledAssessmentStatus.PAUSED,
+    )
+    if schedule is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "SCHEDULED_ASSESSMENT_NOT_FOUND",
+                "message": "Scheduled assessment not found",
+            },
+        )
+    return _scheduled_assessment_response(schedule)
+
+
+@app.post(
+    "/api/v1/assessments/schedules/{schedule_id}/resume",
+    response_model=ScheduledAssessmentResponse,
+)
+async def resume_scheduled_assessment(
+    schedule_id: str,
+    current_user: CanCreateAssessments,
+    schedule_repository: ScheduledAssessmentRepositoryDep,
+) -> ScheduledAssessmentResponse:
+    schedule = schedule_repository.update_status(
+        schedule_id=schedule_id,
+        tenant_id=current_user.tenant_id,
+        status=ScheduledAssessmentStatus.ACTIVE,
+    )
+    if schedule is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "SCHEDULED_ASSESSMENT_NOT_FOUND",
+                "message": "Scheduled assessment not found",
+            },
+        )
+    return _scheduled_assessment_response(schedule)
 
 
 @app.get("/api/v1/assessments/{assessment_id}", response_model=ScaleScoreReport)

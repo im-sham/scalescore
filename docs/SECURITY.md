@@ -1,6 +1,6 @@
 # ScaleScore Security Architecture
 
-> **Last Updated**: February 2026  
+> **Last Updated**: February 22, 2026  
 > **Status**: Living Document  
 > **Owner**: Engineering / Security  
 > **Classification**: Internal
@@ -333,24 +333,30 @@ class CreateAssessmentRequest(BaseModel):
 
 ### Rate Limiting
 
-| Endpoint Category | Limit | Window |
-|-------------------|-------|--------|
-| Authentication | 10 requests | 1 minute |
-| Assessment creation | 100 requests | 1 hour |
-| Data queries | 1000 requests | 1 hour |
-| Health checks | Unlimited | - |
+Current application-layer controls:
 
-**Implementation:**
+| Endpoint Category | Configurable Settings | Default |
+|-------------------|-----------------------|---------|
+| Login | `AUTH_LOGIN_RATE_LIMIT_REQUESTS`, `AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS` | `120` / `60s` |
+| Signup | `AUTH_SIGNUP_RATE_LIMIT_REQUESTS`, `AUTH_SIGNUP_RATE_LIMIT_WINDOW_SECONDS` | `30` / `3600s` |
+| Refresh | `AUTH_REFRESH_RATE_LIMIT_REQUESTS`, `AUTH_REFRESH_RATE_LIMIT_WINDOW_SECONDS` | `120` / `60s` |
+| Async assessment submit | `ASYNC_ASSESSMENT_SUBMIT_RATE_LIMIT_REQUESTS`, `ASYNC_ASSESSMENT_SUBMIT_RATE_LIMIT_WINDOW_SECONDS` | `60` / `60s` |
+
+Notes:
+- Controls are enforced at the API layer and return `429` with `Retry-After` when applicable.
+- Async uploads also enforce tenant queue caps and per-file max upload size.
+- Edge controls (WAF/CDN) are still required for broader protection.
+- OWASP API Top 10 audit evidence is documented in `docs/SECURITY_OWASP_API_TOP10_AUDIT.md`.
+
+**Implementation excerpt:**
 ```python
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-
-limiter = Limiter(key_func=get_remote_address)
-
-@app.post("/api/v1/assessments")
-@limiter.limit("100/hour")
-async def create_assessment(request: Request, ...):
-    ...
+decision = rate_limiter.allow(
+    key=key,
+    limit=settings.auth.login_rate_limit_requests,
+    window_seconds=settings.auth.login_rate_limit_window_seconds,
+)
+if not decision.allowed:
+    raise HTTPException(status_code=429, headers={"Retry-After": str(decision.retry_after_seconds)})
 ```
 
 ### Security Headers

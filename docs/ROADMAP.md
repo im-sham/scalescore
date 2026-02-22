@@ -175,7 +175,7 @@ These principles apply to ALL roadmap items:
 - [x] Historical assessments queryable
 - [x] Trend analysis shows score progression
 - [x] API documentation complete (OpenAPI + `docs/API.md`)
-- [ ] Security audit passed (OWASP top 10; baseline documented in `docs/SECURITY_BASELINE.md`)
+- [x] Security audit passed (OWASP top 10; baseline in `docs/SECURITY_BASELINE.md`, evidence in `docs/SECURITY_OWASP_API_TOP10_AUDIT.md`)
 
 ---
 
@@ -188,19 +188,20 @@ These principles apply to ALL roadmap items:
 
 | Item | Description | Priority | ADR |
 |------|-------------|----------|-----|
-| OpsOrchestra connector | Pull entities from knowledge graph | HIGH (🔄 graph pull endpoint + outbound sync + webhook done; full graph client hardening pending) | ADR-010 |
+| OpsOrchestra connector | Pull entities from knowledge graph | HIGH (✅ graph pull endpoint + outbound sync + webhook + retry/backoff + URL hardening + payload bounds implemented) | ADR-010 |
 | Bidirectional sync | Push risks back to OpsOrchestra | MEDIUM (✅ outbound sync endpoint implemented) | - |
 | Webhook handler | React to entity changes | MEDIUM (✅ implemented) | - |
-| Tenant context | Inherit auth from OpsOrchestra | HIGH (🔄 OpsOrchestra JWT fallback auth mode implemented with strict-claim validation + JWKS/static-key support; full upstream SSO alignment pending) | - |
+| Tenant context | Inherit auth from OpsOrchestra | HIGH (✅ OpsOrchestra JWT fallback auth mode with strict claims, JWKS/static-key support, fallback-claim alignment for upstream SSO variants) | - |
+| Staging validation | Release-gate checklist and smoke validation | HIGH (✅ runbook + evidence capture script added in `docs/STAGING_VALIDATION.md` + `scripts/collect_staging_validation_evidence.sh`) | - |
 
 ### v0.8.0 - Background Processing
 
 | Item | Description | Priority | ADR |
 |------|-------------|----------|-----|
-| Task queue | Celery + Redis infrastructure | HIGH | ADR-011 |
-| Async assessments | Non-blocking for large orgs | HIGH | - |
-| Scheduled assessments | Daily/weekly auto-run | MEDIUM | - |
-| Progress tracking | Real-time assessment status | MEDIUM | - |
+| Task queue | Queue infrastructure for deferred assessment processing | HIGH (🔄 persisted queue + execution modes (`poll`, `background`, `broker`) + `scalescore-worker` runtime implemented; scale validation pending) | ADR-011 |
+| Async assessments | Non-blocking for large orgs | HIGH (🔄 async upload/status + upload/queue abuse controls implemented; 1000+ entity benchmark pending) | - |
+| Scheduled assessments | Daily/weekly auto-run | MEDIUM (🔄 initial upload-driven schedule CRUD + worker-based due dispatch implemented; calendar breadth and notifications pending) | - |
+| Progress tracking | Real-time assessment status | MEDIUM (🔄 baseline stage/percentage/message fields implemented on async job status API; streaming UX pending) | - |
 
 ### v0.9.0 - Expanded Pillars
 
@@ -278,9 +279,9 @@ We prevent tech debt by:
 | Item | Level | Description | Target |
 |------|-------|-------------|--------|
 | Filesystem `dataset_path` mode remains dev-only | Medium | Must stay disabled outside development | v0.4.1 |
-| OpsOrchestra connector not implemented | Medium | Integration path defined but connector code pending | v0.7.0 |
-| Async task queue | Medium | Large assessments still run synchronously | v0.8.0 |
-| Scheduled assessments | Medium | Periodic run automation not implemented | v0.8.0 |
+| OpsOrchestra staging execution sign-off | Medium | Integration hardening is implemented; staging smoke execution evidence still required per release | v0.7.0 |
+| Async task queue depth | Medium | Broker-capable worker mode is implemented; load/stress harness scripts are in place (`scripts/generate_async_benchmark_dataset.py`, `scripts/run_async_assessment_benchmark.py`), staging execution evidence is pending | v0.8.0 |
+| Scheduled assessments | Medium | Initial scheduler is implemented; broader recurrence options and delivery hooks are pending | v0.8.0 |
 
 ---
 

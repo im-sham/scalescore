@@ -48,6 +48,8 @@ source .venv/bin/activate
 
 # Install dependencies
 pip install -e ".[dev]"
+# Optional for Redis broker worker mode:
+# pip install -e ".[dev,worker]"
 
 # Use development defaults (AUTH_SKIP_AUTH=true for local UI/API flow)
 cp .env.example .env
@@ -57,6 +59,9 @@ scalescore --dataset-path data
 
 # Start the API server
 uvicorn scalescore.api.main:app --reload
+
+# Optional: run async worker runtime (background/broker modes)
+# scalescore-worker
 
 # Launch the dashboard
 streamlit run ui/streamlit_app.py
@@ -164,6 +169,8 @@ scalescore/
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Implementation roadmap with milestones |
 | [docs/SECURITY.md](docs/SECURITY.md) | Security architecture and SOC2 alignment |
 | [docs/SECURITY_BASELINE.md](docs/SECURITY_BASELINE.md) | Executed dependency/API security baseline and outstanding risks |
+| [docs/SECURITY_OWASP_API_TOP10_AUDIT.md](docs/SECURITY_OWASP_API_TOP10_AUDIT.md) | OWASP API Top 10 audit evidence and control mapping |
+| [docs/STAGING_VALIDATION.md](docs/STAGING_VALIDATION.md) | Staging smoke-test and release-gate checklist |
 | [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) | Development standards and practices |
 | [docs/OPERATOR_QUICKSTART.md](docs/OPERATOR_QUICKSTART.md) | Non-technical onboarding and 15-minute assessment flow |
 | [GOVERNANCE.md](GOVERNANCE.md) | Project governance, roles, and decision model |
@@ -176,7 +183,7 @@ scalescore/
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the complete implementation plan.
 
-### Current Status: Phase 2 Platform Maturity
+### Current Status: Phase 2 Complete, Phase 3 In Progress
 
 | Component | Status |
 |-----------|--------|
@@ -190,11 +197,18 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the complete implementation plan.
 | Streamlit dashboard | ✅ Complete |
 | Assessment persistence | ✅ Implemented (SQLite snapshots + retrieval endpoint) |
 | Security scanning | ✅ Implemented (dependency audit in CI) |
+| OWASP API Top 10 audit | ✅ Completed (`docs/SECURITY_OWASP_API_TOP10_AUDIT.md`) |
+| OpsOrchestra connector hardening | ✅ Implemented (retry/backoff, stricter URL controls, claim fallback alignment) |
+| Async assessment queue slice | ✅ Initial vertical slice + execution modes (`poll`, `background`, `broker`) with `scalescore-worker` |
+| Scheduled assessments | ✅ Initial upload-driven scheduler endpoints + worker dispatch loop |
+| Async progress tracking | ✅ Baseline job progress fields (`progress_stage`, `progress_percentage`, `progress_message`) |
 
 ### Next Focus: Phase 3 Scale & Integration
 
-- OpsOrchestra connector implementation and bidirectional sync
-- Async/background assessment execution for larger datasets
+- Staging validation and release gating (`docs/STAGING_VALIDATION.md`)
+- Execute load/stress validation in staging using `scripts/generate_async_benchmark_dataset.py` + `scripts/run_async_assessment_benchmark.py`
+- Expand scheduled assessments with richer calendars and notifications
+- Upgrade progress tracking from stage-based updates to granular streaming
 - Expanded scoring pillars (financial/people/customer)
 - API/SDK documentation and production runbooks
 

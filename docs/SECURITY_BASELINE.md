@@ -1,19 +1,20 @@
 # ScaleScore Security Baseline
 
 > **Date:** February 22, 2026  
-> **Scope:** API and dependency security baseline for Phase 2 readiness  
-> **Status:** Baseline complete, full OWASP audit still pending
+> **Scope:** API and dependency baseline for Phase 2 readiness  
+> **Status:** **Phase 2 security gate met** (OWASP API Top 10 self-audit completed)
 
 ---
 
 ## Objective
 
-Establish a repeatable baseline that validates core API security controls before Phase 3 integration work:
-- Authentication and authorization guard coverage
+Maintain a repeatable baseline that verifies:
+- Authentication and authorization controls
 - Token and secret handling behavior
-- Dependency vulnerability status
+- Dependency vulnerability posture
+- OWASP API Top 10 coverage evidence
 
-This is not a full penetration test and does not replace a formal OWASP audit.
+This baseline is an engineering control set. It does not replace a third-party penetration test.
 
 ---
 
@@ -29,89 +30,89 @@ PYTHONPATH=src .venv/bin/pip-audit --progress-spinner off
 
 Result:
 - `No known vulnerabilities found`
-- Local package `scalescore` is skipped by `pip-audit` (expected for non-PyPI project package)
+- Local package `scalescore` skipped by `pip-audit` (expected for non-PyPI project package)
 
-## 2) End-to-end API auth and permission regression tests
+## 2) API regression and auth path tests
 
 Command:
 
 ```bash
-PYTHONPATH=src .venv/bin/pytest tests/e2e/test_api.py -q
+PYTHONPATH=src .venv/bin/pytest -q tests/e2e/test_api.py
 ```
 
 Result:
-- `15 passed`
+- `29 passed`
 - Coverage includes:
-  - Protected assessment endpoints reject unauthenticated access
+  - Auth-required route enforcement
   - Login/signup/refresh/API-key flows
-  - Organization CRUD with authenticated principal
-  - Webhook secret enforcement tests
+  - OpsOrchestra JWT path and webhook secret handling
+  - Assessment sync/pull integration endpoints
+  - Async assessment queue submission and status flow
+  - Async submission throttling, queue-cap enforcement, and upload-size limits
+  - Scheduled assessment CRUD and scheduling controls
 
-## 3) OpenAPI exposure review
+## 3) OWASP API Top 10 control audit
 
-Observed unauthenticated routes:
-- `POST /api/v1/auth/signup`
-- `POST /api/v1/auth/login`
-- `POST /api/v1/auth/refresh`
-- `POST /api/v1/webhooks/opsorchestra` (header-based secret when configured)
-- `GET /api/v1/health`
+Reference:
+- `docs/SECURITY_OWASP_API_TOP10_AUDIT.md`
 
-Assessment:
-- Expected for login/signup/refresh/health.
-- Webhook route behavior is environment/secret-config dependent and needs explicit deployment guidance.
+Result:
+- All 10 OWASP API categories mapped to concrete controls and tests
+- Gate decision recorded as **PASS** on February 22, 2026
+
+## 4) Code quality gate
+
+Command:
+
+```bash
+PYTHONPATH=src .venv/bin/ruff check src tests
+```
+
+Result:
+- `All checks passed`
 
 ---
 
 ## Findings
 
-## F1: Webhook endpoint can be open when no shared secret is configured outside production
+## F1: Webhook endpoint can be open in local/dev when no shared secret is configured
 
 Severity: Medium  
-Status: Accepted with mitigation required
+Status: Accepted (environment-scoped)
 
 Details:
-- In production, missing webhook secret returns `503` and blocks processing.
-- In development/staging-like environments with no secret configured, webhook requests are accepted.
-
-Risk:
-- If a non-production environment is externally reachable, untrusted callers could send synthetic webhook events.
+- In production, missing secret returns `503` and blocks webhook processing.
+- In local development, webhook secret can be omitted for convenience.
 
 Mitigation:
-- Set `INTEGRATION_OPSORCHESTRA_WEBHOOK_SECRET` for every non-local environment.
-- Restrict webhook ingress at network boundary (allow-list source IPs or private ingress).
-- Keep new CI tests enforcing secret behavior.
+- Require `INTEGRATION_OPSORCHESTRA_WEBHOOK_SECRET` in staging/production.
+- Restrict ingress at network boundary for non-public environments.
 
-## F2: No API rate limiting controls in application layer
+## F2: No app-layer auth throttling (historical)
 
 Severity: Medium  
-Status: Open
+Status: **Closed on February 22, 2026**
 
-Details:
-- No per-IP or per-principal throttling exists in API middleware.
-
-Risk:
-- Brute-force or resource-abuse attempts rely entirely on external gateway controls.
-
-Mitigation:
-- Add gateway/WAF rate limits immediately.
-- Add application-layer rate limiting for auth endpoints in a future milestone.
+Closure:
+- Added auth endpoint throttling for login/signup/refresh with configurable windows and limits.
 
 ---
 
 ## Security Controls Confirmed
 
-- JWT + refresh-token rotation implemented
-- Refresh token reuse detection triggers user-wide token revocation
-- API keys are stored by hash and revocable
-- Tenant-scoped repository access patterns enforced in protected routes
+- JWT + refresh-token rotation with reuse detection
+- API keys stored by hash and revocable
+- Tenant-scoped data access on protected routes
 - Structured audit logging for auth and data operations
-- CI includes `pip-audit`
+- OpsOrchestra URL hardening (HTTPS enforcement in staging/production and private-network guardrails)
+- Connector/JWKS retry boundaries with fail-closed behavior
+- Auth endpoint throttling
+- Async assessment abuse controls (submit throttling, queue cap, per-file upload size)
 
 ---
 
-## Recommended Next Actions (P0/P1)
+## Next Actions
 
-1. P0: Enforce webhook secret in every non-local deployed environment.
-2. P0: Add API/gateway rate limiting policy for auth and assessment routes.
-3. P1: Run formal OWASP Top 10 API audit and capture evidence in this document.
-4. P1: Add abuse-case tests (token brute-force thresholds, oversized uploads, webhook replay protection).
+1. Enforce edge-level rate limits and body-size limits in staging/production ingress.
+2. Keep `docs/STAGING_VALIDATION.md` as required pre-release checklist.
+3. Schedule external penetration testing in the enterprise readiness phase.

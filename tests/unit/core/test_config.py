@@ -23,6 +23,11 @@ class TestSettings:
         assert settings.integration.opsorchestra_jwks_url is None
         assert settings.integration.opsorchestra_require_email_claim is True
         assert settings.integration.opsorchestra_require_roles_claim is True
+        assert settings.auth.login_rate_limit_requests == 120
+        assert settings.integration.opsorchestra_http_max_retries == 2
+        assert settings.async_assessment.mode == "poll"
+        assert settings.async_assessment.max_outstanding_jobs_per_tenant == 25
+        assert settings.async_assessment.scheduled_dispatch_poll_interval_seconds == 30.0
 
     def test_environment_validation(self) -> None:
         """Verify environment must be valid value."""
@@ -99,6 +104,18 @@ class TestSettings:
             assert settings.database.host == "remotehost"
             assert settings.database.port == 5433
 
+    def test_staging_rejects_non_https_opsorchestra_urls(self) -> None:
+        """Verify staging requires HTTPS for remote OpsOrchestra endpoints."""
+        from scalescore.config import IntegrationSettings, Settings
+
+        with pytest.raises(ValueError, match="must use https"):
+            Settings(
+                environment="staging",
+                integration=IntegrationSettings(
+                    opsorchestra_jwks_url="http://opsorchestra.example/jwks"
+                ),
+            )
+
     def test_is_environment_helpers(self) -> None:
         """Verify environment helper methods work correctly."""
         from pydantic import SecretStr
@@ -119,6 +136,28 @@ class TestSettings:
 
         test = Settings(environment="testing")
         assert test.is_testing() is True
+
+    def test_broker_mode_requires_broker_url(self) -> None:
+        from scalescore.config import AsyncAssessmentSettings, FeatureFlags, Settings
+
+        with pytest.raises(ValueError, match="ASYNC_ASSESSMENT_BROKER_URL is required"):
+            Settings(
+                features=FeatureFlags(enable_async_assessments=True),
+                async_assessment=AsyncAssessmentSettings(mode="broker"),
+            )
+
+    def test_staging_broker_mode_requires_tls_redis(self) -> None:
+        from scalescore.config import AsyncAssessmentSettings, FeatureFlags, Settings
+
+        with pytest.raises(ValueError, match="must use rediss://"):
+            Settings(
+                environment="staging",
+                features=FeatureFlags(enable_async_assessments=True),
+                async_assessment=AsyncAssessmentSettings(
+                    mode="broker",
+                    broker_url="redis://redis.internal:6379/0",
+                ),
+            )
 
 
 class TestScoringConfig:

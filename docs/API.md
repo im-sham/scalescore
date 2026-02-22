@@ -29,6 +29,8 @@ OpenAPI endpoints:
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
+# Optional for broker worker mode:
+# pip install -e ".[dev,worker]"
 cp .env.example .env
 uvicorn scalescore.api.main:app --reload
 ```
@@ -47,6 +49,10 @@ Optional integration mode:
 - OpsOrchestra-issued Bearer JWTs can be accepted on protected routes when
   `INTEGRATION_OPSORCHESTRA_AUTH_ENABLED=true` and a trusted static public key or JWKS URL is configured.
 
+Auth abuse controls:
+- Login/signup/refresh endpoints are protected by application-layer rate limits.
+- Limits are configurable via `AUTH_*_RATE_LIMIT_*` settings.
+
 ### Development bypass
 
 If `AUTH_SKIP_AUTH=true` and `ENVIRONMENT=development`, permission checks use an internal dev admin principal.
@@ -58,6 +64,37 @@ AUTH_SKIP_AUTH=false
 ```
 
 and restart the API.
+
+Auth rate-limit settings:
+
+```bash
+AUTH_LOGIN_RATE_LIMIT_REQUESTS=120
+AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS=60
+AUTH_SIGNUP_RATE_LIMIT_REQUESTS=30
+AUTH_SIGNUP_RATE_LIMIT_WINDOW_SECONDS=3600
+AUTH_REFRESH_RATE_LIMIT_REQUESTS=120
+AUTH_REFRESH_RATE_LIMIT_WINDOW_SECONDS=60
+```
+
+Async assessment worker and abuse-control settings:
+
+```bash
+FEATURE_ENABLE_ASYNC_ASSESSMENTS=true
+ASYNC_ASSESSMENT_MODE=poll  # poll | background | broker
+ASYNC_ASSESSMENT_WORKER_POLL_INTERVAL_SECONDS=0.25
+
+# Broker mode requires Redis URL (use rediss:// in staging/production)
+# ASYNC_ASSESSMENT_BROKER_URL=redis://localhost:6379/0
+ASYNC_ASSESSMENT_BROKER_QUEUE_NAME=scalescore:async-assessment:jobs
+ASYNC_ASSESSMENT_BROKER_DEQUEUE_TIMEOUT_SECONDS=5
+ASYNC_ASSESSMENT_SCHEDULED_DISPATCH_POLL_INTERVAL_SECONDS=30
+ASYNC_ASSESSMENT_SCHEDULED_DISPATCH_BATCH_SIZE=10
+
+ASYNC_ASSESSMENT_SUBMIT_RATE_LIMIT_REQUESTS=60
+ASYNC_ASSESSMENT_SUBMIT_RATE_LIMIT_WINDOW_SECONDS=60
+ASYNC_ASSESSMENT_MAX_OUTSTANDING_JOBS_PER_TENANT=25
+ASYNC_ASSESSMENT_MAX_UPLOAD_BYTES_PER_FILE=5000000
+```
 
 ### Token flow
 
@@ -78,13 +115,17 @@ INTEGRATION_OPSORCHESTRA_JWT_PUBLIC_KEY_PATH=/path/to/opsorchestra-public.pem
 # INTEGRATION_OPSORCHESTRA_JWKS_URL=https://opsorchestra.example.com/.well-known/jwks.json
 INTEGRATION_OPSORCHESTRA_JWKS_TIMEOUT_SECONDS=5
 INTEGRATION_OPSORCHESTRA_JWKS_CACHE_TTL_SECONDS=300
+INTEGRATION_OPSORCHESTRA_JWT_LEEWAY_SECONDS=30
 
 INTEGRATION_OPSORCHESTRA_JWT_ISSUER=opsorchestra
 INTEGRATION_OPSORCHESTRA_JWT_AUDIENCE=scalescore-api
 INTEGRATION_OPSORCHESTRA_SUB_CLAIM=sub
 INTEGRATION_OPSORCHESTRA_TENANT_CLAIM=tenant_id
+INTEGRATION_OPSORCHESTRA_TENANT_CLAIM_FALLBACKS=["tenant","tid"]
 INTEGRATION_OPSORCHESTRA_EMAIL_CLAIM=email
+INTEGRATION_OPSORCHESTRA_EMAIL_CLAIM_FALLBACKS=["upn","preferred_username"]
 INTEGRATION_OPSORCHESTRA_ROLES_CLAIM=roles
+INTEGRATION_OPSORCHESTRA_ROLES_CLAIM_FALLBACKS=["groups","scope","scp"]
 INTEGRATION_OPSORCHESTRA_REQUIRE_EMAIL_CLAIM=true
 INTEGRATION_OPSORCHESTRA_REQUIRE_ROLES_CLAIM=true
 ```
@@ -135,6 +176,13 @@ Most business endpoints require one of:
 |-------|------|---------------------|-------|
 | `POST` | `/api/v1/assessments` | `assessment:create` | Requires `dataset_path`; development-only path execution |
 | `POST` | `/api/v1/assessments/upload` | `assessment:create` | Multipart upload of six CSV files |
+| `POST` | `/api/v1/assessments/async/upload` | `assessment:create` | Queue async assessment job (`202 Accepted`), with submit throttling, tenant queue cap, and per-file size limits |
+| `GET` | `/api/v1/assessments/async/{job_id}` | `assessment:read` | Poll queued/processing/completed async job status |
+| `POST` | `/api/v1/assessments/schedules/upload` | `assessment:create` | Create scheduled assessment from CSV upload (`daily`/`weekly`) |
+| `GET` | `/api/v1/assessments/schedules` | `assessment:read` | List scheduled assessments for tenant |
+| `GET` | `/api/v1/assessments/schedules/{schedule_id}` | `assessment:read` | Get scheduled assessment |
+| `POST` | `/api/v1/assessments/schedules/{schedule_id}/pause` | `assessment:create` | Pause scheduled assessment |
+| `POST` | `/api/v1/assessments/schedules/{schedule_id}/resume` | `assessment:create` | Resume scheduled assessment |
 | `GET` | `/api/v1/assessments` | `assessment:read` | Pagination via `limit`, `offset` |
 | `GET` | `/api/v1/assessments/{assessment_id}` | `assessment:read` | Retrieve saved report |
 | `GET` | `/api/v1/assessments/{assessment_id}/export/pdf` | `report:export` | Download PDF |
@@ -226,6 +274,76 @@ curl -sS -X POST "$BASE_URL/api/v1/assessments/upload" \
   -F "growth_signals=@data/growth_signals.csv"
 ```
 
+Queue async assessment via CSV:
+
+```bash
+curl -sS -X POST "$BASE_URL/api/v1/assessments/async/upload" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "organizations=@data/organizations.csv" \
+  -F "teams=@data/teams.csv" \
+  -F "systems=@data/systems.csv" \
+  -F "vendors=@data/vendors.csv" \
+  -F "facilities=@data/facilities.csv" \
+  -F "growth_signals=@data/growth_signals.csv"
+```
+
+Poll async job:
+
+```bash
+curl -sS "$BASE_URL/api/v1/assessments/async/<job_id>" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+Run async load/stress benchmark (1000+ entities):
+
+```bash
+PYTHONPATH=src .venv/bin/python scripts/generate_async_benchmark_dataset.py \
+  --output-dir .local/performance/datasets/benchmark-1000 \
+  --overwrite
+
+ACCESS_TOKEN="$ACCESS_TOKEN" \
+PYTHONPATH=src .venv/bin/python scripts/run_async_assessment_benchmark.py \
+  --base-url "$BASE_URL" \
+  --dataset-dir .local/performance/datasets/benchmark-1000 \
+  --jobs 5 \
+  --output-dir ".local/performance/benchmarks/$(date -u +%Y%m%dT%H%M%SZ)"
+```
+
+Async execution modes:
+- `poll` (default): status polling processes at most one queued job per request.
+- `background`: API lifespan starts a continuous in-process worker.
+- `broker`: API publishes to Redis broker; run `scalescore-worker` for job execution.
+- Scheduled dispatch uses `scalescore-worker` in `poll`/`broker` modes and runs in API runtime for `background` mode.
+
+Async job status response includes:
+- `progress_stage`
+- `progress_percentage` (0-100)
+- `progress_message` (best-effort worker message)
+
+Create scheduled assessment via CSV upload:
+
+```bash
+curl -sS -X POST "$BASE_URL/api/v1/assessments/schedules/upload" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "name=Nightly Org Assessment" \
+  -F "cadence=daily" \
+  -F "run_hour_utc=3" \
+  -F "run_minute_utc=15" \
+  -F "organizations=@data/organizations.csv" \
+  -F "teams=@data/teams.csv" \
+  -F "systems=@data/systems.csv" \
+  -F "vendors=@data/vendors.csv" \
+  -F "facilities=@data/facilities.csv" \
+  -F "growth_signals=@data/growth_signals.csv"
+```
+
+List scheduled assessments:
+
+```bash
+curl -sS "$BASE_URL/api/v1/assessments/schedules?limit=50&offset=0" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
 List assessments:
 
 ```bash
@@ -302,6 +420,10 @@ Set these environment variables to enable pull-based entity sync:
 INTEGRATION_OPSORCHESTRA_GRAPH_EXPORT_URL=https://opsorchestra.example.com/api/v1/scalescore/export
 INTEGRATION_OPSORCHESTRA_GRAPH_TOKEN=<token>
 INTEGRATION_OPSORCHESTRA_GRAPH_TIMEOUT_SECONDS=15
+INTEGRATION_OPSORCHESTRA_GRAPH_MAX_ENTITIES_PER_TYPE=5000
+INTEGRATION_OPSORCHESTRA_HTTP_MAX_RETRIES=2
+INTEGRATION_OPSORCHESTRA_HTTP_RETRY_BACKOFF_SECONDS=0.25
+INTEGRATION_OPSORCHESTRA_ALLOW_PRIVATE_NETWORK=false
 ```
 
 Trigger pull import:

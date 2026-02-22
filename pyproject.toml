@@ -62,6 +62,10 @@ opsorchestra = [
     "opsorchestra>=0.1.0",
 ]
 
+worker = [
+    "redis>=5.0",
+]
+
 [project.urls]
 Homepage = "https://github.com/im-sham/scalescore"
 Documentation = "https://github.com/im-sham/scalescore#readme"
@@ -70,6 +74,7 @@ Issues = "https://github.com/im-sham/scalescore/issues"
 
 [project.scripts]
 scalescore = "scalescore.cli:main"
+scalescore-worker = "scalescore.worker:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/scalescore"]

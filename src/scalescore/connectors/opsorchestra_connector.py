@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -8,6 +10,7 @@ import httpx
 from scalescore.config import settings
 from scalescore.core.exceptions import ErrorCode, ScaleScoreError
 from scalescore.core.logging import get_logger
+from scalescore.core.network import validate_remote_url
 from scalescore.models.core import (
     BaseEntity,
     EntityType,
@@ -35,6 +38,10 @@ class OpsOrchestraConnector:
         outbound_token: str | None = None,
         timeout_seconds: float | None = None,
     ) -> None:
+        integration = settings.integration
+        self._require_https = not (settings.is_development() or settings.is_testing())
+        self._allow_private_network = integration.opsorchestra_allow_private_network
+
         self._graph_export_url = graph_export_url or settings.integration.opsorchestra_graph_export_url
         self._graph_token = (
             graph_token
@@ -45,6 +52,7 @@ class OpsOrchestraConnector:
                 else None
             )
         )
+        self._graph_max_entities_per_type = integration.opsorchestra_graph_max_entities_per_type
         self._graph_timeout_seconds = (
             graph_timeout_seconds
             if graph_timeout_seconds is not None
@@ -65,6 +73,23 @@ class OpsOrchestraConnector:
             if timeout_seconds is not None
             else settings.integration.opsorchestra_outbound_timeout_seconds
         )
+        self._max_retries = integration.opsorchestra_http_max_retries
+        self._retry_backoff_seconds = integration.opsorchestra_http_retry_backoff_seconds
+
+        if self._graph_export_url:
+            validate_remote_url(
+                self._graph_export_url,
+                setting_name="INTEGRATION_OPSORCHESTRA_GRAPH_EXPORT_URL",
+                require_https=self._require_https,
+                allow_private_network=self._allow_private_network,
+            )
+        if self._outbound_url:
+            validate_remote_url(
+                self._outbound_url,
+                setting_name="INTEGRATION_OPSORCHESTRA_OUTBOUND_URL",
+                require_https=self._require_https,
+                allow_private_network=self._allow_private_network,
+            )
 
     def is_graph_pull_configured(self) -> bool:
         return bool(self._graph_export_url)
@@ -102,8 +127,8 @@ class OpsOrchestraConnector:
             payload["name"] = payload.get("id", entity_type.value)
         return payload
 
-    @staticmethod
     def _parse_graph_entities(
+        self,
         raw_entities: Any,
         *,
         entity_type: EntityType,
@@ -115,6 +140,16 @@ class OpsOrchestraConnector:
             raise ScaleScoreError(
                 message=f"Invalid '{entity_type.value}' payload from OpsOrchestra graph export",
                 code=ErrorCode.EXTERNAL_SERVICE_ERROR,
+            )
+        if len(raw_entities) > self._graph_max_entities_per_type:
+            raise ScaleScoreError(
+                message=f"'{entity_type.value}' payload exceeds configured per-type limit",
+                code=ErrorCode.EXTERNAL_SERVICE_ERROR,
+                details={
+                    "entity_type": entity_type.value,
+                    "limit": self._graph_max_entities_per_type,
+                    "received": len(raw_entities),
+                },
             )
 
         parsed_entities: list[BaseEntity] = []
@@ -142,6 +177,62 @@ class OpsOrchestraConnector:
 
         return parsed_entities
 
+    @staticmethod
+    def _is_retryable_status(status_code: int) -> bool:
+        return status_code in {408, 425, 429, 500, 502, 503, 504}
+
+    async def _request_with_retry(
+        self,
+        *,
+        operation: str,
+        send: Callable[[], Awaitable[httpx.Response]],
+    ) -> httpx.Response:
+        last_error: Exception | None = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                response = await send()
+                if (
+                    self._is_retryable_status(response.status_code)
+                    and attempt < self._max_retries
+                ):
+                    backoff_seconds = self._retry_backoff_seconds * (2**attempt)
+                    logger.warning(
+                        "opsorchestra_retryable_response",
+                        operation=operation,
+                        status_code=response.status_code,
+                        attempt=attempt + 1,
+                        max_attempts=self._max_retries + 1,
+                        backoff_seconds=round(backoff_seconds, 3),
+                    )
+                    await asyncio.sleep(backoff_seconds)
+                    continue
+                response.raise_for_status()
+                return response
+            except (
+                httpx.ConnectError,
+                httpx.ConnectTimeout,
+                httpx.ReadTimeout,
+                httpx.WriteTimeout,
+                httpx.PoolTimeout,
+                httpx.RemoteProtocolError,
+            ) as err:
+                last_error = err
+                if attempt >= self._max_retries:
+                    break
+                backoff_seconds = self._retry_backoff_seconds * (2**attempt)
+                logger.warning(
+                    "opsorchestra_retryable_transport_error",
+                    operation=operation,
+                    attempt=attempt + 1,
+                    max_attempts=self._max_retries + 1,
+                    backoff_seconds=round(backoff_seconds, 3),
+                    error_type=type(err).__name__,
+                )
+                await asyncio.sleep(backoff_seconds)
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("retry loop exited without response or error")
+
     async def pull_entities(
         self,
         *,
@@ -159,13 +250,18 @@ class OpsOrchestraConnector:
             params["org_id"] = org_id
 
         try:
-            async with httpx.AsyncClient(timeout=self._graph_timeout_seconds) as client:
-                response = await client.get(
-                    self._graph_export_url,
-                    params=params,
-                    headers=self._graph_headers(),
+            async with httpx.AsyncClient(
+                timeout=self._graph_timeout_seconds,
+                follow_redirects=False,
+            ) as client:
+                response = await self._request_with_retry(
+                    operation="graph_pull",
+                    send=lambda: client.get(
+                        self._graph_export_url,
+                        params=params,
+                        headers=self._graph_headers(),
+                    ),
                 )
-                response.raise_for_status()
         except httpx.HTTPError as err:
             raise ScaleScoreError(
                 message="Failed to pull entities from OpsOrchestra graph export",
@@ -311,13 +407,18 @@ class OpsOrchestraConnector:
             actor_id=actor_id,
         )
         try:
-            async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
-                response = await client.post(
-                    self._outbound_url,
-                    json=payload,
-                    headers=self._headers(),
+            async with httpx.AsyncClient(
+                timeout=self._timeout_seconds,
+                follow_redirects=False,
+            ) as client:
+                response = await self._request_with_retry(
+                    operation="outbound_sync",
+                    send=lambda: client.post(
+                        self._outbound_url,
+                        json=payload,
+                        headers=self._headers(),
+                    ),
                 )
-                response.raise_for_status()
         except httpx.HTTPError as err:
             raise ScaleScoreError(
                 message="Failed to push assessment report to OpsOrchestra",

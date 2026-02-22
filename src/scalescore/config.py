@@ -23,10 +23,12 @@ Usage:
 """
 
 from functools import lru_cache
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from scalescore.core.network import validate_remote_url
 
 
 class DatabaseSettings(BaseSettings):
@@ -88,6 +90,12 @@ class AuthSettings(BaseSettings):
         default=False,
         description="Skip authentication in development (NEVER enable in production)",
     )
+    login_rate_limit_requests: int = Field(default=120, ge=1, le=5000)
+    login_rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
+    signup_rate_limit_requests: int = Field(default=30, ge=1, le=1000)
+    signup_rate_limit_window_seconds: int = Field(default=3600, ge=1, le=86_400)
+    refresh_rate_limit_requests: int = Field(default=120, ge=1, le=5000)
+    refresh_rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
 
 
 class ScoringSettings(BaseSettings):
@@ -138,6 +146,39 @@ class FeatureFlags(BaseSettings):
     enable_audit_logging: bool = True
 
 
+class AsyncAssessmentSettings(BaseSettings):
+    """Configuration for async assessment queue execution and abuse controls."""
+
+    model_config = SettingsConfigDict(env_prefix="ASYNC_ASSESSMENT_")
+
+    mode: Literal["poll", "background", "broker"] = "poll"
+    worker_poll_interval_seconds: float = Field(default=0.25, ge=0.01, le=30.0)
+    broker_url: str | None = None
+    broker_queue_name: str = Field(
+        default="scalescore:async-assessment:jobs",
+        min_length=1,
+        max_length=256,
+    )
+    broker_dequeue_timeout_seconds: int = Field(default=5, ge=1, le=60)
+    scheduled_dispatch_poll_interval_seconds: float = Field(default=30.0, ge=1.0, le=3600.0)
+    scheduled_dispatch_batch_size: int = Field(default=10, ge=1, le=500)
+    submit_rate_limit_requests: int = Field(default=60, ge=1, le=5000)
+    submit_rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
+    max_outstanding_jobs_per_tenant: int = Field(default=25, ge=1, le=10_000)
+    max_upload_bytes_per_file: int = Field(default=5_000_000, ge=1024, le=100_000_000)
+
+    @field_validator("broker_url")
+    @classmethod
+    def validate_broker_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        if not value.startswith(("redis://", "rediss://")):
+            raise ValueError(
+                "ASYNC_ASSESSMENT_BROKER_URL must start with redis:// or rediss://"
+            )
+        return value
+
+
 class ServerSettings(BaseSettings):
     """Server configuration."""
 
@@ -170,22 +211,36 @@ class IntegrationSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="INTEGRATION_")
 
     opsorchestra_webhook_secret: SecretStr | None = None
+    opsorchestra_allow_private_network: bool = False
+    opsorchestra_http_max_retries: int = Field(default=2, ge=0, le=5)
+    opsorchestra_http_retry_backoff_seconds: float = Field(default=0.25, ge=0.0, le=5.0)
     opsorchestra_auth_enabled: bool = False
     opsorchestra_jwt_public_key_path: str | None = None
     opsorchestra_jwks_url: str | None = None
     opsorchestra_jwks_timeout_seconds: float = Field(default=5.0, ge=1.0, le=30.0)
     opsorchestra_jwks_cache_ttl_seconds: int = Field(default=300, ge=30, le=3600)
+    opsorchestra_jwt_leeway_seconds: int = Field(default=30, ge=0, le=300)
     opsorchestra_jwt_issuer: str = "opsorchestra"
     opsorchestra_jwt_audience: str = "scalescore-api"
     opsorchestra_sub_claim: str = "sub"
     opsorchestra_tenant_claim: str = "tenant_id"
+    opsorchestra_tenant_claim_fallbacks: list[str] = Field(
+        default_factory=lambda: ["tenant", "tid"]
+    )
     opsorchestra_email_claim: str = "email"
+    opsorchestra_email_claim_fallbacks: list[str] = Field(
+        default_factory=lambda: ["upn", "preferred_username"]
+    )
     opsorchestra_roles_claim: str = "roles"
+    opsorchestra_roles_claim_fallbacks: list[str] = Field(
+        default_factory=lambda: ["groups", "scope", "scp"]
+    )
     opsorchestra_require_email_claim: bool = True
     opsorchestra_require_roles_claim: bool = True
     opsorchestra_graph_export_url: str | None = None
     opsorchestra_graph_token: SecretStr | None = None
     opsorchestra_graph_timeout_seconds: float = Field(default=15.0, ge=1.0, le=60.0)
+    opsorchestra_graph_max_entities_per_type: int = Field(default=5000, ge=1, le=100_000)
     opsorchestra_outbound_url: str | None = None
     opsorchestra_outbound_token: SecretStr | None = None
     opsorchestra_outbound_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
@@ -236,6 +291,7 @@ class Settings(BaseSettings):
     auth: AuthSettings = Field(default_factory=AuthSettings)
     scoring: ScoringSettings = Field(default_factory=ScoringSettings)
     features: FeatureFlags = Field(default_factory=FeatureFlags)
+    async_assessment: AsyncAssessmentSettings = Field(default_factory=AsyncAssessmentSettings)
 
     # Optional: OpenTelemetry endpoint
     otlp_endpoint: str | None = None
@@ -264,6 +320,49 @@ class Settings(BaseSettings):
             if self.auth.jwt_secret.get_secret_value() == "CHANGE_ME_IN_PRODUCTION":
                 raise ValueError(
                     "JWT secret must be set in production (AUTH_JWT_SECRET)"
+                )
+
+        if self.environment in {"staging", "production"}:
+            allow_private_network = self.integration.opsorchestra_allow_private_network
+            if self.integration.opsorchestra_jwks_url:
+                validate_remote_url(
+                    self.integration.opsorchestra_jwks_url,
+                    setting_name="INTEGRATION_OPSORCHESTRA_JWKS_URL",
+                    require_https=True,
+                    allow_private_network=allow_private_network,
+                )
+            if self.integration.opsorchestra_graph_export_url:
+                validate_remote_url(
+                    self.integration.opsorchestra_graph_export_url,
+                    setting_name="INTEGRATION_OPSORCHESTRA_GRAPH_EXPORT_URL",
+                    require_https=True,
+                    allow_private_network=allow_private_network,
+                )
+            if self.integration.opsorchestra_outbound_url:
+                validate_remote_url(
+                    self.integration.opsorchestra_outbound_url,
+                    setting_name="INTEGRATION_OPSORCHESTRA_OUTBOUND_URL",
+                    require_https=True,
+                    allow_private_network=allow_private_network,
+                )
+
+        if (
+            self.features.enable_async_assessments
+            and self.async_assessment.mode == "broker"
+            and not self.async_assessment.broker_url
+        ):
+            raise ValueError(
+                "ASYNC_ASSESSMENT_BROKER_URL is required when ASYNC_ASSESSMENT_MODE=broker"
+            )
+        if (
+            self.features.enable_async_assessments
+            and self.environment in {"staging", "production"}
+            and self.async_assessment.mode == "broker"
+        ):
+            broker_url = self.async_assessment.broker_url
+            if broker_url and broker_url.startswith("redis://"):
+                raise ValueError(
+                    "ASYNC_ASSESSMENT_BROKER_URL must use rediss:// in staging/production"
                 )
 
         return self

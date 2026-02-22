@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 
+from scalescore.config import settings
 from scalescore.connectors.opsorchestra_connector import OpsOrchestraConnector
 from scalescore.core.exceptions import ErrorCode, ScaleScoreError
 from scalescore.models.core import Team
@@ -78,8 +79,9 @@ async def test_pull_entities_fetches_and_parses_payload(monkeypatch: pytest.Monk
     captured: dict[str, object] = {}
 
     class FakeAsyncClient:
-        def __init__(self, timeout: float) -> None:
+        def __init__(self, timeout: float, follow_redirects: bool = False) -> None:
             captured["timeout"] = timeout
+            captured["follow_redirects"] = follow_redirects
 
         async def __aenter__(self) -> FakeAsyncClient:
             return self
@@ -132,9 +134,58 @@ async def test_pull_entities_fetches_and_parses_payload(monkeypatch: pytest.Monk
     assert captured["url"] == "https://opsorchestra.example/export"
     assert captured["params"] == {"tenant_id": "tenant_1", "org_id": "org_1"}
     assert captured["timeout"] == 9.0
+    assert captured["follow_redirects"] is False
     headers = captured["headers"]
     assert isinstance(headers, dict)
     assert headers["Authorization"] == "Bearer graph-token"
+
+
+@pytest.mark.asyncio
+async def test_pull_entities_retries_on_retryable_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings.integration, "opsorchestra_http_max_retries", 1)
+    monkeypatch.setattr(settings.integration, "opsorchestra_http_retry_backoff_seconds", 0.0)
+    attempts = {"count": 0}
+
+    class FakeAsyncClient:
+        def __init__(self, timeout: float, follow_redirects: bool = False) -> None:
+            self._timeout = timeout
+
+        async def __aenter__(self) -> FakeAsyncClient:
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:  # type: ignore[override]
+            return None
+
+        async def get(
+            self,
+            url: str,
+            *,
+            params: dict[str, str],
+            headers: dict[str, str],
+        ) -> httpx.Response:
+            attempts["count"] += 1
+            if attempts["count"] == 1:
+                return httpx.Response(
+                    status_code=503,
+                    request=httpx.Request("GET", url),
+                    headers={"content-type": "application/json"},
+                    json={"error": "temporary"},
+                )
+            return httpx.Response(
+                status_code=200,
+                json={"teams": []},
+                request=httpx.Request("GET", url),
+                headers={"content-type": "application/json"},
+            )
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeAsyncClient)
+    connector = OpsOrchestraConnector(
+        graph_export_url="https://opsorchestra.example/export",
+        graph_timeout_seconds=1.0,
+    )
+    entities = await connector.pull_entities(tenant_id="tenant_1")
+    assert attempts["count"] == 2
+    assert entities["teams"] == []
 
 
 @pytest.mark.asyncio
@@ -155,8 +206,9 @@ async def test_push_assessment_report_posts_event_payload(monkeypatch: pytest.Mo
     captured: dict[str, object] = {}
 
     class FakeAsyncClient:
-        def __init__(self, timeout: float) -> None:
+        def __init__(self, timeout: float, follow_redirects: bool = False) -> None:
             captured["timeout"] = timeout
+            captured["follow_redirects"] = follow_redirects
 
         async def __aenter__(self) -> FakeAsyncClient:
             return self
@@ -198,6 +250,7 @@ async def test_push_assessment_report_posts_event_payload(monkeypatch: pytest.Mo
     assert result["response"] == {"accepted": True}
     assert captured["url"] == "https://opsorchestra.example/sync"
     assert captured["timeout"] == 4.0
+    assert captured["follow_redirects"] is False
     payload = captured["json"]
     assert isinstance(payload, dict)
     assert payload["event_type"] == "scalescore.assessment.completed"
@@ -205,3 +258,11 @@ async def test_push_assessment_report_posts_event_payload(monkeypatch: pytest.Mo
     headers = captured["headers"]
     assert isinstance(headers, dict)
     assert headers["Authorization"] == "Bearer token-123"
+
+
+def test_connector_rejects_non_https_opsorchestra_url_in_staging(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "environment", "staging")
+    monkeypatch.setattr(settings.integration, "opsorchestra_allow_private_network", False)
+
+    with pytest.raises(ValueError, match="must use https"):
+        OpsOrchestraConnector(graph_export_url="http://opsorchestra.example/export")

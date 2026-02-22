@@ -17,6 +17,7 @@ from scalescore.core.audit import (
 from scalescore.core.auth.jwt import JWTService, TokenPayload
 from scalescore.core.auth.refresh import RefreshTokenService, get_sqlite_refresh_token_repository
 from scalescore.core.exceptions import AuthenticationError, ErrorCode
+from scalescore.core.rate_limit import SlidingWindowRateLimiter, get_rate_limiter
 from scalescore.storage.auth_repository import (
     APIKeyRecord,
     SQLiteAuthRepository,
@@ -124,12 +125,39 @@ JWTServiceDep = Annotated[JWTService, Depends(get_jwt_service)]
 RefreshServiceDep = Annotated[RefreshTokenService, Depends(get_refresh_service)]
 CurrentUserDep = Annotated[TokenPayload, Depends(get_current_user)]
 AuthRepositoryDep = Annotated[SQLiteAuthRepository, Depends(get_auth_repository)]
+RateLimiterDep = Annotated[SlidingWindowRateLimiter, Depends(get_rate_limiter)]
 
 
 def _request_ip(request: Request) -> str | None:
     if request.client:
         return request.client.host
     return None
+
+
+def _enforce_rate_limit(
+    *,
+    rate_limiter: SlidingWindowRateLimiter,
+    key: str,
+    limit: int,
+    window_seconds: int,
+) -> None:
+    decision = rate_limiter.allow(
+        key,
+        limit=limit,
+        window_seconds=window_seconds,
+    )
+    if decision.allowed:
+        return
+
+    raise HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail={
+            "code": "RATE_LIMITED",
+            "message": "Rate limit exceeded, retry later",
+            "retry_after_seconds": decision.retry_after_seconds,
+        },
+        headers={"Retry-After": str(decision.retry_after_seconds)},
+    )
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -139,13 +167,22 @@ async def login(
     jwt_service: JWTServiceDep,
     refresh_service: RefreshServiceDep,
     auth_repository: AuthRepositoryDep,
+    rate_limiter: RateLimiterDep,
 ) -> TokenResponse:
+    ip_address = _request_ip(request) or "unknown"
+    _enforce_rate_limit(
+        rate_limiter=rate_limiter,
+        key=f"auth:login:{payload.email.lower()}:{ip_address}",
+        limit=settings.auth.login_rate_limit_requests,
+        window_seconds=settings.auth.login_rate_limit_window_seconds,
+    )
+
     user = auth_repository.authenticate_user(payload.email, payload.password)
     if not user:
         audit_login_failure(
             email=payload.email,
             reason="invalid_credentials",
-            ip_address=_request_ip(request),
+            ip_address=ip_address,
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -167,7 +204,7 @@ async def login(
     audit_login_success(
         user_id=user.user_id,
         tenant_id=user.tenant_id,
-        ip_address=_request_ip(request),
+        ip_address=ip_address,
     )
 
     return TokenResponse(
@@ -180,8 +217,18 @@ async def login(
 @router.post("/signup", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def signup(
     payload: SignupRequest,
+    request: Request,
     auth_repository: AuthRepositoryDep,
+    rate_limiter: RateLimiterDep,
 ) -> UserResponse:
+    ip_address = _request_ip(request) or "unknown"
+    _enforce_rate_limit(
+        rate_limiter=rate_limiter,
+        key=f"auth:signup:{ip_address}",
+        limit=settings.auth.signup_rate_limit_requests,
+        window_seconds=settings.auth.signup_rate_limit_window_seconds,
+    )
+
     try:
         user = auth_repository.create_user(
             email=payload.email,
@@ -227,7 +274,17 @@ async def me(
 async def refresh_tokens(
     payload: RefreshRequest,
     refresh_service: RefreshServiceDep,
+    request: Request,
+    rate_limiter: RateLimiterDep,
 ) -> TokenResponse:
+    ip_address = _request_ip(request) or "unknown"
+    _enforce_rate_limit(
+        rate_limiter=rate_limiter,
+        key=f"auth:refresh:{ip_address}",
+        limit=settings.auth.refresh_rate_limit_requests,
+        window_seconds=settings.auth.refresh_rate_limit_window_seconds,
+    )
+
     try:
         access_token, new_refresh_token = refresh_service.rotate_refresh_token(
             payload.refresh_token

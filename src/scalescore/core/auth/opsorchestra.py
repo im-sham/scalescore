@@ -17,6 +17,10 @@ from pydantic import ValidationError
 from scalescore.config import settings
 from scalescore.core.auth.jwt import TokenPayload
 from scalescore.core.exceptions import AuthenticationError, ErrorCode, ScaleScoreError
+from scalescore.core.logging import get_logger
+from scalescore.core.network import validate_remote_url
+
+logger = get_logger(__name__)
 
 
 class OpsOrchestraAuthService:
@@ -29,6 +33,11 @@ class OpsOrchestraAuthService:
         jwks_url: str | None = None,
         jwks_timeout_seconds: float | None = None,
         jwks_cache_ttl_seconds: int | None = None,
+        jwt_leeway_seconds: int | None = None,
+        tenant_claim_fallbacks: list[str] | None = None,
+        email_claim_fallbacks: list[str] | None = None,
+        roles_claim_fallbacks: list[str] | None = None,
+        allow_private_network: bool | None = None,
         issuer: str | None = None,
         audience: str | None = None,
         sub_claim: str | None = None,
@@ -51,12 +60,40 @@ class OpsOrchestraAuthService:
             if jwks_cache_ttl_seconds is not None
             else integration.opsorchestra_jwks_cache_ttl_seconds
         )
+        self._jwt_leeway_seconds = (
+            jwt_leeway_seconds
+            if jwt_leeway_seconds is not None
+            else integration.opsorchestra_jwt_leeway_seconds
+        )
+        self._allow_private_network = (
+            allow_private_network
+            if allow_private_network is not None
+            else integration.opsorchestra_allow_private_network
+        )
+        self._require_https = not (settings.is_development() or settings.is_testing())
+        self._max_retries = integration.opsorchestra_http_max_retries
+        self._retry_backoff_seconds = integration.opsorchestra_http_retry_backoff_seconds
         self._issuer = issuer or integration.opsorchestra_jwt_issuer
         self._audience = audience or integration.opsorchestra_jwt_audience
         self._sub_claim = sub_claim or integration.opsorchestra_sub_claim
         self._tenant_claim = tenant_claim or integration.opsorchestra_tenant_claim
+        self._tenant_claim_fallbacks = self._dedupe_claims(
+            tenant_claim_fallbacks
+            if tenant_claim_fallbacks is not None
+            else integration.opsorchestra_tenant_claim_fallbacks
+        )
         self._email_claim = email_claim or integration.opsorchestra_email_claim
+        self._email_claim_fallbacks = self._dedupe_claims(
+            email_claim_fallbacks
+            if email_claim_fallbacks is not None
+            else integration.opsorchestra_email_claim_fallbacks
+        )
         self._roles_claim = roles_claim or integration.opsorchestra_roles_claim
+        self._roles_claim_fallbacks = self._dedupe_claims(
+            roles_claim_fallbacks
+            if roles_claim_fallbacks is not None
+            else integration.opsorchestra_roles_claim_fallbacks
+        )
         self._require_email_claim = (
             require_email_claim
             if require_email_claim is not None
@@ -68,6 +105,13 @@ class OpsOrchestraAuthService:
             else integration.opsorchestra_require_roles_claim
         )
         self._public_key = self._load_public_key() if self._public_key_path else None
+        if self._jwks_url:
+            validate_remote_url(
+                self._jwks_url,
+                setting_name="INTEGRATION_OPSORCHESTRA_JWKS_URL",
+                require_https=self._require_https,
+                allow_private_network=self._allow_private_network,
+            )
         self._jwks_cache: dict[str, rsa.RSAPublicKey] = {}
         self._jwks_cache_updated_at: float = 0.0
         if self._public_key is None and not self._jwks_url:
@@ -101,8 +145,19 @@ class OpsOrchestraAuthService:
         if isinstance(value, str):
             if "," in value:
                 return [part.strip() for part in value.split(",") if part.strip()]
+            if " " in value:
+                return [part.strip() for part in value.split(" ") if part.strip()]
             return [value] if value.strip() else []
         return []
+
+    @staticmethod
+    def _dedupe_claims(claim_names: list[str]) -> list[str]:
+        deduped: list[str] = []
+        for claim_name in claim_names:
+            normalized = str(claim_name).strip()
+            if normalized and normalized not in deduped:
+                deduped.append(normalized)
+        return deduped
 
     @staticmethod
     def _is_present(value: Any) -> bool:
@@ -114,14 +169,26 @@ class OpsOrchestraAuthService:
             return len(value) > 0
         return True
 
-    def _required_claim(self, claims: dict[str, Any], claim_name: str) -> Any:
-        value = claims.get(claim_name)
-        if not self._is_present(value):
-            raise AuthenticationError(
-                message=f"Missing required claim: {claim_name}",
-                code=ErrorCode.INVALID_TOKEN,
-            )
-        return value
+    def _first_present_claim(self, claims: dict[str, Any], claim_names: list[str]) -> Any:
+        for claim_name in claim_names:
+            value = claims.get(claim_name)
+            if self._is_present(value):
+                return value
+        return None
+
+    def _required_claim(self, claims: dict[str, Any], claim_names: list[str]) -> Any:
+        value = self._first_present_claim(claims, claim_names)
+        if self._is_present(value):
+            return value
+        formatted_claims = ", ".join(claim_names)
+        raise AuthenticationError(
+            message=f"Missing required claim: one of [{formatted_claims}]",
+            code=ErrorCode.INVALID_TOKEN,
+        )
+
+    @staticmethod
+    def _is_retryable_status(status_code: int) -> bool:
+        return status_code in {408, 425, 429, 500, 502, 503, 504}
 
     def _refresh_jwks_cache(self, *, force: bool = False) -> None:
         if not self._jwks_url:
@@ -135,21 +202,67 @@ class OpsOrchestraAuthService:
         if not force and is_fresh:
             return
 
-        try:
-            response = httpx.get(
-                self._jwks_url,
-                timeout=self._jwks_timeout_seconds,
-                headers={"Accept": "application/json", "User-Agent": "scalescore/0.1"},
-            )
-            response.raise_for_status()
-            payload = response.json()
-        except (httpx.HTTPError, ValueError) as err:
+        payload: dict[str, Any] | None = None
+        last_error: Exception | None = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                response = httpx.get(
+                    self._jwks_url,
+                    timeout=self._jwks_timeout_seconds,
+                    headers={"Accept": "application/json", "User-Agent": "scalescore/0.1"},
+                    follow_redirects=False,
+                )
+            except (
+                httpx.ConnectError,
+                httpx.ConnectTimeout,
+                httpx.ReadTimeout,
+                httpx.WriteTimeout,
+                httpx.PoolTimeout,
+                httpx.RemoteProtocolError,
+            ) as err:
+                last_error = err
+                if attempt >= self._max_retries:
+                    break
+                backoff_seconds = self._retry_backoff_seconds * (2**attempt)
+                logger.warning(
+                    "opsorchestra_jwks_retryable_transport_error",
+                    attempt=attempt + 1,
+                    max_attempts=self._max_retries + 1,
+                    backoff_seconds=round(backoff_seconds, 3),
+                    error_type=type(err).__name__,
+                )
+                time.sleep(backoff_seconds)
+                continue
+
+            if self._is_retryable_status(response.status_code) and attempt < self._max_retries:
+                backoff_seconds = self._retry_backoff_seconds * (2**attempt)
+                logger.warning(
+                    "opsorchestra_jwks_retryable_response",
+                    status_code=response.status_code,
+                    attempt=attempt + 1,
+                    max_attempts=self._max_retries + 1,
+                    backoff_seconds=round(backoff_seconds, 3),
+                )
+                time.sleep(backoff_seconds)
+                continue
+
+            try:
+                response.raise_for_status()
+                payload = response.json()
+                break
+            except (httpx.HTTPError, ValueError) as err:
+                last_error = err
+                break
+
+        if payload is None:
+            if last_error is None:
+                last_error = RuntimeError("JWKS response payload was empty")
             raise ScaleScoreError(
                 message="Failed to fetch OpsOrchestra JWKS",
                 code=ErrorCode.EXTERNAL_SERVICE_ERROR,
                 details={"jwks_url": self._jwks_url},
-                cause=err,
-            ) from err
+                cause=last_error,
+            ) from last_error
 
         keys = payload.get("keys") if isinstance(payload, dict) else None
         if not isinstance(keys, list):
@@ -184,9 +297,6 @@ class OpsOrchestraAuthService:
         self._jwks_cache_updated_at = now
 
     def _public_key_for_token(self, token: str) -> rsa.RSAPublicKey:
-        if self._public_key is not None:
-            return self._public_key
-
         try:
             header = jwt.get_unverified_header(token)
         except jwt.InvalidTokenError as err:
@@ -203,6 +313,9 @@ class OpsOrchestraAuthService:
                 code=ErrorCode.INVALID_TOKEN,
                 details={"alg": algorithm},
             )
+
+        if self._public_key is not None:
+            return self._public_key
 
         kid = header.get("kid")
         if isinstance(kid, str) and kid.strip():
@@ -237,6 +350,8 @@ class OpsOrchestraAuthService:
                 algorithms=["RS256"],
                 audience=self._audience,
                 issuer=self._issuer,
+                leeway=self._jwt_leeway_seconds,
+                options={"require": ["exp", "iat"]},
             )
         except jwt.ExpiredSignatureError as err:
             raise AuthenticationError(
@@ -250,15 +365,20 @@ class OpsOrchestraAuthService:
                 details={"reason": str(err)},
             ) from err
 
-        sub = self._required_claim(claims, self._sub_claim)
-        tenant_id = self._required_claim(claims, self._tenant_claim)
-        email_value = claims.get(self._email_claim)
-        roles_value = claims.get(self._roles_claim)
+        sub = self._required_claim(claims, [self._sub_claim])
+        tenant_id = self._required_claim(
+            claims,
+            [self._tenant_claim, *self._tenant_claim_fallbacks],
+        )
+        email_claim_names = [self._email_claim, *self._email_claim_fallbacks]
+        roles_claim_names = [self._roles_claim, *self._roles_claim_fallbacks]
+        email_value = self._first_present_claim(claims, email_claim_names)
+        roles_value = self._first_present_claim(claims, roles_claim_names)
 
         if self._require_email_claim:
-            email_value = self._required_claim(claims, self._email_claim)
+            email_value = self._required_claim(claims, email_claim_names)
         if self._require_roles_claim:
-            roles_value = self._required_claim(claims, self._roles_claim)
+            roles_value = self._required_claim(claims, roles_claim_names)
 
         email = str(email_value).strip() if self._is_present(email_value) else ""
         if not email:
