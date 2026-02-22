@@ -174,8 +174,8 @@ These principles apply to ALL roadmap items:
 - [x] User can sign up, authenticate, run assessments
 - [x] Historical assessments queryable
 - [x] Trend analysis shows score progression
-- [ ] API documentation complete (OpenAPI)
-- [ ] Security audit passed (OWASP top 10)
+- [x] API documentation complete (OpenAPI + `docs/API.md`)
+- [ ] Security audit passed (OWASP top 10; baseline documented in `docs/SECURITY_BASELINE.md`)
 
 ---
 

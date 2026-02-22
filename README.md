@@ -160,8 +160,10 @@ scalescore/
 |----------|-------------|
 | [docs/TECHNICAL_SPEC.md](docs/TECHNICAL_SPEC.md) | Product specifications and requirements |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, principles, and patterns |
+| [docs/API.md](docs/API.md) | API reference with auth flows, endpoint matrix, and curl examples |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Implementation roadmap with milestones |
 | [docs/SECURITY.md](docs/SECURITY.md) | Security architecture and SOC2 alignment |
+| [docs/SECURITY_BASELINE.md](docs/SECURITY_BASELINE.md) | Executed dependency/API security baseline and outstanding risks |
 | [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) | Development standards and practices |
 | [docs/OPERATOR_QUICKSTART.md](docs/OPERATOR_QUICKSTART.md) | Non-technical onboarding and 15-minute assessment flow |
 | [GOVERNANCE.md](GOVERNANCE.md) | Project governance, roles, and decision model |

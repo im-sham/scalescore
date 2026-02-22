@@ -2,8 +2,10 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from scalescore.api.main import app
+from scalescore.config import settings
 
 client = TestClient(app)
 
@@ -226,6 +228,11 @@ def test_signup_then_login() -> None:
     assert "access_token" in login_response.json()
 
 
+def test_auth_me_requires_authentication() -> None:
+    response = client.get("/api/v1/auth/me")
+    assert response.status_code == 401
+
+
 def test_api_key_authentication_flow() -> None:
     token = _login()["access_token"]
     create_key_response = client.post(
@@ -255,6 +262,55 @@ def test_api_key_authentication_flow() -> None:
         headers={"X-API-Key": api_key},
     )
     assert revoked_key_response.status_code == 401
+
+
+def test_opsorchestra_webhook_secret_enforced_when_configured(monkeypatch) -> None:
+    monkeypatch.setattr(
+        settings.integration,
+        "opsorchestra_webhook_secret",
+        SecretStr("test-webhook-secret"),
+    )
+
+    payload = {
+        "event_type": "entity.deleted",
+        "tenant_id": "tenant-webhook",
+        "entity_type": "team",
+        "entity_id": "team-webhook",
+    }
+
+    missing_secret_response = client.post("/api/v1/webhooks/opsorchestra", json=payload)
+    assert missing_secret_response.status_code == 401
+
+    wrong_secret_response = client.post(
+        "/api/v1/webhooks/opsorchestra",
+        json=payload,
+        headers={"X-Webhook-Secret": "wrong-secret"},
+    )
+    assert wrong_secret_response.status_code == 401
+
+    valid_secret_response = client.post(
+        "/api/v1/webhooks/opsorchestra",
+        json=payload,
+        headers={"X-Webhook-Secret": "test-webhook-secret"},
+    )
+    assert valid_secret_response.status_code == 200
+    assert valid_secret_response.json()["status"] == "processed"
+
+
+def test_opsorchestra_webhook_requires_configured_secret_in_production(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings.integration, "opsorchestra_webhook_secret", None)
+
+    response = client.post(
+        "/api/v1/webhooks/opsorchestra",
+        json={
+            "event_type": "entity.deleted",
+            "tenant_id": "tenant-webhook",
+            "entity_type": "team",
+            "entity_id": "team-webhook",
+        },
+    )
+    assert response.status_code == 503
 
 
 def test_organization_crud_flow() -> None:

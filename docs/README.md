@@ -11,8 +11,10 @@ docs/
 ├── README.md                    # This file - documentation index
 ├── TECHNICAL_SPEC.md           # Product specification and requirements
 ├── ARCHITECTURE.md             # System architecture and design principles
+├── API.md                      # API reference and auth/integration workflows
 ├── ROADMAP.md                  # Implementation roadmap with milestones
 ├── SECURITY.md                 # Security architecture and compliance
+├── SECURITY_BASELINE.md        # Executed checks and current security posture
 ├── CONTRIBUTING.md             # Development standards and practices
 ├── OPERATOR_QUICKSTART.md      # Non-technical onboarding flow
 ├── architecture/
@@ -32,8 +34,10 @@ docs/
 |----------|---------|----------|
 | [TECHNICAL_SPEC.md](./TECHNICAL_SPEC.md) | Product requirements, features, and specifications | Product, Engineering |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | System design, principles, and patterns | Engineering, Architecture |
+| [API.md](./API.md) | Endpoint reference, auth methods, and integration examples | Engineering, Integrations |
 | [ROADMAP.md](./ROADMAP.md) | Implementation phases, milestones, and priorities | All stakeholders |
 | [SECURITY.md](./SECURITY.md) | Security architecture, compliance, data handling | Engineering, Security, Compliance |
+| [SECURITY_BASELINE.md](./SECURITY_BASELINE.md) | Baseline scan/test results and current risks | Engineering, Security |
 | [CONTRIBUTING.md](./CONTRIBUTING.md) | Development standards, code style, PR process | Engineering |
 | [OPERATOR_QUICKSTART.md](./OPERATOR_QUICKSTART.md) | 15-minute operator flow with CSV-based assessment | Operations, Customer Teams |
 | [../GOVERNANCE.md](../GOVERNANCE.md) | Governance model, maintainer responsibilities, decision process | Maintainers, Contributors |
