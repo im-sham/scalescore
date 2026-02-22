@@ -7,6 +7,7 @@ import pytest
 
 from scalescore.connectors.opsorchestra_connector import OpsOrchestraConnector
 from scalescore.core.exceptions import ErrorCode, ScaleScoreError
+from scalescore.models.core import Team
 from scalescore.models.scaling import Recommendation, RiskIndicator, ScaleScoreReport
 
 
@@ -56,6 +57,84 @@ def _sample_report() -> ScaleScoreReport:
 def test_is_configured_false_without_url() -> None:
     connector = OpsOrchestraConnector(outbound_url=None)
     assert connector.is_configured() is False
+
+
+def test_graph_pull_is_not_configured_without_url() -> None:
+    connector = OpsOrchestraConnector(graph_export_url=None)
+    assert connector.is_graph_pull_configured() is False
+
+
+@pytest.mark.asyncio
+async def test_pull_entities_requires_configured_graph_export_url() -> None:
+    connector = OpsOrchestraConnector(graph_export_url=None)
+    with pytest.raises(ScaleScoreError) as exc_info:
+        await connector.pull_entities(tenant_id="tenant_1")
+
+    assert exc_info.value.code == ErrorCode.CONFIGURATION_ERROR
+
+
+@pytest.mark.asyncio
+async def test_pull_entities_fetches_and_parses_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeAsyncClient:
+        def __init__(self, timeout: float) -> None:
+            captured["timeout"] = timeout
+
+        async def __aenter__(self) -> FakeAsyncClient:
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:  # type: ignore[override]
+            return None
+
+        async def get(
+            self,
+            url: str,
+            *,
+            params: dict[str, str],
+            headers: dict[str, str],
+        ) -> httpx.Response:
+            captured["url"] = url
+            captured["params"] = params
+            captured["headers"] = headers
+            return httpx.Response(
+                status_code=200,
+                json={
+                    "teams": [
+                        {
+                            "id": "team_ops",
+                            "org_id": "org_1",
+                            "name": "Operations",
+                            "function": "operations",
+                            "headcount_current": 12,
+                        }
+                    ]
+                },
+                request=httpx.Request("GET", url),
+                headers={"content-type": "application/json"},
+            )
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeAsyncClient)
+    connector = OpsOrchestraConnector(
+        graph_export_url="https://opsorchestra.example/export",
+        graph_token="graph-token",
+        graph_timeout_seconds=9.0,
+    )
+
+    entities = await connector.pull_entities(
+        tenant_id="tenant_1",
+        org_id="org_1",
+    )
+
+    assert entities["teams"]
+    assert isinstance(entities["teams"][0], Team)
+    assert entities["teams"][0].id == "team_ops"
+    assert captured["url"] == "https://opsorchestra.example/export"
+    assert captured["params"] == {"tenant_id": "tenant_1", "org_id": "org_1"}
+    assert captured["timeout"] == 9.0
+    headers = captured["headers"]
+    assert isinstance(headers, dict)
+    assert headers["Authorization"] == "Bearer graph-token"
 
 
 @pytest.mark.asyncio

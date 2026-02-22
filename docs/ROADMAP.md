@@ -188,10 +188,10 @@ These principles apply to ALL roadmap items:
 
 | Item | Description | Priority | ADR |
 |------|-------------|----------|-----|
-| OpsOrchestra connector | Pull entities from knowledge graph | HIGH (🔄 outbound sync + webhook done; graph pull pending) | ADR-010 |
+| OpsOrchestra connector | Pull entities from knowledge graph | HIGH (🔄 graph pull endpoint + outbound sync + webhook done; full graph client hardening pending) | ADR-010 |
 | Bidirectional sync | Push risks back to OpsOrchestra | MEDIUM (✅ outbound sync endpoint implemented) | - |
 | Webhook handler | React to entity changes | MEDIUM (✅ implemented) | - |
-| Tenant context | Inherit auth from OpsOrchestra | HIGH | - |
+| Tenant context | Inherit auth from OpsOrchestra | HIGH (🔄 OpsOrchestra JWT fallback auth mode implemented; full upstream SSO alignment pending) | - |
 
 ### v0.8.0 - Background Processing
 

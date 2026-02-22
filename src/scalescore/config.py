@@ -170,6 +170,17 @@ class IntegrationSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="INTEGRATION_")
 
     opsorchestra_webhook_secret: SecretStr | None = None
+    opsorchestra_auth_enabled: bool = False
+    opsorchestra_jwt_public_key_path: str | None = None
+    opsorchestra_jwt_issuer: str = "opsorchestra"
+    opsorchestra_jwt_audience: str = "scalescore-api"
+    opsorchestra_sub_claim: str = "sub"
+    opsorchestra_tenant_claim: str = "tenant_id"
+    opsorchestra_email_claim: str = "email"
+    opsorchestra_roles_claim: str = "roles"
+    opsorchestra_graph_export_url: str | None = None
+    opsorchestra_graph_token: SecretStr | None = None
+    opsorchestra_graph_timeout_seconds: float = Field(default=15.0, ge=1.0, le=60.0)
     opsorchestra_outbound_url: str | None = None
     opsorchestra_outbound_token: SecretStr | None = None
     opsorchestra_outbound_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)

@@ -43,6 +43,10 @@ ScaleScore supports two auth methods:
 - `Authorization: Bearer <access_token>`
 - `X-API-Key: <api_key>`
 
+Optional integration mode:
+- OpsOrchestra-issued Bearer JWTs can be accepted on protected routes when
+  `INTEGRATION_OPSORCHESTRA_AUTH_ENABLED=true` and a trusted public key is configured.
+
 ### Development bypass
 
 If `AUTH_SKIP_AUTH=true` and `ENVIRONMENT=development`, permission checks use an internal dev admin principal.
@@ -61,6 +65,21 @@ and restart the API.
 2. `POST /api/v1/auth/login`
 3. Use `access_token` as Bearer token
 4. Rotate with `POST /api/v1/auth/refresh`
+
+### OpsOrchestra JWT mode
+
+When enabled, ScaleScore falls back to verifying Bearer tokens with OpsOrchestra settings:
+
+```bash
+INTEGRATION_OPSORCHESTRA_AUTH_ENABLED=true
+INTEGRATION_OPSORCHESTRA_JWT_PUBLIC_KEY_PATH=/path/to/opsorchestra-public.pem
+INTEGRATION_OPSORCHESTRA_JWT_ISSUER=opsorchestra
+INTEGRATION_OPSORCHESTRA_JWT_AUDIENCE=scalescore-api
+INTEGRATION_OPSORCHESTRA_SUB_CLAIM=sub
+INTEGRATION_OPSORCHESTRA_TENANT_CLAIM=tenant_id
+INTEGRATION_OPSORCHESTRA_EMAIL_CLAIM=email
+INTEGRATION_OPSORCHESTRA_ROLES_CLAIM=roles
+```
 
 ---
 
@@ -144,6 +163,7 @@ Most business endpoints require one of:
 
 | Method | Path | Auth | Notes |
 |-------|------|------|-------|
+| `POST` | `/api/v1/integrations/opsorchestra/pull` | Bearer/API key + `organization:manage` | Pull org/entities from configured OpsOrchestra graph export endpoint |
 | `POST` | `/api/v1/webhooks/opsorchestra` | `X-Webhook-Secret` when configured | Upserts/deletes entities from events |
 
 ---
@@ -263,6 +283,23 @@ Trigger sync for a report:
 
 ```bash
 curl -sS -X POST "$BASE_URL/api/v1/assessments/<assessment_id>/sync/opsorchestra" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+### Inbound Graph Pull Configuration
+
+Set these environment variables to enable pull-based entity sync:
+
+```bash
+INTEGRATION_OPSORCHESTRA_GRAPH_EXPORT_URL=https://opsorchestra.example.com/api/v1/scalescore/export
+INTEGRATION_OPSORCHESTRA_GRAPH_TOKEN=<token>
+INTEGRATION_OPSORCHESTRA_GRAPH_TIMEOUT_SECONDS=15
+```
+
+Trigger pull import:
+
+```bash
+curl -sS -X POST "$BASE_URL/api/v1/integrations/opsorchestra/pull?org_id=<org_id>" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 

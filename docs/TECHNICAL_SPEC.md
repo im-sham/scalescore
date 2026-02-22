@@ -715,6 +715,7 @@ sig_hc,org_acme,headcount_plan,Double headcount,2026-12-31,100,percentage,0.8,en
 
 Current integration surface includes a webhook ingestion endpoint:
 
+- `POST /api/v1/integrations/opsorchestra/pull`
 - `POST /api/v1/webhooks/opsorchestra`
 - `POST /api/v1/assessments/{assessment_id}/sync/opsorchestra`
 

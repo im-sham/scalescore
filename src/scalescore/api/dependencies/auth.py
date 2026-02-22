@@ -10,6 +10,7 @@ from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBea
 from scalescore.config import settings
 from scalescore.core.audit import audit_access_denied
 from scalescore.core.auth.jwt import JWTService, TokenPayload
+from scalescore.core.auth.opsorchestra import get_opsorchestra_auth_service
 from scalescore.core.auth.roles import Permission, get_permissions
 from scalescore.core.exceptions import AuthenticationError
 from scalescore.storage.auth_repository import SQLiteAuthRepository, get_auth_repository
@@ -50,14 +51,31 @@ async def get_current_user(
         return _get_dev_user()
 
     if credentials:
+        token = credentials.credentials
         try:
-            return jwt_service.verify_token(credentials.credentials)
+            return jwt_service.verify_token(token)
         except AuthenticationError as err:
+            auth_error = err
+            if settings.integration.opsorchestra_auth_enabled:
+                try:
+                    opsorchestra_auth = get_opsorchestra_auth_service()
+                except ValueError as err:
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail={
+                            "code": "OPSORCHESTRA_AUTH_NOT_CONFIGURED",
+                            "message": str(err),
+                        },
+                    ) from err
+                try:
+                    return opsorchestra_auth.verify_parent_token(token)
+                except AuthenticationError as ops_error:
+                    auth_error = ops_error
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=err.to_dict(),
+                detail=auth_error.to_dict(),
                 headers={"WWW-Authenticate": "Bearer"},
-            ) from err
+            ) from auth_error
 
     if api_key:
         try:

@@ -755,6 +755,56 @@ async def get_score_history(
     )
 
 
+@app.post("/api/v1/integrations/opsorchestra/pull")
+async def pull_entities_from_opsorchestra(
+    current_user: CanManageOrganizations,
+    repository: EntityRepositoryDep,
+    connector: OpsOrchestraConnectorDep,
+    org_id: str | None = Query(default=None),
+) -> dict[str, Any]:
+    if not connector.is_graph_pull_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "OPSORCHESTRA_PULL_NOT_CONFIGURED",
+                "message": "OpsOrchestra graph export URL is not configured",
+            },
+        )
+
+    pulled_entities = await connector.pull_entities(
+        tenant_id=current_user.tenant_id,
+        org_id=org_id,
+    )
+    imported_counts: dict[str, int] = {}
+    imported_total = 0
+    for entity_group in pulled_entities.values():
+        for entity in entity_group:
+            repository.upsert_entity(entity, tenant_id=current_user.tenant_id)
+            entity_key = entity.type.value
+            imported_counts[entity_key] = imported_counts.get(entity_key, 0) + 1
+            imported_total += 1
+
+    audit_log(
+        AuditEventType.DATA_IMPORTED,
+        actor_id=current_user.sub,
+        tenant_id=current_user.tenant_id,
+        resource_type="opsorchestra_graph_export",
+        details={
+            "org_id": org_id,
+            "imported_total": imported_total,
+            "imported_counts": imported_counts,
+        },
+    )
+    return {
+        "status": "imported",
+        "source": "opsorchestra_graph_export",
+        "tenant_id": current_user.tenant_id,
+        "org_id": org_id,
+        "imported_total": imported_total,
+        "imported_counts": imported_counts,
+    }
+
+
 @app.post("/api/v1/import/csv")
 async def import_from_csv(
     file: UploadFile,

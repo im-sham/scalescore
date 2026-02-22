@@ -19,6 +19,7 @@ class TestSettings:
         assert settings.app_version == "0.1.0"
         assert settings.environment == "development"
         assert settings.debug is False
+        assert settings.integration.opsorchestra_auth_enabled is False
 
     def test_environment_validation(self) -> None:
         """Verify environment must be valid value."""

@@ -1,12 +1,17 @@
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
+import jwt
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
 from scalescore.api.main import app
 from scalescore.config import settings
 from scalescore.connectors.opsorchestra_connector import OpsOrchestraConnector
+from scalescore.models.core import Organization, Team
 
 client = TestClient(app)
 
@@ -55,6 +60,30 @@ def _write_dataset(tmp_path: Path) -> None:
         "id,org_id,signal_type,title,target_date,magnitude,magnitude_type,confidence,affected_areas\n"
         "sig_1,org_1,headcount_plan,Scale,2026-12-31,100,percentage,0.8,engineering|operations\n",
         encoding="utf-8",
+    )
+
+
+def _issue_opsorchestra_token(
+    *,
+    private_key: rsa.RSAPrivateKey,
+    tenant_id: str = "ops-tenant",
+    roles: list[str] | None = None,
+) -> str:
+    roles = roles or ["admin"]
+    now = datetime.now(UTC)
+    return jwt.encode(
+        {
+            "sub": "ops-user-1",
+            "tenant_id": tenant_id,
+            "email": "ops-user@example.com",
+            "roles": roles,
+            "iat": now,
+            "exp": now + timedelta(minutes=10),
+            "iss": "opsorchestra",
+            "aud": "scalescore-api",
+        },
+        private_key,
+        algorithm="RS256",
     )
 
 
@@ -256,6 +285,106 @@ def test_sync_assessment_to_opsorchestra_success(tmp_path: Path, monkeypatch) ->
     assert payload["status"] == "synced"
     assert payload["assessment_id"] == report_id
     assert payload["opsorchestra"]["status_code"] == 202
+
+
+def test_pull_entities_from_opsorchestra_requires_configuration(monkeypatch) -> None:
+    monkeypatch.setattr(settings.integration, "opsorchestra_graph_export_url", None)
+    response = client.post(
+        "/api/v1/integrations/opsorchestra/pull",
+        headers=_auth_headers(),
+    )
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "OPSORCHESTRA_PULL_NOT_CONFIGURED"
+
+
+def test_pull_entities_from_opsorchestra_success(monkeypatch) -> None:
+    monkeypatch.setattr(
+        settings.integration,
+        "opsorchestra_graph_export_url",
+        "https://opsorchestra.example/export",
+    )
+
+    async def _fake_pull(
+        self,
+        *,
+        tenant_id: str,
+        org_id: str | None = None,
+    ) -> dict[str, list]:
+        return {
+            "organizations": [
+                Organization(
+                    id="org_pull",
+                    name="Pulled Org",
+                    headcount_current=20,
+                    revenue_current=100000.0,
+                    burn_rate_monthly=5000.0,
+                    runway_months=12,
+                )
+            ],
+            "teams": [
+                Team(
+                    id="team_pull",
+                    org_id="org_pull",
+                    name="Ops",
+                    function="operations",
+                    headcount_current=7,
+                )
+            ],
+            "systems": [],
+            "vendors": [],
+            "facilities": [],
+            "roles": [],
+            "processes": [],
+        }
+
+    monkeypatch.setattr(OpsOrchestraConnector, "pull_entities", _fake_pull)
+
+    response = client.post(
+        "/api/v1/integrations/opsorchestra/pull",
+        headers=_auth_headers(),
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "imported"
+    assert payload["imported_total"] == 2
+    assert payload["imported_counts"]["organization"] == 1
+    assert payload["imported_counts"]["team"] == 1
+
+
+def test_opsorchestra_token_authentication_when_enabled(tmp_path: Path, monkeypatch) -> None:
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_key_path = tmp_path / "opsorchestra-public.pem"
+    public_key_path.write_bytes(
+        private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+    )
+
+    monkeypatch.setattr(settings.integration, "opsorchestra_auth_enabled", True)
+    monkeypatch.setattr(
+        settings.integration,
+        "opsorchestra_jwt_public_key_path",
+        str(public_key_path),
+    )
+    monkeypatch.setattr(settings.integration, "opsorchestra_jwt_issuer", "opsorchestra")
+    monkeypatch.setattr(settings.integration, "opsorchestra_jwt_audience", "scalescore-api")
+    monkeypatch.setattr(settings.integration, "opsorchestra_sub_claim", "sub")
+    monkeypatch.setattr(settings.integration, "opsorchestra_tenant_claim", "tenant_id")
+    monkeypatch.setattr(settings.integration, "opsorchestra_email_claim", "email")
+    monkeypatch.setattr(settings.integration, "opsorchestra_roles_claim", "roles")
+
+    token = _issue_opsorchestra_token(
+        private_key=private_key,
+        tenant_id="ops-tenant",
+        roles=["admin"],
+    )
+
+    response = client.get(
+        "/api/v1/assessments",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
 
 
 def test_refresh_flow_returns_usable_access_token() -> None:
