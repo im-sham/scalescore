@@ -146,7 +146,7 @@ scalescore/
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the complete implementation plan.
 
-### Current Status: Phase 1 MVP+
+### Current Status: Phase 2 Platform Maturity
 
 | Component | Status |
 |-----------|--------|

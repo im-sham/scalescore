@@ -618,96 +618,60 @@ The recommendation engine uses pattern matching based on constraint types and hi
 
 ### 7.1 REST Endpoints
 
-```python
-# src/scalescore/api/main.py
+The API implementation is in:
+- `src/scalescore/api/main.py`
+- `src/scalescore/api/v1/auth.py`
 
-from fastapi import FastAPI, Depends
-from typing import Optional
+Authentication uses Bearer JWTs, with API key support via `X-API-Key` for service-to-service use cases.
 
-app = FastAPI(
-    title="ScaleScore API",
-    description="Operational Readiness Prediction System",
-    version="0.1.0"
-)
+**Authentication (`/api/v1/auth`)**
 
-# ============== Assessment Endpoints ==============
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/login` | User login, returns access + refresh tokens |
+| `POST` | `/signup` | Create user in auth store |
+| `POST` | `/refresh` | Rotate refresh token, issue new access token |
+| `POST` | `/logout` | Revoke refresh token (when provided) |
+| `GET` | `/me` | Current user profile |
+| `POST` | `/api-keys` | Create API key for current user |
+| `GET` | `/api-keys` | List API keys for current user |
+| `DELETE` | `/api-keys/{key_id}` | Revoke API key |
 
-@app.post("/api/v1/assessments", response_model=ScaleScoreReport)
-async def create_assessment(
-    org_id: str,
-    include_recommendations: bool = True
-) -> ScaleScoreReport:
-    """Run a full operational readiness assessment."""
-    ...
+**Assessment + Analytics**
 
-@app.get("/api/v1/assessments/{report_id}", response_model=ScaleScoreReport)
-async def get_assessment(report_id: str) -> ScaleScoreReport:
-    """Retrieve a previously generated assessment."""
-    ...
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/api/v1/assessments` | Run assessment from `dataset_path` (development only) |
+| `POST` | `/api/v1/assessments/upload` | Run assessment from uploaded CSV bundle |
+| `GET` | `/api/v1/assessments` | List stored assessments (paginated) |
+| `GET` | `/api/v1/assessments/{assessment_id}` | Retrieve stored assessment |
+| `GET` | `/api/v1/assessments/{assessment_id}/export/pdf` | Export assessment as PDF |
+| `GET` | `/api/v1/scores/{org_id}/history` | Score history + 7d/30d/90d trends + comparison |
 
-@app.get("/api/v1/assessments/{report_id}/risks", response_model=list[RiskIndicator])
-async def get_assessment_risks(
-    report_id: str,
-    area: Optional[FunctionalArea] = None,
-    min_level: Optional[RiskLevel] = None
-) -> list[RiskIndicator]:
-    """Get risks from an assessment, optionally filtered."""
-    ...
+**Entity Management**
 
-# ============== Scoring Endpoints ==============
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/api/v1/organizations` | Create organization |
+| `GET` | `/api/v1/organizations` | List organizations |
+| `GET` | `/api/v1/organizations/{org_id}` | Get organization |
+| `PUT` | `/api/v1/organizations/{org_id}` | Update organization |
+| `DELETE` | `/api/v1/organizations/{org_id}` | Delete organization |
+| `POST` | `/api/v1/entities/{entity_type}` | Create entity (team/system/vendor/facility) |
+| `GET` | `/api/v1/entities/{entity_type}` | List entities by type |
+| `GET` | `/api/v1/entities/{entity_type}/{entity_id}` | Get entity by ID |
+| `PUT` | `/api/v1/entities/{entity_type}/{entity_id}` | Update entity |
+| `DELETE` | `/api/v1/entities/{entity_type}/{entity_id}` | Delete entity |
 
-@app.get("/api/v1/scores/{org_id}", response_model=list[ReadinessScore])
-async def get_current_scores(org_id: str) -> list[ReadinessScore]:
-    """Get current readiness scores by functional area."""
-    ...
+**Import + Integration + Health**
 
-@app.get("/api/v1/scores/{org_id}/history")
-async def get_score_history(
-    org_id: str,
-    area: Optional[FunctionalArea] = None,
-    days: int = 90
-) -> list[dict]:
-    """Get historical score trends."""
-    ...
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/api/v1/import/csv` | Import entity records from CSV |
+| `POST` | `/api/v1/webhooks/opsorchestra` | Receive OpsOrchestra entity events |
+| `GET` | `/api/v1/health` | Service health/version |
 
-# ============== Entity Management ==============
-
-@app.post("/api/v1/organizations", response_model=Organization)
-async def create_organization(org: Organization) -> Organization:
-    """Create or update an organization."""
-    ...
-
-@app.post("/api/v1/organizations/{org_id}/teams", response_model=Team)
-async def add_team(org_id: str, team: Team) -> Team:
-    """Add a team to an organization."""
-    ...
-
-@app.post("/api/v1/organizations/{org_id}/systems", response_model=System)
-async def add_system(org_id: str, system: System) -> System:
-    """Add a system to an organization."""
-    ...
-
-@app.post("/api/v1/organizations/{org_id}/growth-signals", response_model=GrowthSignal)
-async def add_growth_signal(org_id: str, signal: GrowthSignal) -> GrowthSignal:
-    """Add a growth signal (plan input)."""
-    ...
-
-# ============== Import/Sync ==============
-
-@app.post("/api/v1/import/csv")
-async def import_from_csv(file: UploadFile, entity_type: str) -> dict:
-    """Import entities from CSV."""
-    ...
-
-@app.post("/api/v1/sync/opsorchestra")
-async def sync_from_opsorchestra(
-    connection_config: dict,
-    full_sync: bool = False
-) -> dict:
-    """Sync data from OpsOrchestra instance."""
-    ...
-
-### 7.3 Data Import Specifications (CSV Contracts)
+### 7.2 Data Import Specifications (CSV Contracts)
 
 MVP ingestion supports CSV files with strict headers and required fields. Optional fields may be blank.
 
@@ -747,48 +711,20 @@ id,org_id,signal_type,title,target_date,magnitude,magnitude_type,confidence,affe
 sig_hc,org_acme,headcount_plan,Double headcount,2026-12-31,100,percentage,0.8,engineering|sales|operations
 ```
 
-# ============== Health ==============
+### 7.3 OpsOrchestra Integration API
 
-@app.get("/api/v1/health")
-async def health_check() -> dict:
-    return {"status": "healthy", "version": "0.1.0"}
-```
+Current integration surface includes a webhook ingestion endpoint:
 
-### 7.2 OpsOrchestra Integration API
+- `POST /api/v1/webhooks/opsorchestra`
 
-For bidirectional integration:
+Supported event types:
+- `entity.created`
+- `entity.updated`
+- `entity.deleted`
 
-```python
-# When ScaleScore is a module within OpsOrchestra
-
-@app.post("/api/v1/opsorchestra/webhook")
-async def opsorchestra_webhook(event: dict) -> dict:
-    """
-    Receive entity update events from OpsOrchestra.
-    Triggers re-scoring when relevant entities change.
-    """
-    event_type = event.get("type")
-    
-    if event_type in ["entity.created", "entity.updated"]:
-        entity = event.get("entity")
-        if entity.get("type") in SCORABLE_ENTITY_TYPES:
-            await trigger_rescore(entity.get("org_id"))
-    
-    return {"acknowledged": True}
-
-@app.get("/api/v1/opsorchestra/export")
-async def export_to_opsorchestra(org_id: str) -> dict:
-    """
-    Export ScaleScore findings as OpsOrchestra-compatible entities.
-    Risk indicators become entities in the knowledge graph.
-    """
-    risks = await get_current_risks(org_id)
-    
-    return {
-        "entities": [risk_to_entity(r) for r in risks],
-        "relationships": [risk_to_relationships(r) for r in risks]
-    }
-```
+Security model:
+- Optional `X-Webhook-Secret` header validation.
+- In production, the shared secret must be configured (`INTEGRATION_OPSORCHESTRA_WEBHOOK_SECRET`).
 
 ---
 
@@ -825,34 +761,12 @@ The MVP Streamlit experience is defined by four core views:
 
 ## 9. Implementation Roadmap
 
-### Phase 1: MVP (Weeks 1-2)
-- [ ] Core models (entities, constraints, risks) - complete
-- [ ] Scoring engine v0.1 (capacity-based penalties + growth multiplier)
-- [ ] Bottleneck detection (direct capacity + dependency cascades)
-- [ ] CSV import connector + validation (contract defined in 7.3)
-- [ ] FastAPI endpoints (create assessment, get scores, import CSV)
-- [ ] Streamlit dashboard (onboarding + executive view)
-- [ ] Demo dataset (AcmeTech) matching CSV contract
-- [ ] Minimal tests (scoring scenarios + CSV validation)
+The authoritative, continuously updated roadmap lives in `docs/ROADMAP.md`.
 
-### Phase 2: Intelligence (Weeks 3-4)
-- [ ] Bottleneck detection (dependency cascade)
-- [ ] Recommendation engine
-- [ ] Growth signal processing
-- [ ] Score history and trends
-- [ ] Risk prioritization
-
-### Phase 3: Integration (Weeks 5-6)
-- [ ] OpsOrchestra connector
-- [ ] Bidirectional sync
-- [ ] Webhook support
-- [ ] Enhanced visualizations
-
-### Phase 4: Polish (Week 7+)
-- [ ] HRIS connector (Workday, BambooHR)
-- [ ] ERP connector (NetSuite, QuickBooks)
-- [ ] Multi-tenant support
-- [ ] Production deployment
+Current snapshot (February 2026):
+- Phase 1 MVP foundation: complete.
+- Phase 2 platform maturity: substantially complete (auth, CRUD, trend analytics, summaries, PDF export, webhook ingestion).
+- Current focus: Phase 3 scale and integration (OpsOrchestra connector, async assessment execution, expanded scoring pillars).
 
 ---
 

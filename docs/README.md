@@ -85,7 +85,7 @@ These principles inform all documentation and technical decisions:
 | New feature or component | Update TECHNICAL_SPEC.md, consider ADR |
 | Architectural change | Create ADR, update ARCHITECTURE.md |
 | Security-relevant change | Update SECURITY.md, document in ADR |
-| API change | Update api-design.md, version appropriately |
+| API change | Update TECHNICAL_SPEC.md and ROADMAP.md to reflect the live route surface |
 | Dependency addition | Document rationale in ADR or CONTRIBUTING.md |
 
 ---
