@@ -6,6 +6,7 @@ from pydantic import SecretStr
 
 from scalescore.api.main import app
 from scalescore.config import settings
+from scalescore.connectors.opsorchestra_connector import OpsOrchestraConnector
 
 client = TestClient(app)
 
@@ -184,6 +185,77 @@ def test_export_assessment_pdf(tmp_path: Path) -> None:
     assert export_response.headers["content-type"] == "application/pdf"
     assert "attachment" in export_response.headers["content-disposition"].lower()
     assert export_response.content.startswith(b"%PDF")
+
+
+def test_sync_assessment_to_opsorchestra_requires_configuration(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _write_dataset(tmp_path)
+    headers = _auth_headers()
+    create_response = client.post(
+        "/api/v1/assessments",
+        params={"dataset_path": str(tmp_path)},
+        headers=headers,
+    )
+    assert create_response.status_code == 200
+    report_id = create_response.json()["report_id"]
+
+    monkeypatch.setattr(settings.integration, "opsorchestra_outbound_url", None)
+
+    sync_response = client.post(
+        f"/api/v1/assessments/{report_id}/sync/opsorchestra",
+        headers=headers,
+    )
+    assert sync_response.status_code == 503
+    assert sync_response.json()["detail"]["code"] == "OPSORCHESTRA_SYNC_NOT_CONFIGURED"
+
+
+def test_sync_assessment_to_opsorchestra_success(tmp_path: Path, monkeypatch) -> None:
+    _write_dataset(tmp_path)
+    headers = _auth_headers()
+    create_response = client.post(
+        "/api/v1/assessments",
+        params={"dataset_path": str(tmp_path)},
+        headers=headers,
+    )
+    assert create_response.status_code == 200
+    report_id = create_response.json()["report_id"]
+
+    monkeypatch.setattr(
+        settings.integration,
+        "opsorchestra_outbound_url",
+        "https://opsorchestra.example/sync",
+    )
+
+    async def _fake_push(
+        self,
+        *,
+        report,
+        tenant_id: str,
+        actor_id: str,
+    ) -> dict[str, object]:
+        return {
+            "status_code": 202,
+            "response": {
+                "accepted": True,
+                "report_id": report.report_id,
+                "tenant_id": tenant_id,
+                "actor_id": actor_id,
+            },
+        }
+
+    monkeypatch.setattr(OpsOrchestraConnector, "push_assessment_report", _fake_push)
+
+    sync_response = client.post(
+        f"/api/v1/assessments/{report_id}/sync/opsorchestra",
+        headers=headers,
+    )
+    assert sync_response.status_code == 200
+    payload = sync_response.json()
+    assert payload["status"] == "synced"
+    assert payload["assessment_id"] == report_id
+    assert payload["opsorchestra"]["status_code"] == 202
 
 
 def test_refresh_flow_returns_usable_access_token() -> None:

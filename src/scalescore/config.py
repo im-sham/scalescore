@@ -170,6 +170,9 @@ class IntegrationSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="INTEGRATION_")
 
     opsorchestra_webhook_secret: SecretStr | None = None
+    opsorchestra_outbound_url: str | None = None
+    opsorchestra_outbound_token: SecretStr | None = None
+    opsorchestra_outbound_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
 
 
 class Settings(BaseSettings):

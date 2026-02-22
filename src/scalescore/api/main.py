@@ -16,6 +16,10 @@ from scalescore.api.middleware import CorrelationIdMiddleware, RequestLoggingMid
 from scalescore.api.v1.auth import router as auth_router
 from scalescore.config import settings
 from scalescore.connectors.csv_connector import CSVConnector
+from scalescore.connectors.opsorchestra_connector import (
+    OpsOrchestraConnector,
+    get_opsorchestra_connector,
+)
 from scalescore.core.assessment import run_assessment_from_csv
 from scalescore.core.audit import (
     AuditEventType,
@@ -106,6 +110,7 @@ CanManageOrganizations = Annotated[
 ]
 AssessmentRepositoryDep = Annotated[AssessmentRepository, Depends(get_assessment_repository)]
 EntityRepositoryDep = Annotated[EntityRepository, Depends(get_entity_repository)]
+OpsOrchestraConnectorDep = Annotated[OpsOrchestraConnector, Depends(get_opsorchestra_connector)]
 
 EntityResponse = Organization | Team | System | Vendor | Facility | BaseEntity
 
@@ -420,6 +425,53 @@ async def export_assessment_pdf(
             )
         },
     )
+
+
+@app.post("/api/v1/assessments/{assessment_id}/sync/opsorchestra")
+async def sync_assessment_to_opsorchestra(
+    assessment_id: str,
+    current_user: CanExportReports,
+    repository: AssessmentRepositoryDep,
+    connector: OpsOrchestraConnectorDep,
+) -> dict[str, Any]:
+    report = repository.get_report(assessment_id, tenant_id=current_user.tenant_id)
+    if report is None:
+        raise AssessmentNotFoundError(assessment_id)
+
+    if not connector.is_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "OPSORCHESTRA_SYNC_NOT_CONFIGURED",
+                "message": "OpsOrchestra outbound sync URL is not configured",
+            },
+        )
+
+    sync_result = await connector.push_assessment_report(
+        report=report,
+        tenant_id=current_user.tenant_id,
+        actor_id=current_user.sub,
+    )
+    audit_data_export(
+        user_id=current_user.sub,
+        tenant_id=current_user.tenant_id,
+        export_type="opsorchestra_sync",
+        record_count=1,
+    )
+    audit_log(
+        AuditEventType.DATA_EXPORTED,
+        actor_id=current_user.sub,
+        tenant_id=current_user.tenant_id,
+        resource_type="opsorchestra_sync",
+        resource_id=assessment_id,
+        details={"status_code": sync_result["status_code"]},
+    )
+    return {
+        "status": "synced",
+        "assessment_id": assessment_id,
+        "tenant_id": current_user.tenant_id,
+        "opsorchestra": sync_result,
+    }
 
 
 @app.get("/api/v1/assessments", response_model=list[ScaleScoreReport])

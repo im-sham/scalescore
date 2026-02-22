@@ -111,6 +111,7 @@ Most business endpoints require one of:
 | `GET` | `/api/v1/assessments` | `assessment:read` | Pagination via `limit`, `offset` |
 | `GET` | `/api/v1/assessments/{assessment_id}` | `assessment:read` | Retrieve saved report |
 | `GET` | `/api/v1/assessments/{assessment_id}/export/pdf` | `report:export` | Download PDF |
+| `POST` | `/api/v1/assessments/{assessment_id}/sync/opsorchestra` | `report:export` | Push report summary and top findings to configured OpsOrchestra outbound URL |
 
 ## Organizations
 
@@ -246,6 +247,23 @@ curl -sS -X POST "$BASE_URL/api/v1/webhooks/opsorchestra" \
       "headcount_current": 12
     }
   }'
+```
+
+### Outbound Sync Configuration
+
+Set these environment variables to enable outbound assessment sync:
+
+```bash
+INTEGRATION_OPSORCHESTRA_OUTBOUND_URL=https://opsorchestra.example.com/api/v1/scalescore/events
+INTEGRATION_OPSORCHESTRA_OUTBOUND_TOKEN=<token>
+INTEGRATION_OPSORCHESTRA_OUTBOUND_TIMEOUT_SECONDS=10
+```
+
+Trigger sync for a report:
+
+```bash
+curl -sS -X POST "$BASE_URL/api/v1/assessments/<assessment_id>/sync/opsorchestra" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
 ---
