@@ -172,12 +172,17 @@ class IntegrationSettings(BaseSettings):
     opsorchestra_webhook_secret: SecretStr | None = None
     opsorchestra_auth_enabled: bool = False
     opsorchestra_jwt_public_key_path: str | None = None
+    opsorchestra_jwks_url: str | None = None
+    opsorchestra_jwks_timeout_seconds: float = Field(default=5.0, ge=1.0, le=30.0)
+    opsorchestra_jwks_cache_ttl_seconds: int = Field(default=300, ge=30, le=3600)
     opsorchestra_jwt_issuer: str = "opsorchestra"
     opsorchestra_jwt_audience: str = "scalescore-api"
     opsorchestra_sub_claim: str = "sub"
     opsorchestra_tenant_claim: str = "tenant_id"
     opsorchestra_email_claim: str = "email"
     opsorchestra_roles_claim: str = "roles"
+    opsorchestra_require_email_claim: bool = True
+    opsorchestra_require_roles_claim: bool = True
     opsorchestra_graph_export_url: str | None = None
     opsorchestra_graph_token: SecretStr | None = None
     opsorchestra_graph_timeout_seconds: float = Field(default=15.0, ge=1.0, le=60.0)

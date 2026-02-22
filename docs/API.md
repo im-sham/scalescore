@@ -45,7 +45,7 @@ ScaleScore supports two auth methods:
 
 Optional integration mode:
 - OpsOrchestra-issued Bearer JWTs can be accepted on protected routes when
-  `INTEGRATION_OPSORCHESTRA_AUTH_ENABLED=true` and a trusted public key is configured.
+  `INTEGRATION_OPSORCHESTRA_AUTH_ENABLED=true` and a trusted static public key or JWKS URL is configured.
 
 ### Development bypass
 
@@ -72,13 +72,21 @@ When enabled, ScaleScore falls back to verifying Bearer tokens with OpsOrchestra
 
 ```bash
 INTEGRATION_OPSORCHESTRA_AUTH_ENABLED=true
+
+# Configure either static key path OR JWKS URL
 INTEGRATION_OPSORCHESTRA_JWT_PUBLIC_KEY_PATH=/path/to/opsorchestra-public.pem
+# INTEGRATION_OPSORCHESTRA_JWKS_URL=https://opsorchestra.example.com/.well-known/jwks.json
+INTEGRATION_OPSORCHESTRA_JWKS_TIMEOUT_SECONDS=5
+INTEGRATION_OPSORCHESTRA_JWKS_CACHE_TTL_SECONDS=300
+
 INTEGRATION_OPSORCHESTRA_JWT_ISSUER=opsorchestra
 INTEGRATION_OPSORCHESTRA_JWT_AUDIENCE=scalescore-api
 INTEGRATION_OPSORCHESTRA_SUB_CLAIM=sub
 INTEGRATION_OPSORCHESTRA_TENANT_CLAIM=tenant_id
 INTEGRATION_OPSORCHESTRA_EMAIL_CLAIM=email
 INTEGRATION_OPSORCHESTRA_ROLES_CLAIM=roles
+INTEGRATION_OPSORCHESTRA_REQUIRE_EMAIL_CLAIM=true
+INTEGRATION_OPSORCHESTRA_REQUIRE_ROLES_CLAIM=true
 ```
 
 ---

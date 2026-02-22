@@ -20,6 +20,9 @@ class TestSettings:
         assert settings.environment == "development"
         assert settings.debug is False
         assert settings.integration.opsorchestra_auth_enabled is False
+        assert settings.integration.opsorchestra_jwks_url is None
+        assert settings.integration.opsorchestra_require_email_claim is True
+        assert settings.integration.opsorchestra_require_roles_claim is True
 
     def test_environment_validation(self) -> None:
         """Verify environment must be valid value."""

@@ -11,6 +11,11 @@ from pydantic import SecretStr
 from scalescore.api.main import app
 from scalescore.config import settings
 from scalescore.connectors.opsorchestra_connector import OpsOrchestraConnector
+from scalescore.core.auth.opsorchestra import (
+    OpsOrchestraAuthService,
+    get_opsorchestra_auth_service,
+)
+from scalescore.core.exceptions import ErrorCode, ScaleScoreError
 from scalescore.models.core import Organization, Team
 
 client = TestClient(app)
@@ -352,6 +357,7 @@ def test_pull_entities_from_opsorchestra_success(monkeypatch) -> None:
 
 
 def test_opsorchestra_token_authentication_when_enabled(tmp_path: Path, monkeypatch) -> None:
+    get_opsorchestra_auth_service.cache_clear()
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     public_key_path = tmp_path / "opsorchestra-public.pem"
     public_key_path.write_bytes(
@@ -385,6 +391,62 @@ def test_opsorchestra_token_authentication_when_enabled(tmp_path: Path, monkeypa
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 200
+
+
+def test_opsorchestra_token_auth_returns_503_when_unconfigured(monkeypatch) -> None:
+    get_opsorchestra_auth_service.cache_clear()
+    monkeypatch.setattr(settings.integration, "opsorchestra_auth_enabled", True)
+    monkeypatch.setattr(settings.integration, "opsorchestra_jwt_public_key_path", None)
+    monkeypatch.setattr(settings.integration, "opsorchestra_jwks_url", None)
+
+    response = client.get(
+        "/api/v1/assessments",
+        headers={"Authorization": "Bearer invalid.token.value"},
+    )
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "OPSORCHESTRA_AUTH_NOT_CONFIGURED"
+
+
+def test_opsorchestra_token_auth_returns_503_when_key_service_unavailable(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    get_opsorchestra_auth_service.cache_clear()
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_key_path = tmp_path / "opsorchestra-public.pem"
+    public_key_path.write_bytes(
+        private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+    )
+
+    monkeypatch.setattr(settings.integration, "opsorchestra_auth_enabled", True)
+    monkeypatch.setattr(
+        settings.integration,
+        "opsorchestra_jwt_public_key_path",
+        str(public_key_path),
+    )
+    monkeypatch.setattr(settings.integration, "opsorchestra_jwks_url", None)
+
+    def _raise_service_unavailable(self, token: str) -> None:
+        raise ScaleScoreError(
+            message="Failed to fetch OpsOrchestra JWKS",
+            code=ErrorCode.EXTERNAL_SERVICE_ERROR,
+        )
+
+    monkeypatch.setattr(
+        OpsOrchestraAuthService,
+        "verify_parent_token",
+        _raise_service_unavailable,
+    )
+
+    response = client.get(
+        "/api/v1/assessments",
+        headers={"Authorization": "Bearer invalid.token.value"},
+    )
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == ErrorCode.EXTERNAL_SERVICE_ERROR.value
 
 
 def test_refresh_flow_returns_usable_access_token() -> None:

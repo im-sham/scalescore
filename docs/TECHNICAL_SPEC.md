@@ -623,6 +623,7 @@ The API implementation is in:
 - `src/scalescore/api/v1/auth.py`
 
 Authentication uses Bearer JWTs, with API key support via `X-API-Key` for service-to-service use cases.
+When OpsOrchestra integration auth mode is enabled, protected routes can also accept OpsOrchestra-issued JWTs validated via a trusted static public key or JWKS endpoint.
 
 **Authentication (`/api/v1/auth`)**
 
@@ -668,7 +669,9 @@ Authentication uses Bearer JWTs, with API key support via `X-API-Key` for servic
 | Method | Path | Purpose |
 |--------|------|---------|
 | `POST` | `/api/v1/import/csv` | Import entity records from CSV |
+| `POST` | `/api/v1/integrations/opsorchestra/pull` | Pull and import entities from OpsOrchestra graph export |
 | `POST` | `/api/v1/webhooks/opsorchestra` | Receive OpsOrchestra entity events |
+| `POST` | `/api/v1/assessments/{assessment_id}/sync/opsorchestra` | Push assessment summary and top findings to OpsOrchestra |
 | `GET` | `/api/v1/health` | Service health/version |
 
 ### 7.2 Data Import Specifications (CSV Contracts)
@@ -727,6 +730,10 @@ Supported event types:
 Security model:
 - Optional `X-Webhook-Secret` header validation.
 - In production, the shared secret must be configured (`INTEGRATION_OPSORCHESTRA_WEBHOOK_SECRET`).
+- Optional OpsOrchestra JWT trust mode with strict claim enforcement:
+  - `INTEGRATION_OPSORCHESTRA_AUTH_ENABLED=true`
+  - one of `INTEGRATION_OPSORCHESTRA_JWT_PUBLIC_KEY_PATH` or `INTEGRATION_OPSORCHESTRA_JWKS_URL`
+  - claim requirements controlled by `INTEGRATION_OPSORCHESTRA_REQUIRE_EMAIL_CLAIM` and `INTEGRATION_OPSORCHESTRA_REQUIRE_ROLES_CLAIM`
 
 ---
 

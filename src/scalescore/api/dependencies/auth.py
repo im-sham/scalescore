@@ -12,7 +12,7 @@ from scalescore.core.audit import audit_access_denied
 from scalescore.core.auth.jwt import JWTService, TokenPayload
 from scalescore.core.auth.opsorchestra import get_opsorchestra_auth_service
 from scalescore.core.auth.roles import Permission, get_permissions
-from scalescore.core.exceptions import AuthenticationError
+from scalescore.core.exceptions import AuthenticationError, ScaleScoreError
 from scalescore.storage.auth_repository import SQLiteAuthRepository, get_auth_repository
 
 security = HTTPBearer(auto_error=False)
@@ -71,6 +71,11 @@ async def get_current_user(
                     return opsorchestra_auth.verify_parent_token(token)
                 except AuthenticationError as ops_error:
                     auth_error = ops_error
+                except ScaleScoreError as ops_error:
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail=ops_error.to_dict(include_details=settings.is_development()),
+                    ) from ops_error
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=auth_error.to_dict(),
