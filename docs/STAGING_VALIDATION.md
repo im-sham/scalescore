@@ -1,6 +1,6 @@
 # Staging Validation Runbook
 
-> **Last Updated:** February 22, 2026  
+> **Last Updated:** February 24, 2026  
 > **Purpose:** Validate v0.7 OpsOrchestra integration hardening and v0.8 async slice before release promotions.
 
 ---
@@ -48,6 +48,21 @@ Expected:
 - all tests passing
 - no known vulnerable dependencies
 
+### CI automation (recommended)
+
+The release-gate workflow is automated in:
+
+- `.github/workflows/staging-validation-gate.yml`
+
+It runs on:
+- manual dispatch (`workflow_dispatch`)
+- weekly schedule (Monday 09:00 UTC)
+
+Workflow outputs:
+- async benchmark artifacts (`benchmark_results.json`, `benchmark_summary.md`)
+- release-gate evaluation artifacts (`release_gate_result.json`, `release_gate_summary.md`)
+- auth smoke evidence (internal JWT and external OIDC)
+
 ---
 
 ## Async Load/Stress Validation (1000+ Entities)
@@ -80,6 +95,8 @@ PYTHONPATH=src .venv/bin/python scripts/run_async_assessment_benchmark.py \
 3. Review generated artifacts:
 - `benchmark_results.json` (machine-readable job traces + metrics)
 - `benchmark_summary.md` (release-note friendly summary)
+- `release_gate_result.json` (machine-readable pass/fail per criterion)
+- `release_gate_summary.md` (final release-gate decision and rationale)
 
 Notes:
 - If staging runs with `AUTH_SKIP_AUTH=true`, omit `ACCESS_TOKEN`.

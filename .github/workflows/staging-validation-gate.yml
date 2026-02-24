@@ -1,0 +1,430 @@
+name: Staging Validation Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      jobs:
+        description: Number of async benchmark jobs to submit
+        default: "5"
+        required: false
+      timeout_seconds:
+        description: Benchmark timeout in seconds
+        default: "1800"
+        required: false
+      baseline_p95_seconds:
+        description: Optional p95 completion-latency baseline (seconds) for regression gate
+        required: false
+      max_p95_regression_percent:
+        description: Allowed p95 latency regression over baseline (percent)
+        default: "25"
+        required: false
+  schedule:
+    - cron: "0 9 * * 1"
+
+concurrency:
+  group: staging-validation-gate
+  cancel-in-progress: false
+
+jobs:
+  release-gate:
+    name: Async Load/Stress + Auth Smoke Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      PYTHONPATH: src
+      BASE_URL: http://127.0.0.1:8000
+      EXTERNAL_OIDC_BASE_URL: http://127.0.0.1:8001
+      ENVIRONMENT: staging
+      AUTH_SKIP_AUTH: "false"
+      FEATURE_ENABLE_ASYNC_ASSESSMENTS: "true"
+      ASYNC_ASSESSMENT_MODE: poll
+      INPUT_JOBS: ${{ github.event.inputs.jobs }}
+      INPUT_TIMEOUT_SECONDS: ${{ github.event.inputs.timeout_seconds }}
+      INPUT_BASELINE_P95_SECONDS: ${{ github.event.inputs.baseline_p95_seconds || vars.ASYNC_BENCHMARK_P95_BASELINE_SECONDS }}
+      INPUT_MAX_P95_REGRESSION_PERCENT: ${{ github.event.inputs.max_p95_regression_percent }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade "pip>=26.0.1"
+          pip install -e ".[dev]"
+
+      - name: Prepare benchmark dataset and artifact directories
+        run: |
+          set -euo pipefail
+          TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+          VALIDATION_ROOT="${RUNNER_TEMP}/staging-validation/${TIMESTAMP}"
+          DATASET_DIR="${VALIDATION_ROOT}/dataset"
+          BENCHMARK_DIR="${VALIDATION_ROOT}/benchmark"
+          GATE_DIR="${VALIDATION_ROOT}/gate"
+          SMOKE_DIR="${VALIDATION_ROOT}/smoke"
+
+          mkdir -p "${VALIDATION_ROOT}" "${DATASET_DIR}" "${BENCHMARK_DIR}" "${GATE_DIR}" "${SMOKE_DIR}"
+
+          JOBS="${INPUT_JOBS:-5}"
+          TIMEOUT_SECONDS="${INPUT_TIMEOUT_SECONDS:-1800}"
+          MAX_P95_REGRESSION_PERCENT="${INPUT_MAX_P95_REGRESSION_PERCENT:-25}"
+          P95_BASELINE_SECONDS="${INPUT_BASELINE_P95_SECONDS:-}"
+
+          echo "VALIDATION_ROOT=${VALIDATION_ROOT}" >>"${GITHUB_ENV}"
+          echo "DATASET_DIR=${DATASET_DIR}" >>"${GITHUB_ENV}"
+          echo "BENCHMARK_DIR=${BENCHMARK_DIR}" >>"${GITHUB_ENV}"
+          echo "GATE_DIR=${GATE_DIR}" >>"${GITHUB_ENV}"
+          echo "SMOKE_DIR=${SMOKE_DIR}" >>"${GITHUB_ENV}"
+          echo "BENCHMARK_JOBS=${JOBS}" >>"${GITHUB_ENV}"
+          echo "BENCHMARK_TIMEOUT_SECONDS=${TIMEOUT_SECONDS}" >>"${GITHUB_ENV}"
+          echo "MAX_P95_REGRESSION_PERCENT=${MAX_P95_REGRESSION_PERCENT}" >>"${GITHUB_ENV}"
+          echo "P95_BASELINE_SECONDS=${P95_BASELINE_SECONDS}" >>"${GITHUB_ENV}"
+
+          PYTHONPATH=src python scripts/generate_async_benchmark_dataset.py \
+            --output-dir "${DATASET_DIR}" \
+            --organizations 1 \
+            --teams-per-org 300 \
+            --systems-per-org 300 \
+            --vendors-per-org 300 \
+            --facilities-per-org 300 \
+            --growth-signals-per-org 40 \
+            --overwrite | tee "${VALIDATION_ROOT}/dataset_generation.log"
+
+      - name: Run internal JWT smoke and async benchmark gate
+        run: |
+          set -uo pipefail
+
+          INTERNAL_JWT_SMOKE_STATUS="FAIL"
+          BENCHMARK_STATUS="FAIL"
+          RELEASE_GATE_STATUS="FAIL"
+
+          PRIMARY_API_PID=""
+          cleanup() {
+            if [[ -n "${PRIMARY_API_PID}" ]] && kill -0 "${PRIMARY_API_PID}" 2>/dev/null; then
+              kill "${PRIMARY_API_PID}" 2>/dev/null || true
+              wait "${PRIMARY_API_PID}" 2>/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
+
+          PYTHONPATH=src \
+          STORAGE_ASSESSMENTS_DB_PATH="${RUNNER_TEMP}/assessments-8000.sqlite3" \
+          STORAGE_AUTH_DB_PATH="${RUNNER_TEMP}/auth-8000.sqlite3" \
+          uvicorn scalescore.api.main:app --host 127.0.0.1 --port 8000 \
+            >"${VALIDATION_ROOT}/api-8000.log" 2>&1 &
+          PRIMARY_API_PID=$!
+
+          HEALTHY="false"
+          for attempt in {1..60}; do
+            if curl -fsS "${BASE_URL}/api/v1/health" >"${SMOKE_DIR}/health_primary.json"; then
+              HEALTHY="true"
+              break
+            fi
+            sleep 1
+          done
+          if [[ "${HEALTHY}" != "true" ]]; then
+            echo "Primary API did not become healthy." >&2
+          else
+            if python - "${BASE_URL}" "${SMOKE_DIR}/internal_jwt_smoke.json" "${SMOKE_DIR}/internal_access_token.txt" <<'PY'
+import json
+import sys
+import time
+import uuid
+from pathlib import Path
+
+import httpx
+
+base_url = sys.argv[1]
+result_path = Path(sys.argv[2])
+token_path = Path(sys.argv[3])
+
+result = {
+    "base_url": base_url,
+    "status": "FAIL",
+}
+
+email = f"ci-{int(time.time())}-{uuid.uuid4().hex[:8]}@example.com"
+password = "strong-password"
+
+try:
+    with httpx.Client(base_url=base_url, timeout=30.0) as client:
+        signup_response = client.post(
+            "/api/v1/auth/signup",
+            json={
+                "email": email,
+                "password": password,
+                "tenant_id": "tenant-ci",
+                "org_id": "org-ci",
+                "roles": ["admin"],
+            },
+        )
+        result["signup_status_code"] = signup_response.status_code
+        if signup_response.status_code != 201:
+            result["signup_body"] = signup_response.text[:1000]
+            raise RuntimeError("signup failed")
+
+        login_response = client.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": password},
+        )
+        result["login_status_code"] = login_response.status_code
+        if login_response.status_code != 200:
+            result["login_body"] = login_response.text[:1000]
+            raise RuntimeError("login failed")
+        access_token = login_response.json().get("access_token")
+        if not access_token:
+            raise RuntimeError("login response missing access_token")
+
+        protected_response = client.get(
+            "/api/v1/assessments",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        result["protected_status_code"] = protected_response.status_code
+        if protected_response.status_code != 200:
+            result["protected_body"] = protected_response.text[:1000]
+            raise RuntimeError("protected endpoint failed")
+
+        token_path.write_text(access_token + "\n", encoding="utf-8")
+        result["status"] = "PASS"
+except Exception as err:  # noqa: BLE001
+    result["error"] = str(err)
+    result_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    raise
+
+result_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+            then
+              INTERNAL_JWT_SMOKE_STATUS="PASS"
+            fi
+          fi
+
+          if [[ "${INTERNAL_JWT_SMOKE_STATUS}" == "PASS" ]]; then
+            ACCESS_TOKEN="$(tr -d '\n' < "${SMOKE_DIR}/internal_access_token.txt")"
+            if ACCESS_TOKEN="${ACCESS_TOKEN}" PYTHONPATH=src python scripts/run_async_assessment_benchmark.py \
+              --base-url "${BASE_URL}" \
+              --dataset-dir "${DATASET_DIR}" \
+              --jobs "${BENCHMARK_JOBS}" \
+              --poll-interval-seconds 0.5 \
+              --timeout-seconds "${BENCHMARK_TIMEOUT_SECONDS}" \
+              --output-dir "${BENCHMARK_DIR}" \
+              >"${VALIDATION_ROOT}/benchmark.log" 2>&1
+            then
+              BENCHMARK_STATUS="PASS"
+            fi
+          fi
+
+          if [[ -f "${BENCHMARK_DIR}/benchmark_results.json" ]]; then
+            GATE_ARGS=(
+              python scripts/evaluate_async_benchmark_gate.py
+              --benchmark-results "${BENCHMARK_DIR}/benchmark_results.json"
+              --dataset-summary "${DATASET_DIR}/dataset_summary.json"
+              --output-dir "${GATE_DIR}"
+              --min-total-entities 1000
+              --max-p95-regression-percent "${MAX_P95_REGRESSION_PERCENT}"
+            )
+            if [[ -n "${P95_BASELINE_SECONDS}" ]]; then
+              GATE_ARGS+=(--baseline-p95-seconds "${P95_BASELINE_SECONDS}")
+            fi
+
+            if "${GATE_ARGS[@]}" >"${VALIDATION_ROOT}/release_gate.log" 2>&1; then
+              RELEASE_GATE_STATUS="PASS"
+            fi
+          fi
+
+          echo "INTERNAL_JWT_SMOKE_STATUS=${INTERNAL_JWT_SMOKE_STATUS}" >>"${GITHUB_ENV}"
+          echo "BENCHMARK_STATUS=${BENCHMARK_STATUS}" >>"${GITHUB_ENV}"
+          echo "RELEASE_GATE_STATUS=${RELEASE_GATE_STATUS}" >>"${GITHUB_ENV}"
+
+      - name: Run external OIDC smoke check
+        run: |
+          set -uo pipefail
+
+          EXTERNAL_OIDC_SMOKE_STATUS="FAIL"
+          SECONDARY_API_PID=""
+          cleanup() {
+            if [[ -n "${SECONDARY_API_PID}" ]] && kill -0 "${SECONDARY_API_PID}" 2>/dev/null; then
+              kill "${SECONDARY_API_PID}" 2>/dev/null || true
+              wait "${SECONDARY_API_PID}" 2>/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
+
+          if ! python - "${SMOKE_DIR}/external_oidc_public.pem" "${SMOKE_DIR}/external_oidc_private.pem" <<'PY'
+from pathlib import Path
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+
+public_path = Path(__import__("sys").argv[1])
+private_path = Path(__import__("sys").argv[2])
+
+private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+public_key = private_key.public_key()
+
+public_path.write_bytes(
+    public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+)
+private_path.write_bytes(
+    private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+)
+PY
+          then
+            echo "Failed to generate external OIDC key pair." >&2
+          else
+            PYTHONPATH=src \
+            STORAGE_ASSESSMENTS_DB_PATH="${RUNNER_TEMP}/assessments-8001.sqlite3" \
+            STORAGE_AUTH_DB_PATH="${RUNNER_TEMP}/auth-8001.sqlite3" \
+            INTEGRATION_EXTERNAL_OIDC_AUTH_ENABLED=true \
+            INTEGRATION_EXTERNAL_OIDC_PROVIDER_NAME=auth0 \
+            INTEGRATION_EXTERNAL_OIDC_JWT_PUBLIC_KEY_PATH="${SMOKE_DIR}/external_oidc_public.pem" \
+            INTEGRATION_EXTERNAL_OIDC_JWT_ISSUER="https://idp.example.com/" \
+            INTEGRATION_EXTERNAL_OIDC_JWT_AUDIENCE="scalescore-api" \
+            INTEGRATION_EXTERNAL_OIDC_TENANT_CLAIM="tid" \
+            INTEGRATION_EXTERNAL_OIDC_EMAIL_CLAIM="email" \
+            INTEGRATION_EXTERNAL_OIDC_ROLES_CLAIM="groups" \
+            uvicorn scalescore.api.main:app --host 127.0.0.1 --port 8001 \
+              >"${VALIDATION_ROOT}/api-8001.log" 2>&1 &
+            SECONDARY_API_PID=$!
+
+            OIDC_HEALTHY="false"
+            for attempt in {1..60}; do
+              if curl -fsS "${EXTERNAL_OIDC_BASE_URL}/api/v1/health" >"${SMOKE_DIR}/health_external_oidc.json"; then
+                OIDC_HEALTHY="true"
+                break
+              fi
+              sleep 1
+            done
+
+            if [[ "${OIDC_HEALTHY}" == "true" ]]; then
+              if python - "${EXTERNAL_OIDC_BASE_URL}" "${SMOKE_DIR}/external_oidc_private.pem" "${SMOKE_DIR}/external_oidc_smoke.json" <<'PY'
+import json
+import sys
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+import httpx
+import jwt
+from cryptography.hazmat.primitives import serialization
+
+base_url = sys.argv[1]
+private_key_path = Path(sys.argv[2])
+result_path = Path(sys.argv[3])
+
+result = {
+    "base_url": base_url,
+    "status": "FAIL",
+}
+
+try:
+    private_key = serialization.load_pem_private_key(
+        private_key_path.read_bytes(),
+        password=None,
+    )
+    now = datetime.now(UTC)
+    token = jwt.encode(
+        {
+            "sub": "oidc-ci-user",
+            "tid": "tenant-ci-oidc",
+            "email": "oidc-ci@example.com",
+            "groups": ["admin"],
+            "iat": now,
+            "exp": now + timedelta(minutes=10),
+            "iss": "https://idp.example.com/",
+            "aud": "scalescore-api",
+        },
+        private_key,
+        algorithm="RS256",
+    )
+
+    with httpx.Client(base_url=base_url, timeout=30.0) as client:
+        response = client.get(
+            "/api/v1/assessments",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        result["status_code"] = response.status_code
+        if response.status_code != 200:
+            result["body"] = response.text[:1000]
+            raise RuntimeError("external OIDC protected endpoint returned non-200")
+    result["status"] = "PASS"
+except Exception as err:  # noqa: BLE001
+    result["error"] = str(err)
+    result_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    raise
+
+result_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+              then
+                EXTERNAL_OIDC_SMOKE_STATUS="PASS"
+              fi
+            fi
+          fi
+
+          echo "EXTERNAL_OIDC_SMOKE_STATUS=${EXTERNAL_OIDC_SMOKE_STATUS}" >>"${GITHUB_ENV}"
+
+      - name: Publish release-gate summary
+        run: |
+          set -euo pipefail
+
+          INTERNAL_JWT_SMOKE_STATUS="${INTERNAL_JWT_SMOKE_STATUS:-FAIL}"
+          BENCHMARK_STATUS="${BENCHMARK_STATUS:-FAIL}"
+          RELEASE_GATE_STATUS="${RELEASE_GATE_STATUS:-FAIL}"
+          EXTERNAL_OIDC_SMOKE_STATUS="${EXTERNAL_OIDC_SMOKE_STATUS:-FAIL}"
+
+          OVERALL_STATUS="PASS"
+          for status in \
+            "${INTERNAL_JWT_SMOKE_STATUS}" \
+            "${BENCHMARK_STATUS}" \
+            "${RELEASE_GATE_STATUS}" \
+            "${EXTERNAL_OIDC_SMOKE_STATUS}"; do
+            if [[ "${status}" != "PASS" ]]; then
+              OVERALL_STATUS="FAIL"
+              break
+            fi
+          done
+
+          {
+            echo "## Staging Validation Gate"
+            echo ""
+            echo "| Check | Status |"
+            echo "|---|---|"
+            echo "| Internal JWT smoke | ${INTERNAL_JWT_SMOKE_STATUS} |"
+            echo "| Async benchmark execution | ${BENCHMARK_STATUS} |"
+            echo "| Async release-gate criteria | ${RELEASE_GATE_STATUS} |"
+            echo "| External OIDC smoke | ${EXTERNAL_OIDC_SMOKE_STATUS} |"
+            echo ""
+            echo "- Overall: **${OVERALL_STATUS}**"
+            echo "- Benchmark jobs: ${BENCHMARK_JOBS}"
+            echo "- Benchmark timeout (seconds): ${BENCHMARK_TIMEOUT_SECONDS}"
+            echo "- p95 baseline seconds: ${P95_BASELINE_SECONDS:-<not provided>}"
+            echo "- Allowed p95 regression percent: ${MAX_P95_REGRESSION_PERCENT}"
+            echo ""
+            if [[ -f "${GATE_DIR}/release_gate_summary.md" ]]; then
+              echo "### Gate Details"
+              cat "${GATE_DIR}/release_gate_summary.md"
+            fi
+          } >>"${GITHUB_STEP_SUMMARY}"
+
+          if [[ "${OVERALL_STATUS}" != "PASS" ]]; then
+            exit 1
+          fi
+
+      - name: Upload staging validation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-validation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.VALIDATION_ROOT }}
+          if-no-files-found: error
+          retention-days: 14
