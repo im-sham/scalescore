@@ -1386,7 +1386,7 @@ async def pull_entities_from_opsorchestra(
     for entity_group in pulled_entities.values():
         for entity in entity_group:
             repository.upsert_entity(entity, tenant_id=current_user.tenant_id)
-            entity_key = entity.type.value
+            entity_key = str(entity.type).strip().lower()
             imported_counts[entity_key] = imported_counts.get(entity_key, 0) + 1
             imported_total += 1
 

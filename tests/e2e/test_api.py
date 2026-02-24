@@ -573,6 +573,63 @@ def test_pull_entities_from_opsorchestra_success(monkeypatch) -> None:
     assert payload["imported_counts"]["team"] == 1
 
 
+def test_pull_entities_from_opsorchestra_success_with_string_entity_types(monkeypatch) -> None:
+    monkeypatch.setattr(
+        settings.integration,
+        "opsorchestra_graph_export_url",
+        "https://opsorchestra.example/export",
+    )
+
+    async def _fake_pull(
+        self,
+        *,
+        tenant_id: str,
+        org_id: str | None = None,
+    ) -> dict[str, list]:
+        return {
+            "organizations": [
+                Organization.model_validate(
+                    {
+                        "id": "org_pull_str",
+                        "type": "organization",
+                        "name": "Pulled Org (str type)",
+                        "headcount_current": 20,
+                    }
+                )
+            ],
+            "teams": [
+                Team.model_validate(
+                    {
+                        "id": "team_pull_str",
+                        "type": "team",
+                        "org_id": "org_pull_str",
+                        "name": "Ops",
+                        "function": "operations",
+                        "headcount_current": 7,
+                    }
+                )
+            ],
+            "systems": [],
+            "vendors": [],
+            "facilities": [],
+            "roles": [],
+            "processes": [],
+        }
+
+    monkeypatch.setattr(OpsOrchestraConnector, "pull_entities", _fake_pull)
+
+    response = client.post(
+        "/api/v1/integrations/opsorchestra/pull",
+        headers=_auth_headers(),
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "imported"
+    assert payload["imported_total"] == 2
+    assert payload["imported_counts"]["organization"] == 1
+    assert payload["imported_counts"]["team"] == 1
+
+
 def test_opsorchestra_token_authentication_when_enabled(tmp_path: Path, monkeypatch) -> None:
     get_opsorchestra_auth_service.cache_clear()
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)

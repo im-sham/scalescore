@@ -104,14 +104,21 @@ class SQLiteEntityRepository:
         model_cls = self._entity_model(entity_type)
         return model_cls.model_validate_json(payload)
 
+    @staticmethod
+    def _entity_type_value(entity: BaseEntity) -> str:
+        entity_type = entity.type
+        if isinstance(entity_type, EntityType):
+            return entity_type.value
+        return str(entity_type)
+
     def _resolve_org_id(self, entity: BaseEntity) -> str | None:
-        if entity.type == EntityType.ORGANIZATION:
+        if self._entity_type_value(entity) == EntityType.ORGANIZATION.value:
             return entity.id
         org_id = getattr(entity, "org_id", None)
         return str(org_id) if org_id else None
 
     def upsert_entity(self, entity: BaseEntity, *, tenant_id: str) -> BaseEntity:
-        entity_type = entity.type.value
+        entity_type = self._entity_type_value(entity)
         now = datetime.now(UTC).isoformat()
         org_id = self._resolve_org_id(entity)
 

@@ -86,3 +86,25 @@ def test_delete_entity_is_tenant_scoped(tmp_path) -> None:
         entity_type="team",
     )
     assert deleted is True
+
+
+def test_upsert_entity_accepts_string_entity_type_from_validated_payload(tmp_path) -> None:
+    repository = SQLiteEntityRepository(tmp_path / "entities.sqlite3")
+    payload = {
+        "id": "org_str",
+        "type": "organization",
+        "name": "String Type Org",
+        "headcount_current": 10,
+    }
+    organization = Organization.model_validate(payload)
+
+    repository.upsert_entity(organization, tenant_id="tenant_a")
+    loaded = repository.get_entity(
+        "org_str",
+        tenant_id="tenant_a",
+        entity_type="organization",
+    )
+
+    assert loaded is not None
+    assert loaded.id == "org_str"
+    assert loaded.name == "String Type Org"
