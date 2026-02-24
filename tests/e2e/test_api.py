@@ -13,6 +13,7 @@ from scalescore.api import main as api_main
 from scalescore.api.main import app
 from scalescore.config import settings
 from scalescore.connectors.opsorchestra_connector import OpsOrchestraConnector
+from scalescore.core.auth.external_oidc import get_external_oidc_auth_service
 from scalescore.core.auth.opsorchestra import (
     OpsOrchestraAuthService,
     get_opsorchestra_auth_service,
@@ -131,6 +132,30 @@ def _issue_opsorchestra_token(
             "iat": now,
             "exp": now + timedelta(minutes=10),
             "iss": "opsorchestra",
+            "aud": "scalescore-api",
+        },
+        private_key,
+        algorithm="RS256",
+    )
+
+
+def _issue_external_oidc_token(
+    *,
+    private_key: rsa.RSAPrivateKey,
+    tenant_id: str = "oidc-tenant",
+    roles: list[str] | None = None,
+) -> str:
+    roles = roles or ["admin"]
+    now = datetime.now(UTC)
+    return jwt.encode(
+        {
+            "sub": "oidc-user-1",
+            "tid": tenant_id,
+            "email": "oidc-user@example.com",
+            "groups": roles,
+            "iat": now,
+            "exp": now + timedelta(minutes=10),
+            "iss": "https://idp.example.com/",
             "aud": "scalescore-api",
         },
         private_key,
@@ -679,6 +704,63 @@ def test_opsorchestra_token_auth_returns_503_when_unconfigured(monkeypatch) -> N
     )
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "OPSORCHESTRA_AUTH_NOT_CONFIGURED"
+
+
+def test_external_oidc_token_authentication_when_enabled(tmp_path: Path, monkeypatch) -> None:
+    get_external_oidc_auth_service.cache_clear()
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_key_path = tmp_path / "external-oidc-public.pem"
+    public_key_path.write_bytes(
+        private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+    )
+
+    monkeypatch.setattr(settings.integration, "external_oidc_auth_enabled", True)
+    monkeypatch.setattr(
+        settings.integration,
+        "external_oidc_jwt_public_key_path",
+        str(public_key_path),
+    )
+    monkeypatch.setattr(settings.integration, "external_oidc_jwks_url", None)
+    monkeypatch.setattr(
+        settings.integration, "external_oidc_jwt_issuer", "https://idp.example.com/"
+    )
+    monkeypatch.setattr(settings.integration, "external_oidc_jwt_audience", "scalescore-api")
+    monkeypatch.setattr(settings.integration, "external_oidc_sub_claim", "sub")
+    monkeypatch.setattr(settings.integration, "external_oidc_tenant_claim", "tid")
+    monkeypatch.setattr(settings.integration, "external_oidc_email_claim", "email")
+    monkeypatch.setattr(settings.integration, "external_oidc_roles_claim", "groups")
+
+    token = _issue_external_oidc_token(
+        private_key=private_key,
+        tenant_id="tenant-oidc",
+        roles=["admin"],
+    )
+
+    response = client.get(
+        "/api/v1/assessments",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+
+
+def test_external_oidc_token_auth_returns_503_when_unconfigured(monkeypatch) -> None:
+    get_external_oidc_auth_service.cache_clear()
+    monkeypatch.setattr(settings.integration, "external_oidc_auth_enabled", True)
+    monkeypatch.setattr(settings.integration, "external_oidc_jwt_public_key_path", None)
+    monkeypatch.setattr(settings.integration, "external_oidc_jwks_url", None)
+    monkeypatch.setattr(
+        settings.integration, "external_oidc_jwt_issuer", "https://idp.example.com/"
+    )
+
+    response = client.get(
+        "/api/v1/assessments",
+        headers={"Authorization": "Bearer invalid.token.value"},
+    )
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "EXTERNAL_OIDC_AUTH_NOT_CONFIGURED"
 
 
 def test_opsorchestra_token_auth_returns_503_when_key_service_unavailable(

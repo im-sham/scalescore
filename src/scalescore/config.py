@@ -237,6 +237,31 @@ class IntegrationSettings(BaseSettings):
     )
     opsorchestra_require_email_claim: bool = True
     opsorchestra_require_roles_claim: bool = True
+    external_oidc_auth_enabled: bool = False
+    external_oidc_provider_name: str = "external-oidc"
+    external_oidc_allow_private_network: bool = False
+    external_oidc_jwt_public_key_path: str | None = None
+    external_oidc_jwks_url: str | None = None
+    external_oidc_jwks_timeout_seconds: float = Field(default=5.0, ge=1.0, le=30.0)
+    external_oidc_jwks_cache_ttl_seconds: int = Field(default=300, ge=30, le=3600)
+    external_oidc_jwt_leeway_seconds: int = Field(default=30, ge=0, le=300)
+    external_oidc_jwt_issuer: str = ""
+    external_oidc_jwt_audience: str = "scalescore-api"
+    external_oidc_sub_claim: str = "sub"
+    external_oidc_tenant_claim: str = "tenant_id"
+    external_oidc_tenant_claim_fallbacks: list[str] = Field(
+        default_factory=lambda: ["tid", "tenant", "org_id"]
+    )
+    external_oidc_email_claim: str = "email"
+    external_oidc_email_claim_fallbacks: list[str] = Field(
+        default_factory=lambda: ["upn", "preferred_username"]
+    )
+    external_oidc_roles_claim: str = "roles"
+    external_oidc_roles_claim_fallbacks: list[str] = Field(
+        default_factory=lambda: ["groups", "scope", "scp"]
+    )
+    external_oidc_require_email_claim: bool = True
+    external_oidc_require_roles_claim: bool = True
     opsorchestra_graph_export_url: str | None = None
     opsorchestra_graph_token: SecretStr | None = None
     opsorchestra_graph_timeout_seconds: float = Field(default=15.0, ge=1.0, le=60.0)
@@ -323,27 +348,50 @@ class Settings(BaseSettings):
                 )
 
         if self.environment in {"staging", "production"}:
-            allow_private_network = self.integration.opsorchestra_allow_private_network
+            ops_allow_private_network = self.integration.opsorchestra_allow_private_network
             if self.integration.opsorchestra_jwks_url:
                 validate_remote_url(
                     self.integration.opsorchestra_jwks_url,
                     setting_name="INTEGRATION_OPSORCHESTRA_JWKS_URL",
                     require_https=True,
-                    allow_private_network=allow_private_network,
+                    allow_private_network=ops_allow_private_network,
                 )
             if self.integration.opsorchestra_graph_export_url:
                 validate_remote_url(
                     self.integration.opsorchestra_graph_export_url,
                     setting_name="INTEGRATION_OPSORCHESTRA_GRAPH_EXPORT_URL",
                     require_https=True,
-                    allow_private_network=allow_private_network,
+                    allow_private_network=ops_allow_private_network,
                 )
             if self.integration.opsorchestra_outbound_url:
                 validate_remote_url(
                     self.integration.opsorchestra_outbound_url,
                     setting_name="INTEGRATION_OPSORCHESTRA_OUTBOUND_URL",
                     require_https=True,
-                    allow_private_network=allow_private_network,
+                    allow_private_network=ops_allow_private_network,
+                )
+            external_allow_private_network = self.integration.external_oidc_allow_private_network
+            if self.integration.external_oidc_jwks_url:
+                validate_remote_url(
+                    self.integration.external_oidc_jwks_url,
+                    setting_name="INTEGRATION_EXTERNAL_OIDC_JWKS_URL",
+                    require_https=True,
+                    allow_private_network=external_allow_private_network,
+                )
+
+        if self.integration.external_oidc_auth_enabled:
+            if not (
+                self.integration.external_oidc_jwt_public_key_path
+                or self.integration.external_oidc_jwks_url
+            ):
+                raise ValueError(
+                    "External OIDC auth requires INTEGRATION_EXTERNAL_OIDC_JWT_PUBLIC_KEY_PATH "
+                    "or INTEGRATION_EXTERNAL_OIDC_JWKS_URL"
+                )
+            if not self.integration.external_oidc_jwt_issuer.strip():
+                raise ValueError(
+                    "INTEGRATION_EXTERNAL_OIDC_JWT_ISSUER is required when "
+                    "INTEGRATION_EXTERNAL_OIDC_AUTH_ENABLED=true"
                 )
 
         if (

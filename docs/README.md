@@ -25,7 +25,7 @@ docs/
 │   ├── README.md               # ADR index and template
 │   ├── 0001-use-pydantic-v2-for-models.md
 │   ├── ...
-│   └── 0016-user-management-strategy.md
+│   └── 0017-open-source-auth-provider-strategy.md
 ```
 
 ---

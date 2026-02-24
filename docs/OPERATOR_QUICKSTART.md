@@ -118,5 +118,5 @@ Use this minimal handoff request:
 ## Next Step
 
 After your first successful run, move to:
-- `docs/OPEN_SOURCE_STRATEGY.md` for rollout and adoption planning.
+- `docs/adr/0017-open-source-auth-provider-strategy.md` for auth deployment policy (OSS default and optional managed SSO path).
 - `README.md` for technical integration options.

@@ -23,6 +23,10 @@ class TestSettings:
         assert settings.integration.opsorchestra_jwks_url is None
         assert settings.integration.opsorchestra_require_email_claim is True
         assert settings.integration.opsorchestra_require_roles_claim is True
+        assert settings.integration.external_oidc_auth_enabled is False
+        assert settings.integration.external_oidc_jwks_url is None
+        assert settings.integration.external_oidc_require_email_claim is True
+        assert settings.integration.external_oidc_require_roles_claim is True
         assert settings.auth.login_rate_limit_requests == 120
         assert settings.integration.opsorchestra_http_max_retries == 2
         assert settings.async_assessment.mode == "poll"
@@ -113,6 +117,43 @@ class TestSettings:
                 environment="staging",
                 integration=IntegrationSettings(
                     opsorchestra_jwks_url="http://opsorchestra.example/jwks"
+                ),
+            )
+
+    def test_staging_rejects_non_https_external_oidc_jwks_url(self) -> None:
+        """Verify staging requires HTTPS for external OIDC JWKS URLs."""
+        from scalescore.config import IntegrationSettings, Settings
+
+        with pytest.raises(ValueError, match="must use https"):
+            Settings(
+                environment="staging",
+                integration=IntegrationSettings(
+                    external_oidc_jwks_url="http://idp.example/jwks"
+                ),
+            )
+
+    def test_external_oidc_enabled_requires_issuer(self) -> None:
+        from scalescore.config import IntegrationSettings, Settings
+
+        with pytest.raises(ValueError, match="INTEGRATION_EXTERNAL_OIDC_JWT_ISSUER"):
+            Settings(
+                integration=IntegrationSettings(
+                    external_oidc_auth_enabled=True,
+                    external_oidc_jwt_public_key_path="/tmp/idp.pem",
+                    external_oidc_jwt_issuer="",
+                ),
+            )
+
+    def test_external_oidc_enabled_requires_key_or_jwks(self) -> None:
+        from scalescore.config import IntegrationSettings, Settings
+
+        with pytest.raises(ValueError, match="External OIDC auth requires"):
+            Settings(
+                integration=IntegrationSettings(
+                    external_oidc_auth_enabled=True,
+                    external_oidc_jwt_issuer="https://idp.example.com/",
+                    external_oidc_jwt_public_key_path=None,
+                    external_oidc_jwks_url=None,
                 ),
             )
 

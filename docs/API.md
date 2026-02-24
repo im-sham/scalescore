@@ -1,6 +1,6 @@
 # ScaleScore API Reference
 
-> **Last Updated:** February 22, 2026  
+> **Last Updated:** February 24, 2026  
 > **Version:** v1 (`/api/v1`)
 
 ---
@@ -44,6 +44,17 @@ Note: `.env.example` sets `AUTH_SKIP_AUTH=true` for development convenience.
 ScaleScore supports two auth methods:
 - `Authorization: Bearer <access_token>`
 - `X-API-Key: <api_key>`
+
+### Deployment auth modes
+
+| Scenario | Auth path | Auth0 required? |
+|---|---|---|
+| Local development | Internal auth (`/api/v1/auth/*`) or dev bypass (`AUTH_SKIP_AUTH=true`) | No |
+| Open-source/self-hosted production | Internal JWT + refresh + API keys | No |
+| OpsOrchestra-integrated deployment | Internal auth and/or trusted OpsOrchestra JWT mode | No |
+| Managed SSO deployment (optional) | Standards-based OIDC provider integration (Auth0 or equivalent) | Optional |
+
+ScaleScore's open-source baseline does not require Auth0. External IdP integration is an optional deployment profile and should remain provider-neutral. See [ADR-0017](./adr/0017-open-source-auth-provider-strategy.md).
 
 Optional integration mode:
 - OpsOrchestra-issued Bearer JWTs can be accepted on protected routes when
@@ -128,6 +139,25 @@ INTEGRATION_OPSORCHESTRA_ROLES_CLAIM=roles
 INTEGRATION_OPSORCHESTRA_ROLES_CLAIM_FALLBACKS=["groups","scope","scp"]
 INTEGRATION_OPSORCHESTRA_REQUIRE_EMAIL_CLAIM=true
 INTEGRATION_OPSORCHESTRA_REQUIRE_ROLES_CLAIM=true
+```
+
+### External OIDC JWT mode (provider-neutral scaffold)
+
+For managed SSO deployments, ScaleScore can optionally verify upstream OIDC JWTs
+using static key or JWKS configuration without binding to a specific vendor:
+
+```bash
+INTEGRATION_EXTERNAL_OIDC_AUTH_ENABLED=true
+INTEGRATION_EXTERNAL_OIDC_PROVIDER_NAME=auth0
+
+# Configure either static key path OR JWKS URL
+# INTEGRATION_EXTERNAL_OIDC_JWT_PUBLIC_KEY_PATH=/path/to/idp-public.pem
+INTEGRATION_EXTERNAL_OIDC_JWKS_URL=https://idp.example.com/.well-known/jwks.json
+
+INTEGRATION_EXTERNAL_OIDC_JWT_ISSUER=https://idp.example.com/
+INTEGRATION_EXTERNAL_OIDC_JWT_AUDIENCE=scalescore-api
+INTEGRATION_EXTERNAL_OIDC_TENANT_CLAIM=tenant_id
+INTEGRATION_EXTERNAL_OIDC_ROLES_CLAIM=roles
 ```
 
 ---

@@ -136,7 +136,7 @@ ScaleScore enforces strict tenant isolation and access control:
 
 - **Tenant Isolation:** All queries and stored data are scoped by `org_id`.
 - **Authentication:**
-  - **Standalone:** JWT or API key auth (MVP); OAuth2/SSO in production.
+  - **Standalone:** JWT or API key auth by default; optional OIDC/SSO provider integration for managed deployments.
   - **Integrated:** Trust OpsOrchestra session context and tenant claims.
 - **Authorization:** Role-based access (viewer/editor/admin/owner) for data management, scoring configuration, and exports.
 - **Data Privacy:** Sensitive fields (e.g., revenue, headcount plans) are treated as confidential and excluded from logs by default.

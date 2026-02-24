@@ -111,8 +111,10 @@ ScaleScore is designed to operate **standalone OR as an OpsOrchestra module**.
 
 | Mode | Data Source | Auth | Storage |
 |------|-------------|------|---------|
-| **Standalone** | CSV, direct API | Own JWT | SQLite/Postgres |
-| **Integrated** | OpsOrchestra knowledge graph | Tenant context | Shared DB |
+| **Standalone** | CSV, direct API | Own JWT/API key (optional external OIDC profile) | SQLite/Postgres |
+| **Integrated** | OpsOrchestra knowledge graph | Tenant context + trusted upstream JWT | Shared DB |
+
+Auth0 is optional. Open-source/local/self-hosted ScaleScore remains fully usable with internal auth only. See [ADR-0017](docs/adr/0017-open-source-auth-provider-strategy.md).
 
 When integrated, ScaleScore becomes the "strategic layer" for OpsOrchestra/Mila:
 - **Layer 1 (OpsOrchestra):** What does the org know?

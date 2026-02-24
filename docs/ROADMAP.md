@@ -315,7 +315,7 @@ Before advancing to next phase:
 | Dependency | Risk | Mitigation |
 |------------|------|------------|
 | OpsOrchestra API | Changes could break connector | Version-pinned client, adapter pattern |
-| Auth provider (future) | Vendor lock-in | Abstract auth interface |
+| Auth provider (optional) | Vendor lock-in if tightly coupled to one IdP | Keep internal auth as OSS default and integrate external IdPs through provider-neutral OIDC/JWKS boundaries (ADR-0017) |
 | Cloud provider | Cost, availability | Multi-cloud deployment option |
 
 ### Technical Risks

@@ -9,6 +9,7 @@ from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBea
 
 from scalescore.config import settings
 from scalescore.core.audit import audit_access_denied
+from scalescore.core.auth.external_oidc import get_external_oidc_auth_service
 from scalescore.core.auth.jwt import JWTService, TokenPayload
 from scalescore.core.auth.opsorchestra import get_opsorchestra_auth_service
 from scalescore.core.auth.roles import Permission, get_permissions
@@ -56,17 +57,37 @@ async def get_current_user(
             return jwt_service.verify_token(token)
         except AuthenticationError as err:
             auth_error = err
+            if settings.integration.external_oidc_auth_enabled:
+                try:
+                    external_oidc_auth = get_external_oidc_auth_service()
+                except ValueError as config_err:
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail={
+                            "code": "EXTERNAL_OIDC_AUTH_NOT_CONFIGURED",
+                            "message": str(config_err),
+                        },
+                    ) from config_err
+                try:
+                    return external_oidc_auth.verify_token(token)
+                except AuthenticationError as external_error:
+                    auth_error = external_error
+                except ScaleScoreError as external_error:
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail=external_error.to_dict(include_details=settings.is_development()),
+                    ) from external_error
             if settings.integration.opsorchestra_auth_enabled:
                 try:
                     opsorchestra_auth = get_opsorchestra_auth_service()
-                except ValueError as err:
+                except ValueError as config_err:
                     raise HTTPException(
                         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                         detail={
                             "code": "OPSORCHESTRA_AUTH_NOT_CONFIGURED",
-                            "message": str(err),
+                            "message": str(config_err),
                         },
-                    ) from err
+                    ) from config_err
                 try:
                     return opsorchestra_auth.verify_parent_token(token)
                 except AuthenticationError as ops_error:
