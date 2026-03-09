@@ -63,6 +63,10 @@ Workflow outputs:
 - release-gate evaluation artifacts (`release_gate_result.json`, `release_gate_summary.md`)
 - auth smoke evidence (internal JWT and external OIDC)
 
+Notes:
+- The workflow generates ephemeral internal JWT signing keys at runtime so `ENVIRONMENT=staging` auth flows can be exercised without checking secrets into the repo.
+- External OIDC smoke uses a separate ephemeral RSA keypair and uploads only the smoke results, not the private keys.
+
 ---
 
 ## Async Load/Stress Validation (1000+ Entities)

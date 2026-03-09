@@ -63,12 +63,19 @@ jobs:
           set -euo pipefail
           TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
           VALIDATION_ROOT="${RUNNER_TEMP}/staging-validation/${TIMESTAMP}"
+          AUTH_KEY_DIR="${RUNNER_TEMP}/staging-auth/${TIMESTAMP}"
           DATASET_DIR="${VALIDATION_ROOT}/dataset"
           BENCHMARK_DIR="${VALIDATION_ROOT}/benchmark"
           GATE_DIR="${VALIDATION_ROOT}/gate"
           SMOKE_DIR="${VALIDATION_ROOT}/smoke"
 
-          mkdir -p "${VALIDATION_ROOT}" "${DATASET_DIR}" "${BENCHMARK_DIR}" "${GATE_DIR}" "${SMOKE_DIR}"
+          mkdir -p \
+            "${VALIDATION_ROOT}" \
+            "${AUTH_KEY_DIR}" \
+            "${DATASET_DIR}" \
+            "${BENCHMARK_DIR}" \
+            "${GATE_DIR}" \
+            "${SMOKE_DIR}"
 
           JOBS="${INPUT_JOBS:-5}"
           TIMEOUT_SECONDS="${INPUT_TIMEOUT_SECONDS:-1800}"
@@ -76,6 +83,7 @@ jobs:
           P95_BASELINE_SECONDS="${INPUT_BASELINE_P95_SECONDS:-}"
 
           echo "VALIDATION_ROOT=${VALIDATION_ROOT}" >>"${GITHUB_ENV}"
+          echo "AUTH_KEY_DIR=${AUTH_KEY_DIR}" >>"${GITHUB_ENV}"
           echo "DATASET_DIR=${DATASET_DIR}" >>"${GITHUB_ENV}"
           echo "BENCHMARK_DIR=${BENCHMARK_DIR}" >>"${GITHUB_ENV}"
           echo "GATE_DIR=${GATE_DIR}" >>"${GITHUB_ENV}"
@@ -84,6 +92,15 @@ jobs:
           echo "BENCHMARK_TIMEOUT_SECONDS=${TIMEOUT_SECONDS}" >>"${GITHUB_ENV}"
           echo "MAX_P95_REGRESSION_PERCENT=${MAX_P95_REGRESSION_PERCENT}" >>"${GITHUB_ENV}"
           echo "P95_BASELINE_SECONDS=${P95_BASELINE_SECONDS}" >>"${GITHUB_ENV}"
+
+          INTERNAL_JWT_PRIVATE_KEY_PATH="${AUTH_KEY_DIR}/internal_jwt_private.pem"
+          INTERNAL_JWT_PUBLIC_KEY_PATH="${AUTH_KEY_DIR}/internal_jwt_public.pem"
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+            -out "${INTERNAL_JWT_PRIVATE_KEY_PATH}" >/dev/null 2>&1
+          openssl pkey -in "${INTERNAL_JWT_PRIVATE_KEY_PATH}" \
+            -pubout -out "${INTERNAL_JWT_PUBLIC_KEY_PATH}" >/dev/null 2>&1
+          echo "AUTH_JWT_PRIVATE_KEY_PATH=${INTERNAL_JWT_PRIVATE_KEY_PATH}" >>"${GITHUB_ENV}"
+          echo "AUTH_JWT_PUBLIC_KEY_PATH=${INTERNAL_JWT_PUBLIC_KEY_PATH}" >>"${GITHUB_ENV}"
 
           PYTHONPATH=src python scripts/generate_async_benchmark_dataset.py \
             --output-dir "${DATASET_DIR}" \
@@ -191,10 +208,13 @@ jobs:
           }
           trap cleanup EXIT
 
+          EXTERNAL_OIDC_PRIVATE_KEY_PATH="${AUTH_KEY_DIR}/external_oidc_private.pem"
+          EXTERNAL_OIDC_PUBLIC_KEY_PATH="${AUTH_KEY_DIR}/external_oidc_public.pem"
+
           if ! openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
-            -out "${SMOKE_DIR}/external_oidc_private.pem" >/dev/null 2>&1 \
-            || ! openssl pkey -in "${SMOKE_DIR}/external_oidc_private.pem" \
-              -pubout -out "${SMOKE_DIR}/external_oidc_public.pem" >/dev/null 2>&1; then
+            -out "${EXTERNAL_OIDC_PRIVATE_KEY_PATH}" >/dev/null 2>&1 \
+            || ! openssl pkey -in "${EXTERNAL_OIDC_PRIVATE_KEY_PATH}" \
+              -pubout -out "${EXTERNAL_OIDC_PUBLIC_KEY_PATH}" >/dev/null 2>&1; then
             echo "Failed to generate external OIDC key pair." >&2
           else
             PYTHONPATH=src \
@@ -202,7 +222,7 @@ jobs:
             STORAGE_AUTH_DB_PATH="${RUNNER_TEMP}/auth-8001.sqlite3" \
             INTEGRATION_EXTERNAL_OIDC_AUTH_ENABLED=true \
             INTEGRATION_EXTERNAL_OIDC_PROVIDER_NAME=auth0 \
-            INTEGRATION_EXTERNAL_OIDC_JWT_PUBLIC_KEY_PATH="${SMOKE_DIR}/external_oidc_public.pem" \
+            INTEGRATION_EXTERNAL_OIDC_JWT_PUBLIC_KEY_PATH="${EXTERNAL_OIDC_PUBLIC_KEY_PATH}" \
             INTEGRATION_EXTERNAL_OIDC_JWT_ISSUER="https://idp.example.com/" \
             INTEGRATION_EXTERNAL_OIDC_JWT_AUDIENCE="scalescore-api" \
             INTEGRATION_EXTERNAL_OIDC_TENANT_CLAIM="tid" \
@@ -225,7 +245,7 @@ jobs:
               if python scripts/run_auth_smoke.py \
                 --mode external-oidc \
                 --base-url "${EXTERNAL_OIDC_BASE_URL}" \
-                --private-key-path "${SMOKE_DIR}/external_oidc_private.pem" \
+                --private-key-path "${EXTERNAL_OIDC_PRIVATE_KEY_PATH}" \
                 --issuer "https://idp.example.com/" \
                 --audience "scalescore-api" \
                 --result-path "${SMOKE_DIR}/external_oidc_smoke.json"
