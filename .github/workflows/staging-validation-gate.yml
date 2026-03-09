@@ -130,74 +130,11 @@ jobs:
           if [[ "${HEALTHY}" != "true" ]]; then
             echo "Primary API did not become healthy." >&2
           else
-            if python - "${BASE_URL}" "${SMOKE_DIR}/internal_jwt_smoke.json" "${SMOKE_DIR}/internal_access_token.txt" <<'PY'
-              import json
-              import sys
-              import time
-              import uuid
-              from pathlib import Path
-
-              import httpx
-
-              base_url = sys.argv[1]
-              result_path = Path(sys.argv[2])
-              token_path = Path(sys.argv[3])
-
-              result = {
-                  "base_url": base_url,
-                  "status": "FAIL",
-              }
-
-              email = f"ci-{int(time.time())}-{uuid.uuid4().hex[:8]}@example.com"
-              password = "strong-password"
-
-              try:
-                  with httpx.Client(base_url=base_url, timeout=30.0) as client:
-                      signup_response = client.post(
-                          "/api/v1/auth/signup",
-                          json={
-                              "email": email,
-                              "password": password,
-                              "tenant_id": "tenant-ci",
-                              "org_id": "org-ci",
-                              "roles": ["admin"],
-                          },
-                      )
-                      result["signup_status_code"] = signup_response.status_code
-                      if signup_response.status_code != 201:
-                          result["signup_body"] = signup_response.text[:1000]
-                          raise RuntimeError("signup failed")
-
-                      login_response = client.post(
-                          "/api/v1/auth/login",
-                          json={"email": email, "password": password},
-                      )
-                      result["login_status_code"] = login_response.status_code
-                      if login_response.status_code != 200:
-                          result["login_body"] = login_response.text[:1000]
-                          raise RuntimeError("login failed")
-                      access_token = login_response.json().get("access_token")
-                      if not access_token:
-                          raise RuntimeError("login response missing access_token")
-
-                      protected_response = client.get(
-                          "/api/v1/assessments",
-                          headers={"Authorization": f"Bearer {access_token}"},
-                      )
-                      result["protected_status_code"] = protected_response.status_code
-                      if protected_response.status_code != 200:
-                          result["protected_body"] = protected_response.text[:1000]
-                          raise RuntimeError("protected endpoint failed")
-
-                      token_path.write_text(access_token + "\n", encoding="utf-8")
-                      result["status"] = "PASS"
-              except Exception as err:  # noqa: BLE001
-                  result["error"] = str(err)
-                  result_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-                  raise
-
-              result_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-              PY
+            if python scripts/run_auth_smoke.py \
+              --mode internal-jwt \
+              --base-url "${BASE_URL}" \
+              --result-path "${SMOKE_DIR}/internal_jwt_smoke.json" \
+              --token-output-path "${SMOKE_DIR}/internal_access_token.txt"
             then
               INTERNAL_JWT_SMOKE_STATUS="PASS"
             fi
@@ -254,33 +191,10 @@ jobs:
           }
           trap cleanup EXIT
 
-          if ! python - "${SMOKE_DIR}/external_oidc_public.pem" "${SMOKE_DIR}/external_oidc_private.pem" <<'PY'
-            from pathlib import Path
-
-            from cryptography.hazmat.primitives import serialization
-            from cryptography.hazmat.primitives.asymmetric import rsa
-
-            public_path = Path(__import__("sys").argv[1])
-            private_path = Path(__import__("sys").argv[2])
-
-            private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-            public_key = private_key.public_key()
-
-            public_path.write_bytes(
-                public_key.public_bytes(
-                    encoding=serialization.Encoding.PEM,
-                    format=serialization.PublicFormat.SubjectPublicKeyInfo,
-                )
-            )
-            private_path.write_bytes(
-                private_key.private_bytes(
-                    encoding=serialization.Encoding.PEM,
-                    format=serialization.PrivateFormat.PKCS8,
-                    encryption_algorithm=serialization.NoEncryption(),
-                )
-            )
-            PY
-          then
+          if ! openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+            -out "${SMOKE_DIR}/external_oidc_private.pem" >/dev/null 2>&1 \
+            || ! openssl pkey -in "${SMOKE_DIR}/external_oidc_private.pem" \
+              -pubout -out "${SMOKE_DIR}/external_oidc_public.pem" >/dev/null 2>&1; then
             echo "Failed to generate external OIDC key pair." >&2
           else
             PYTHONPATH=src \
@@ -308,63 +222,13 @@ jobs:
             done
 
             if [[ "${OIDC_HEALTHY}" == "true" ]]; then
-              if python - "${EXTERNAL_OIDC_BASE_URL}" "${SMOKE_DIR}/external_oidc_private.pem" "${SMOKE_DIR}/external_oidc_smoke.json" <<'PY'
-                import json
-                import sys
-                from datetime import UTC, datetime, timedelta
-                from pathlib import Path
-
-                import httpx
-                import jwt
-                from cryptography.hazmat.primitives import serialization
-
-                base_url = sys.argv[1]
-                private_key_path = Path(sys.argv[2])
-                result_path = Path(sys.argv[3])
-
-                result = {
-                    "base_url": base_url,
-                    "status": "FAIL",
-                }
-
-                try:
-                    private_key = serialization.load_pem_private_key(
-                        private_key_path.read_bytes(),
-                        password=None,
-                    )
-                    now = datetime.now(UTC)
-                    token = jwt.encode(
-                        {
-                            "sub": "oidc-ci-user",
-                            "tid": "tenant-ci-oidc",
-                            "email": "oidc-ci@example.com",
-                            "groups": ["admin"],
-                            "iat": now,
-                            "exp": now + timedelta(minutes=10),
-                            "iss": "https://idp.example.com/",
-                            "aud": "scalescore-api",
-                        },
-                        private_key,
-                        algorithm="RS256",
-                    )
-
-                    with httpx.Client(base_url=base_url, timeout=30.0) as client:
-                        response = client.get(
-                            "/api/v1/assessments",
-                            headers={"Authorization": f"Bearer {token}"},
-                        )
-                        result["status_code"] = response.status_code
-                        if response.status_code != 200:
-                            result["body"] = response.text[:1000]
-                            raise RuntimeError("external OIDC protected endpoint returned non-200")
-                    result["status"] = "PASS"
-                except Exception as err:  # noqa: BLE001
-                    result["error"] = str(err)
-                    result_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-                    raise
-
-                result_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-                PY
+              if python scripts/run_auth_smoke.py \
+                --mode external-oidc \
+                --base-url "${EXTERNAL_OIDC_BASE_URL}" \
+                --private-key-path "${SMOKE_DIR}/external_oidc_private.pem" \
+                --issuer "https://idp.example.com/" \
+                --audience "scalescore-api" \
+                --result-path "${SMOKE_DIR}/external_oidc_smoke.json"
               then
                 EXTERNAL_OIDC_SMOKE_STATUS="PASS"
               fi
