@@ -21,7 +21,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from scalescore.api.dependencies.auth import RequirePermission
 from scalescore.api.exception_handlers import register_exception_handlers
@@ -33,7 +33,7 @@ from scalescore.connectors.opsorchestra_connector import (
     OpsOrchestraConnector,
     get_opsorchestra_connector,
 )
-from scalescore.core.assessment import run_assessment_from_csv
+from scalescore.core.assessment import run_assessment_from_csv, run_workflow_assessment
 from scalescore.core.async_assessment import AsyncAssessmentWorker
 from scalescore.core.async_broker import AsyncAssessmentBrokerError, get_async_assessment_broker
 from scalescore.core.audit import (
@@ -67,6 +67,7 @@ from scalescore.models.scaling import (
     ScoreHistoryPoint,
     ScoreHistoryResponse,
     ScoreHistoryTrendWindow,
+    WorkflowAssessmentContext,
 )
 from scalescore.storage.assessment_repository import (
     AssessmentRepository,
@@ -156,7 +157,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    description="Operational Readiness Prediction System",
+    description="Workflow-first AI operational readiness scoring API",
     version=settings.app_version,
     debug=settings.debug,
     lifespan=lifespan,
@@ -241,6 +242,7 @@ class AsyncAssessmentJobResponse(BaseModel):
     job_id: str
     tenant_id: str
     submitted_by: str
+    workflow_context: WorkflowAssessmentContext | None = None
     status: str
     progress_stage: str
     progress_percentage: int
@@ -259,6 +261,7 @@ class ScheduledAssessmentResponse(BaseModel):
     tenant_id: str
     created_by: str
     name: str
+    workflow_context: WorkflowAssessmentContext | None = None
     status: str
     cadence: str
     run_hour_utc: int
@@ -270,6 +273,24 @@ class ScheduledAssessmentResponse(BaseModel):
     last_error: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class CreateWorkflowAssessmentRequest(BaseModel):
+    dataset_path: str = Field(min_length=1)
+    workflow_context: WorkflowAssessmentContext
+
+
+class CreateMilaWorkflowAssessmentRequest(BaseModel):
+    org_id: str = Field(min_length=1)
+    org_name: str = Field(min_length=1)
+    workflow_context: WorkflowAssessmentContext
+    baseline_operational_score: float | None = Field(default=None, ge=0.0, le=100.0)
+    source_system: str = Field(default="mila", min_length=1)
+    source_workflow_type: str | None = None
+    source_runbook_id: str | None = None
+    source_playbook_id: str | None = None
+    source_findings: list[str] = Field(default_factory=list)
+    notes: str | None = None
 
 
 def _dataset_path_for_development(dataset_path: str) -> Path:
@@ -313,6 +334,23 @@ def _validate_opsorchestra_webhook_secret(provided_secret: str | None) -> None:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"code": "INVALID_WEBHOOK_SECRET", "message": "Webhook secret is invalid"},
         )
+
+
+def _parse_workflow_context_json(workflow_context_json: str | None) -> WorkflowAssessmentContext | None:
+    if workflow_context_json is None:
+        return None
+
+    try:
+        return WorkflowAssessmentContext.model_validate_json(workflow_context_json)
+    except ValidationError as err:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "INVALID_WORKFLOW_CONTEXT",
+                "message": "workflow_context_json is not a valid WorkflowAssessmentContext payload",
+                "errors": err.errors(),
+            },
+        ) from err
 
 
 def _normalize_entity_type(entity_type: str, *, allow_organizations: bool = True) -> EntityType:
@@ -455,6 +493,7 @@ def _async_assessment_job_response(job: AsyncAssessmentJob) -> AsyncAssessmentJo
         job_id=job.job_id,
         tenant_id=job.tenant_id,
         submitted_by=job.submitted_by,
+        workflow_context=job.workflow_context,
         status=job.status.value,
         progress_stage=job.progress_stage,
         progress_percentage=job.progress_percentage,
@@ -475,6 +514,7 @@ def _scheduled_assessment_response(schedule: ScheduledAssessment) -> ScheduledAs
         tenant_id=schedule.tenant_id,
         created_by=schedule.created_by,
         name=schedule.name,
+        workflow_context=schedule.workflow_context,
         status=schedule.status.value,
         cadence=schedule.cadence.value,
         run_hour_utc=schedule.run_hour_utc,
@@ -595,10 +635,64 @@ async def create_assessment(
     return report
 
 
+@app.post("/api/v1/assessments/workflow", response_model=ScaleScoreReport)
+async def create_workflow_assessment(
+    payload: CreateWorkflowAssessmentRequest,
+    current_user: CanCreateAssessments,
+    repository: AssessmentRepositoryDep,
+) -> ScaleScoreReport:
+    report = run_assessment_from_csv(
+        _dataset_path_for_development(payload.dataset_path),
+        workflow_context=payload.workflow_context,
+    )
+    repository.save_report(report, tenant_id=current_user.tenant_id)
+    audit_assessment_created(
+        user_id=current_user.sub,
+        tenant_id=current_user.tenant_id,
+        assessment_id=report.report_id,
+        organization_id=report.org_id,
+    )
+    return report
+
+
+@app.post("/api/v1/assessments/mila/workflow", response_model=ScaleScoreReport)
+async def create_mila_workflow_assessment(
+    payload: CreateMilaWorkflowAssessmentRequest,
+    current_user: CanCreateAssessments,
+    repository: AssessmentRepositoryDep,
+) -> ScaleScoreReport:
+    source_findings = list(payload.source_findings)
+    if payload.source_workflow_type:
+        source_findings.append(f"Workflow source type: {payload.source_workflow_type}.")
+    if payload.source_runbook_id:
+        source_findings.append(f"Mila runbook source: {payload.source_runbook_id}.")
+    if payload.source_playbook_id:
+        source_findings.append(f"Mila playbook source: {payload.source_playbook_id}.")
+    if payload.notes:
+        source_findings.append(payload.notes)
+
+    report = run_workflow_assessment(
+        org_id=payload.org_id,
+        org_name=payload.org_name,
+        workflow_context=payload.workflow_context,
+        baseline_operational_score=payload.baseline_operational_score,
+        source_findings=source_findings,
+    )
+    repository.save_report(report, tenant_id=current_user.tenant_id)
+    audit_assessment_created(
+        user_id=current_user.sub,
+        tenant_id=current_user.tenant_id,
+        assessment_id=report.report_id,
+        organization_id=report.org_id,
+    )
+    return report
+
+
 @app.post("/api/v1/assessments/upload", response_model=ScaleScoreReport)
 async def create_assessment_from_upload(
     current_user: CanCreateAssessments,
     repository: AssessmentRepositoryDep,
+    workflow_context_json: str | None = Form(default=None),  # noqa: B008
     organizations: UploadFile = ORGANIZATIONS_FILE,  # noqa: B008
     teams: UploadFile = TEAMS_FILE,  # noqa: B008
     systems: UploadFile = SYSTEMS_FILE,  # noqa: B008
@@ -606,6 +700,7 @@ async def create_assessment_from_upload(
     facilities: UploadFile = FACILITIES_FILE,  # noqa: B008
     growth_signals: UploadFile = GROWTH_SIGNALS_FILE,  # noqa: B008
 ) -> ScaleScoreReport:
+    workflow_context = _parse_workflow_context_json(workflow_context_json)
     files = {
         "organizations.csv": organizations,
         "teams.csv": teams,
@@ -620,7 +715,7 @@ async def create_assessment_from_upload(
         for filename, upload in files.items():
             content = await upload.read()
             (temp_path / filename).write_bytes(content)
-        report = run_assessment_from_csv(temp_path)
+        report = run_assessment_from_csv(temp_path, workflow_context=workflow_context)
 
     repository.save_report(report, tenant_id=current_user.tenant_id)
     audit_assessment_created(
@@ -642,6 +737,7 @@ async def create_async_assessment_from_upload(
     current_user: CanCreateAssessments,
     job_repository: AsyncAssessmentJobRepositoryDep,
     rate_limiter: RateLimiterDep,
+    workflow_context_json: str | None = Form(default=None),  # noqa: B008
     organizations: UploadFile = ORGANIZATIONS_FILE,  # noqa: B008
     teams: UploadFile = TEAMS_FILE,  # noqa: B008
     systems: UploadFile = SYSTEMS_FILE,  # noqa: B008
@@ -668,6 +764,7 @@ async def create_async_assessment_from_upload(
         job_repository=job_repository,
         tenant_id=current_user.tenant_id,
     )
+    workflow_context = _parse_workflow_context_json(workflow_context_json)
 
     files = {
         "organizations.csv": organizations,
@@ -708,6 +805,7 @@ async def create_async_assessment_from_upload(
             tenant_id=current_user.tenant_id,
             submitted_by=current_user.sub,
             dataset_path=str(dataset_directory),
+            workflow_context=workflow_context,
         )
         try:
             _enqueue_async_assessment_job(job.job_id)
@@ -786,6 +884,7 @@ async def create_scheduled_assessment_from_upload(
     run_hour_utc: int = Form(..., ge=0, le=23),  # noqa: B008
     run_minute_utc: int = Form(..., ge=0, le=59),  # noqa: B008
     run_day_of_week: int | None = Form(default=None, ge=0, le=6),  # noqa: B008
+    workflow_context_json: str | None = Form(default=None),  # noqa: B008
     organizations: UploadFile = ORGANIZATIONS_FILE,  # noqa: B008
     teams: UploadFile = TEAMS_FILE,  # noqa: B008
     systems: UploadFile = SYSTEMS_FILE,  # noqa: B008
@@ -827,6 +926,7 @@ async def create_scheduled_assessment_from_upload(
             },
         )
 
+    workflow_context = _parse_workflow_context_json(workflow_context_json)
     files = {
         "organizations.csv": organizations,
         "teams.csv": teams,
@@ -871,6 +971,7 @@ async def create_scheduled_assessment_from_upload(
             run_minute_utc=run_minute_utc,
             run_day_of_week=run_day_of_week if parsed_cadence == ScheduledAssessmentCadence.WEEKLY else None,
             dataset_path=str(dataset_directory),
+            workflow_context=workflow_context,
         )
     except Exception:
         shutil.rmtree(dataset_directory, ignore_errors=True)

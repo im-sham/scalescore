@@ -1,3 +1,4 @@
+import json
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -115,6 +116,25 @@ def _upload_files(tmp_path: Path) -> dict[str, tuple[str, str, str]]:
     }
 
 
+def _workflow_context_payload() -> dict[str, object]:
+    return {
+        "workflow_id": "wf_support_triage",
+        "name": "Support Triage",
+        "business_function": "customer_support",
+        "owner": "Head of Support",
+        "ai_role": "ticket triage and routing",
+        "systems_touched": ["sys_1", "ven_1"],
+        "human_escalation_path": ["support_lead", "ops_manager"],
+        "control_requirements": ["approval_trace", "decision_logs"],
+        "blast_radius": "medium",
+        "description": "Classify and route inbound support tickets.",
+        "fallback_mode": "manual queue review",
+        "override_rights": ["support_manager"],
+        "error_tolerance": "low",
+        "reversibility": "tickets can be re-routed manually",
+    }
+
+
 def _issue_opsorchestra_token(
     *,
     private_key: rsa.RSAPrivateKey,
@@ -200,6 +220,66 @@ def test_create_assessment(tmp_path: Path) -> None:
     assert get_response.json()["report_id"] == payload["report_id"]
 
 
+def test_create_workflow_assessment(tmp_path: Path) -> None:
+    _write_dataset(tmp_path)
+
+    response = client.post(
+        "/api/v1/assessments/workflow",
+        json={
+            "dataset_path": str(tmp_path),
+            "workflow_context": _workflow_context_payload(),
+        },
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["assessment_mode"] == "workflow"
+    assert payload["workflow_context"]["workflow_id"] == "wf_support_triage"
+    assert payload["workflow_readiness_score"] is not None
+    assert payload["workflow_pillar_scores"]
+    assert payload["top_trust_gaps"]
+
+
+def test_create_mila_workflow_assessment_direct() -> None:
+    response = client.post(
+        "/api/v1/assessments/mila/workflow",
+        json={
+            "org_id": "tenant_default",
+            "org_name": "Default Tenant",
+            "workflow_context": _workflow_context_payload(),
+            "baseline_operational_score": 82.0,
+            "source_system": "mila",
+            "source_workflow_type": "runbook_playbook",
+            "source_runbook_id": "runbook-123",
+            "source_playbook_id": "playbook-456",
+            "source_findings": [
+                "Runbook readiness is 90% (at_risk).",
+                "Playbook definition coverage is 87.5%.",
+            ],
+            "notes": "Submitted from Mila direct workflow context.",
+        },
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["assessment_mode"] == "workflow"
+    assert payload["org_id"] == "tenant_default"
+    assert payload["org_name"] == "Default Tenant"
+    assert payload["workflow_context"]["workflow_id"] == "wf_support_triage"
+    assert payload["workflow_readiness_score"] is not None
+    assert payload["overall_score"] == payload["workflow_readiness_score"]
+    assert "Runbook readiness is 90% (at_risk)." in payload["key_findings"]
+
+    get_response = client.get(
+        f"/api/v1/assessments/{payload['report_id']}",
+        headers=_auth_headers(),
+    )
+    assert get_response.status_code == 200
+    assert get_response.json()["report_id"] == payload["report_id"]
+
+
 def test_create_assessment_from_upload(tmp_path: Path) -> None:
     _write_dataset(tmp_path)
 
@@ -219,6 +299,39 @@ def test_create_assessment_from_upload(tmp_path: Path) -> None:
     payload = authorized_response.json()
     assert payload["org_id"] == "org_1"
     assert payload["overall_score"] >= 0
+
+
+def test_create_assessment_from_upload_with_workflow_context(tmp_path: Path) -> None:
+    _write_dataset(tmp_path)
+    files = _upload_files(tmp_path)
+
+    response = client.post(
+        "/api/v1/assessments/upload",
+        data={"workflow_context_json": json.dumps(_workflow_context_payload())},
+        files=files,
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["assessment_mode"] == "workflow"
+    assert payload["workflow_context"]["workflow_id"] == "wf_support_triage"
+    assert payload["workflow_readiness_score"] is not None
+
+
+def test_create_assessment_from_upload_rejects_invalid_workflow_context(tmp_path: Path) -> None:
+    _write_dataset(tmp_path)
+    files = _upload_files(tmp_path)
+
+    response = client.post(
+        "/api/v1/assessments/upload",
+        data={"workflow_context_json": "{\"workflow_id\":\"wf_missing_fields\"}"},
+        files=files,
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "INVALID_WORKFLOW_CONTEXT"
 
 
 def test_create_async_assessment_from_upload(tmp_path: Path, monkeypatch) -> None:
@@ -266,6 +379,53 @@ def test_create_async_assessment_from_upload(tmp_path: Path, monkeypatch) -> Non
     )
     assert report_response.status_code == 200
     assert report_response.json()["report_id"] == report_id
+
+
+def test_create_async_workflow_assessment_from_upload(tmp_path: Path, monkeypatch) -> None:
+    _write_dataset(tmp_path)
+    monkeypatch.setattr(settings.features, "enable_async_assessments", True)
+    headers = _auth_headers()
+    files = _upload_files(tmp_path)
+
+    create_response = client.post(
+        "/api/v1/assessments/async/upload",
+        data={"workflow_context_json": json.dumps(_workflow_context_payload())},
+        files=files,
+        headers=headers,
+    )
+    assert create_response.status_code == 202
+    payload = create_response.json()
+    assert payload["workflow_context"]["workflow_id"] == "wf_support_triage"
+    job_id = payload["job_id"]
+
+    final_payload: dict | None = None
+    for _ in range(80):
+        status_response = client.get(
+            f"/api/v1/assessments/async/{job_id}",
+            headers=headers,
+        )
+        assert status_response.status_code == 200
+        status_payload = status_response.json()
+        assert status_payload["workflow_context"]["workflow_id"] == "wf_support_triage"
+        if status_payload["status"] in {"completed", "failed"}:
+            final_payload = status_payload
+            break
+        time.sleep(0.1)
+
+    assert final_payload is not None
+    assert final_payload["status"] == "completed"
+    report_id = final_payload["report_id"]
+    assert report_id
+
+    report_response = client.get(
+        f"/api/v1/assessments/{report_id}",
+        headers=headers,
+    )
+    assert report_response.status_code == 200
+    report_payload = report_response.json()
+    assert report_payload["assessment_mode"] == "workflow"
+    assert report_payload["workflow_context"]["workflow_id"] == "wf_support_triage"
+    assert report_payload["workflow_readiness_score"] is not None
 
 
 def test_async_assessment_submit_rate_limit_enforced(tmp_path: Path, monkeypatch) -> None:
@@ -405,6 +565,38 @@ def test_scheduled_assessment_crud_flow(tmp_path: Path, monkeypatch) -> None:
     )
     assert resume_response.status_code == 200
     assert resume_response.json()["status"] == "active"
+
+
+def test_scheduled_workflow_assessment_crud_flow(tmp_path: Path, monkeypatch) -> None:
+    _write_dataset(tmp_path)
+    monkeypatch.setattr(settings.features, "enable_async_assessments", True)
+    monkeypatch.setattr(settings.features, "enable_scheduled_assessments", True)
+    headers = _signup_and_auth_headers(tenant_id=f"tenant-schedule-{uuid4().hex[:8]}")
+    files = _upload_files(tmp_path)
+
+    create_response = client.post(
+        "/api/v1/assessments/schedules/upload",
+        data={
+            "name": "Daily workflow assessment",
+            "cadence": "daily",
+            "run_hour_utc": "3",
+            "run_minute_utc": "15",
+            "workflow_context_json": json.dumps(_workflow_context_payload()),
+        },
+        files=files,
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    schedule_payload = create_response.json()
+    assert schedule_payload["workflow_context"]["workflow_id"] == "wf_support_triage"
+    schedule_id = schedule_payload["schedule_id"]
+
+    get_response = client.get(
+        f"/api/v1/assessments/schedules/{schedule_id}",
+        headers=headers,
+    )
+    assert get_response.status_code == 200
+    assert get_response.json()["workflow_context"]["workflow_id"] == "wf_support_triage"
 
 
 def test_list_assessments_and_score_history(tmp_path: Path) -> None:

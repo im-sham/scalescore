@@ -1,8 +1,8 @@
 """
-Scaling-specific models for ScaleScore.
+Workflow-first AI operational readiness models for ScaleScore.
 
-These models represent growth signals, constraints, risks, and
-the readiness scores that are the primary output of ScaleScore.
+These models represent growth signals, constraints, risks, workflow context,
+and the readiness scores that are the primary outputs of ScaleScore.
 """
 
 from datetime import UTC, datetime
@@ -44,6 +44,78 @@ class FunctionalArea(StrEnum):
     PRODUCT = "product"
     CUSTOMER_SUCCESS = "customer_success"
     MARKETING = "marketing"
+
+
+class AssessmentMode(StrEnum):
+    """Primary assessment framing."""
+
+    ORGANIZATION = "organization"
+    WORKFLOW = "workflow"
+
+
+class WorkflowBlastRadius(StrEnum):
+    """Potential impact of workflow failure or misalignment."""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class WorkflowReadinessPillar(StrEnum):
+    """Workflow-first readiness pillars for AI-enabled operations."""
+
+    WORKFLOW_STABILITY = "workflow_stability"
+    SYSTEM_AND_DEPENDENCY_RESILIENCE = "system_and_dependency_resilience"
+    HUMAN_OVERSIGHT_AND_OWNERSHIP = "human_oversight_and_ownership"
+    CONTROL_AND_EVIDENCE_READINESS = "control_and_evidence_readiness"
+    AUTOMATION_FIT_AND_BLAST_RADIUS = "automation_fit_and_blast_radius"
+
+
+class WorkflowAssessmentContext(BaseModel):
+    """Metadata required to score an AI-enabled workflow."""
+
+    workflow_id: str
+    name: str
+    business_function: str
+    owner: str
+    ai_role: str
+    systems_touched: list[str]
+    human_escalation_path: list[str]
+    control_requirements: list[str]
+    blast_radius: WorkflowBlastRadius
+    description: str = ""
+    fallback_mode: str = ""
+    override_rights: list[str] = Field(default_factory=list)
+    error_tolerance: str = ""
+    reversibility: str = ""
+
+
+class WorkflowPillarScore(BaseModel):
+    """Score and rationale for a single workflow readiness pillar."""
+
+    pillar: WorkflowReadinessPillar
+    score: float
+    grade: str = ""
+    rationale: str = ""
+    strengths: list[str] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
+
+
+class OrgWorkflowRollup(BaseModel):
+    """Organization-level rollup derived from workflow readiness reports."""
+
+    org_id: str
+    workflow_count: int = 0
+    rollup_method: str = "mean_workflow_score"
+    workflow_ids: list[str] = Field(default_factory=list)
+    report_ids: list[str] = Field(default_factory=list)
+    average_workflow_score: float = 0.0
+    overall_grade: str = ""
+    lowest_workflow_score: float | None = None
+    highest_workflow_score: float | None = None
+    total_critical_risks: int = 0
+    note: str = ""
 
 
 class GrowthSignal(BaseModel):
@@ -188,8 +260,9 @@ class ReadinessScore(BaseModel):
     """
     Aggregate readiness score for a functional area.
 
-    This is the primary "score" that ScaleScore produces - a 0-100
-    measure of how prepared an area is for planned growth.
+    This is the primary organization-level score that ScaleScore produces
+    in compatibility mode - a 0-100 measure of how prepared an area is for
+    operational change and scale.
     """
 
     org_id: str
@@ -317,17 +390,18 @@ class ScaleScoreReport(BaseModel):
     Complete assessment output - the full report produced by ScaleScore.
 
     This is the primary deliverable that contains all scores, risks,
-    constraints, and recommendations for an organization.
+    constraints, and recommendations for an organization or workflow.
     """
 
     # Report identity
     report_id: str
     org_id: str
     org_name: str = ""
+    assessment_mode: AssessmentMode = AssessmentMode.ORGANIZATION
 
     # Generation metadata
     generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    report_version: str = "1.0"
+    report_version: str = "1.1"
     assessment_period_start: datetime | None = None
     assessment_period_end: datetime | None = None
 
@@ -338,6 +412,15 @@ class ScaleScoreReport(BaseModel):
 
     # Area breakdowns
     area_scores: list[ReadinessScore] = Field(default_factory=list)
+
+    # Workflow-first assessment context
+    workflow_context: WorkflowAssessmentContext | None = None
+    workflow_readiness_score: float | None = None
+    workflow_readiness_grade: str | None = None
+    workflow_pillar_scores: list[WorkflowPillarScore] = Field(default_factory=list)
+    top_trust_gaps: list[str] = Field(default_factory=list)
+    prioritized_remediation_actions: list[str] = Field(default_factory=list)
+    org_rollup: OrgWorkflowRollup | None = None
 
     # Findings
     top_risks: list[RiskIndicator] = Field(default_factory=list)

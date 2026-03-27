@@ -8,20 +8,27 @@ from scalescore.core.exceptions import (
     OrganizationRequiredError,
 )
 from scalescore.core.reporting import generate_executive_summary
+from scalescore.core.workflow_readiness import apply_workflow_readiness_context
 from scalescore.models.core import Facility, Organization, System, Team, Vendor
 from scalescore.models.scaling import (
+    AssessmentMode,
     CapacityConstraint,
     FunctionalArea,
     RiskIndicator,
     RiskLevel,
     ScaleScoreReport,
+    WorkflowAssessmentContext,
+    WorkflowBlastRadius,
 )
 from scalescore.scoring.bottleneck_detector import BottleneckDetector
 from scalescore.scoring.engine import ScoringConfig, ScoringEngine
 from scalescore.scoring.recommender import RecommendationEngine
 
 
-def run_assessment_from_csv(directory: str | Path) -> ScaleScoreReport:
+def run_assessment_from_csv(
+    directory: str | Path,
+    workflow_context: WorkflowAssessmentContext | None = None,
+) -> ScaleScoreReport:
     connector = CSVConnector()
     data = connector.load_all(directory)
     return run_assessment(
@@ -31,6 +38,7 @@ def run_assessment_from_csv(directory: str | Path) -> ScaleScoreReport:
         vendors=data["vendors"],
         facilities=data["facilities"],
         growth_signals=data["growth_signals"],
+        workflow_context=workflow_context,
     )
 
 
@@ -42,6 +50,7 @@ def run_assessment(
     vendors: list[Vendor] | None = None,
     facilities: list[Facility],
     growth_signals: list,
+    workflow_context: WorkflowAssessmentContext | None = None,
 ) -> ScaleScoreReport:
     if not organizations:
         raise OrganizationRequiredError()
@@ -126,8 +135,68 @@ def run_assessment(
         key_findings=_generate_key_findings(constraints, risks),
         immediate_actions=_generate_immediate_actions(recommendations),
     )
+    if workflow_context is not None:
+        report = apply_workflow_readiness_context(report, workflow_context)
     report.executive_summary = generate_executive_summary(report)
 
+    return report
+
+
+def run_workflow_assessment(
+    *,
+    org_id: str,
+    org_name: str,
+    workflow_context: WorkflowAssessmentContext,
+    baseline_operational_score: float | None = None,
+    source_findings: list[str] | None = None,
+) -> ScaleScoreReport:
+    """Build a workflow-first report from direct workflow metadata without CSV datasets."""
+
+    source_findings = source_findings or []
+    operational_baseline = _workflow_operational_baseline_score(
+        workflow_context=workflow_context,
+        baseline_operational_score=baseline_operational_score,
+    )
+
+    report = ScaleScoreReport(
+        report_id=str(uuid4()),
+        org_id=org_id,
+        org_name=org_name,
+        assessment_mode=AssessmentMode.WORKFLOW,
+        generated_at=datetime.now(UTC),
+        overall_score=operational_baseline,
+        overall_grade=_grade_for_score(operational_baseline),
+        overall_trend="stable",
+        area_scores=[],
+        top_risks=[],
+        constraints=[],
+        recommendations=[],
+        growth_signals=[],
+        total_risks=0,
+        critical_risks=0,
+        high_risks=0,
+        total_constraints=0,
+        total_recommendations=0,
+        executive_summary="",
+        key_findings=_workflow_source_findings(workflow_context, source_findings),
+        immediate_actions=[],
+    )
+    report = apply_workflow_readiness_context(report, workflow_context)
+
+    workflow_score = report.workflow_readiness_score or operational_baseline
+    workflow_grade = report.workflow_readiness_grade or _grade_for_score(workflow_score)
+    key_findings = _workflow_key_findings(report, source_findings)
+    immediate_actions = report.prioritized_remediation_actions[:3] or report.immediate_actions
+
+    report = report.model_copy(
+        update={
+            "overall_score": workflow_score,
+            "overall_grade": workflow_grade,
+            "key_findings": key_findings,
+            "immediate_actions": immediate_actions,
+        }
+    )
+    report.executive_summary = generate_executive_summary(report)
     return report
 
 
@@ -209,3 +278,56 @@ def _generate_key_findings(
 def _generate_immediate_actions(recommendations: list) -> list[str]:
     high_priority = [r for r in recommendations if r.priority_score >= 1.5]
     return [r.title for r in high_priority[:3]]
+
+
+def _workflow_operational_baseline_score(
+    *,
+    workflow_context: WorkflowAssessmentContext,
+    baseline_operational_score: float | None,
+) -> float:
+    if baseline_operational_score is not None:
+        return round(max(0.0, min(100.0, baseline_operational_score)), 1)
+
+    documented_fields = [
+        bool(workflow_context.owner),
+        bool(workflow_context.ai_role),
+        bool(workflow_context.systems_touched),
+        bool(workflow_context.human_escalation_path),
+        bool(workflow_context.control_requirements),
+        bool(workflow_context.fallback_mode),
+        bool(workflow_context.override_rights),
+        bool(workflow_context.error_tolerance),
+        bool(workflow_context.reversibility),
+    ]
+    coverage_ratio = sum(documented_fields) / len(documented_fields)
+    blast_radius_adjustment = {
+        WorkflowBlastRadius.LOW: 4.0,
+        WorkflowBlastRadius.MEDIUM: 0.0,
+        WorkflowBlastRadius.HIGH: -6.0,
+        WorkflowBlastRadius.CRITICAL: -10.0,
+    }[workflow_context.blast_radius]
+    baseline = 45.0 + (coverage_ratio * 35.0) + blast_radius_adjustment
+    return round(max(35.0, min(85.0, baseline)), 1)
+
+
+def _workflow_source_findings(
+    workflow_context: WorkflowAssessmentContext,
+    source_findings: list[str],
+) -> list[str]:
+    findings = [
+        f"Direct workflow assessment created for {workflow_context.name}.",
+        *source_findings,
+    ]
+    return list(dict.fromkeys(finding for finding in findings if finding))[:5]
+
+
+def _workflow_key_findings(
+    report: ScaleScoreReport,
+    source_findings: list[str],
+) -> list[str]:
+    findings = [
+        *source_findings,
+        f"Workflow readiness score: {(report.workflow_readiness_score or report.overall_score):.1f}.",
+        *report.top_trust_gaps[:3],
+    ]
+    return list(dict.fromkeys(finding for finding in findings if finding))[:5]

@@ -122,6 +122,7 @@ class ScheduledAssessmentDispatcher:
                 tenant_id=schedule.tenant_id,
                 submitted_by=schedule.created_by,
                 dataset_path=str(target_dataset),
+                workflow_context=schedule.workflow_context,
             )
 
             if self._enqueue_job is not None:

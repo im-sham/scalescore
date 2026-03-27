@@ -13,6 +13,8 @@ At the end of this flow, you will have:
 - Top risks to address first.
 - Recommended mitigation actions.
 
+**Compatibility note:** This quickstart still uses the current org-level CSV flow. ScaleScore's canonical direction is workflow-first AI operational readiness, but the existing upload path remains supported during the transition.
+
 ---
 
 ## Before You Start
@@ -84,6 +86,7 @@ Prioritize recommendations with:
 3. Compare score trend and risk count.
 4. Track whether prior recommendations were completed.
 5. Escalate any new critical risk in your weekly ops review.
+6. Use the org-level score as a compatibility snapshot while workflow-first scoring is introduced for AI-enabled use cases.
 
 ---
 
@@ -118,5 +121,7 @@ Use this minimal handoff request:
 ## Next Step
 
 After your first successful run, move to:
+- `README.md` for the workflow-first product direction and compatibility contract.
+- `docs/TECHNICAL_SPEC.md` for the workflow assessment object and readiness pillars.
 - `docs/adr/0017-open-source-auth-provider-strategy.md` for auth deployment policy (OSS default and optional managed SSO path).
-- `README.md` for technical integration options.
+- `docs/API.md` for current HTTP API behavior and transition notes.

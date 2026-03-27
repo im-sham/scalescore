@@ -9,8 +9,11 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Protocol
 
+from pydantic import ValidationError
+
 from scalescore.config import settings
 from scalescore.core.exceptions import DatabaseError
+from scalescore.models.scaling import WorkflowAssessmentContext
 
 
 class AsyncAssessmentStatus(StrEnum):
@@ -26,6 +29,7 @@ class AsyncAssessmentJob:
     tenant_id: str
     submitted_by: str
     dataset_path: str
+    workflow_context: WorkflowAssessmentContext | None
     status: AsyncAssessmentStatus
     progress_stage: str
     progress_percentage: int
@@ -47,6 +51,7 @@ class AsyncAssessmentJobRepository(Protocol):
         tenant_id: str,
         submitted_by: str,
         dataset_path: str,
+        workflow_context: WorkflowAssessmentContext | None = None,
     ) -> AsyncAssessmentJob: ...
 
     def get_job(self, job_id: str, *, tenant_id: str) -> AsyncAssessmentJob | None: ...
@@ -106,6 +111,7 @@ class SQLiteAsyncAssessmentJobRepository:
                             tenant_id TEXT NOT NULL,
                             submitted_by TEXT NOT NULL,
                             dataset_path TEXT NOT NULL,
+                            workflow_context_json TEXT,
                             status TEXT NOT NULL,
                             progress_stage TEXT NOT NULL DEFAULT 'queued',
                             progress_percentage INTEGER NOT NULL DEFAULT 0,
@@ -131,6 +137,12 @@ class SQLiteAsyncAssessmentJobRepository:
                         CREATE INDEX IF NOT EXISTS idx_async_jobs_status_created
                         ON async_assessment_jobs (status, created_at ASC)
                         """
+                    )
+                    self._ensure_column(
+                        connection,
+                        "async_assessment_jobs",
+                        "workflow_context_json",
+                        "TEXT",
                     )
                     self._ensure_column(
                         connection,
@@ -181,12 +193,30 @@ class SQLiteAsyncAssessmentJobRepository:
             return None
         return datetime.fromisoformat(value)
 
+    @staticmethod
+    def _serialize_workflow_context(
+        workflow_context: WorkflowAssessmentContext | None,
+    ) -> str | None:
+        if workflow_context is None:
+            return None
+        return workflow_context.model_dump_json()
+
+    @staticmethod
+    def _parse_workflow_context(value: str | None) -> WorkflowAssessmentContext | None:
+        if value is None:
+            return None
+        try:
+            return WorkflowAssessmentContext.model_validate_json(value)
+        except ValidationError as err:
+            raise DatabaseError("Stored async workflow context is invalid", cause=err) from err
+
     def _row_to_job(self, row: sqlite3.Row) -> AsyncAssessmentJob:
         return AsyncAssessmentJob(
             job_id=row["job_id"],
             tenant_id=row["tenant_id"],
             submitted_by=row["submitted_by"],
             dataset_path=row["dataset_path"],
+            workflow_context=self._parse_workflow_context(row["workflow_context_json"]),
             status=AsyncAssessmentStatus(row["status"]),
             progress_stage=row["progress_stage"],
             progress_percentage=int(row["progress_percentage"]),
@@ -207,6 +237,7 @@ class SQLiteAsyncAssessmentJobRepository:
         tenant_id: str,
         submitted_by: str,
         dataset_path: str,
+        workflow_context: WorkflowAssessmentContext | None = None,
     ) -> AsyncAssessmentJob:
         now = datetime.now(UTC).isoformat()
         try:
@@ -219,19 +250,21 @@ class SQLiteAsyncAssessmentJobRepository:
                             tenant_id,
                             submitted_by,
                             dataset_path,
+                            workflow_context_json,
                             status,
                             progress_stage,
                             progress_percentage,
                             progress_message,
                             created_at,
                             updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             job_id,
                             tenant_id,
                             submitted_by,
                             dataset_path,
+                            self._serialize_workflow_context(workflow_context),
                             AsyncAssessmentStatus.QUEUED.value,
                             "queued",
                             0,
@@ -253,8 +286,8 @@ class SQLiteAsyncAssessmentJobRepository:
             with closing(self._connect()) as connection:
                 row = connection.execute(
                     """
-                    SELECT job_id, tenant_id, submitted_by, dataset_path, status, progress_stage,
-                           progress_percentage, progress_message, report_id, org_id,
+                    SELECT job_id, tenant_id, submitted_by, dataset_path, workflow_context_json,
+                           status, progress_stage, progress_percentage, progress_message, report_id, org_id,
                            error_message, created_at, updated_at, started_at, completed_at
                     FROM async_assessment_jobs
                     WHERE job_id = ? AND tenant_id = ?

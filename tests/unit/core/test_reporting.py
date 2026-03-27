@@ -1,7 +1,11 @@
 from datetime import UTC, datetime
 
 from scalescore.core.reporting import generate_executive_summary, render_report_pdf
-from scalescore.models.scaling import ScaleScoreReport
+from scalescore.models.scaling import (
+    ScaleScoreReport,
+    WorkflowAssessmentContext,
+    WorkflowBlastRadius,
+)
 
 
 def _sample_report() -> ScaleScoreReport:
@@ -41,3 +45,28 @@ def test_render_report_pdf_returns_pdf_bytes() -> None:
 
     assert pdf_bytes.startswith(b"%PDF")
     assert len(pdf_bytes) > 500
+
+
+def test_generate_executive_summary_uses_workflow_context_when_present() -> None:
+    report = _sample_report()
+    report.workflow_context = WorkflowAssessmentContext(
+        workflow_id="wf_support",
+        name="Support Triage",
+        business_function="operations",
+        owner="COO",
+        ai_role="Classify and route inbound tickets",
+        systems_touched=["sys_support"],
+        human_escalation_path=["Support Manager", "COO"],
+        control_requirements=["decision logging"],
+        blast_radius=WorkflowBlastRadius.MEDIUM,
+    )
+    report.workflow_readiness_score = 81.0
+    report.workflow_readiness_grade = "B"
+    report.top_trust_gaps = ["Fallback mode is not documented."]
+    report.prioritized_remediation_actions = ["Document fallback mode before wider rollout."]
+
+    summary = generate_executive_summary(report)
+
+    assert "Support Triage" in summary
+    assert "AI operational readiness" in summary
+    assert "Fallback mode is not documented." in summary
