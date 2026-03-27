@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "scalescore"
 version = "0.1.0"
-description = "Operational Readiness Prediction System - Know where you'll break before you break"
+description = "Workflow-first AI operational readiness scoring for AI-enabled teams"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"

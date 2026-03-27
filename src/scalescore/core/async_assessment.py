@@ -115,7 +115,11 @@ class AsyncAssessmentWorker:
                 percentage=30,
                 message="Running assessment engine",
             )
-            report = await asyncio.to_thread(run_assessment_from_csv, dataset_path)
+            report = await asyncio.to_thread(
+                run_assessment_from_csv,
+                dataset_path,
+                job.workflow_context,
+            )
             self._job_repository.update_progress(
                 job_id=job.job_id,
                 stage="processing",

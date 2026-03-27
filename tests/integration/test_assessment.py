@@ -5,7 +5,11 @@ import pytest
 from scalescore.config import settings
 from scalescore.core.assessment import run_assessment, run_assessment_from_csv
 from scalescore.models.core import Facility, Organization, System
-from scalescore.models.scaling import FunctionalArea
+from scalescore.models.scaling import (
+    FunctionalArea,
+    WorkflowAssessmentContext,
+    WorkflowBlastRadius,
+)
 
 
 def test_run_assessment_builds_constraints_and_scores() -> None:
@@ -112,3 +116,51 @@ def test_run_assessment_from_csv(tmp_path: Path) -> None:
         FunctionalArea.OPERATIONS,
         FunctionalArea.FACILITIES,
     }
+
+
+def test_run_assessment_can_enrich_with_workflow_readiness_context() -> None:
+    organization = Organization(id="org_1", name="Acme")
+    system = System(
+        id="sys_billing",
+        org_id="org_1",
+        name="Billing",
+        system_type="erp",
+        capacity_current=90,
+        capacity_max=100,
+        capacity_unit="users",
+        dependencies=["sys_crm"],
+    )
+    workflow_context = WorkflowAssessmentContext(
+        workflow_id="wf_finance_close",
+        name="Finance Close Automation",
+        business_function="finance",
+        owner="Controller",
+        ai_role="Draft close-pack anomalies and reconciliation recommendations",
+        systems_touched=["sys_billing", "Billing"],
+        human_escalation_path=["Controller", "CFO"],
+        control_requirements=["approval traceability", "decision logging"],
+        blast_radius=WorkflowBlastRadius.HIGH,
+        fallback_mode="Manual finance close process",
+        override_rights=["Controller", "CFO"],
+        error_tolerance="Low tolerance for misclassification in month-end close",
+        reversibility="All AI-produced adjustments require human approval before posting",
+    )
+
+    report = run_assessment(
+        organizations=[organization],
+        systems=[system],
+        facilities=[],
+        growth_signals=[],
+        workflow_context=workflow_context,
+    )
+
+    assert report.assessment_mode == "workflow"
+    assert report.workflow_context is not None
+    assert report.workflow_context.workflow_id == "wf_finance_close"
+    assert report.workflow_readiness_score is not None
+    assert report.workflow_readiness_grade is not None
+    assert len(report.workflow_pillar_scores) == 5
+    assert report.top_trust_gaps
+    assert report.prioritized_remediation_actions
+    assert report.org_rollup is not None
+    assert report.org_rollup.workflow_count == 1

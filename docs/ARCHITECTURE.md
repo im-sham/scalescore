@@ -4,6 +4,8 @@
 > **Status**: Living Document  
 > **Owner**: Engineering
 
+> **Positioning note (March 2026):** The runtime architecture in this document remains applicable, but the product has been repositioned as workflow-first AI operational readiness scoring. Use `README.md`, `docs/ROADMAP.md`, and `docs/TECHNICAL_SPEC.md` for the current product framing and contract.
+
 ---
 
 ## Table of Contents

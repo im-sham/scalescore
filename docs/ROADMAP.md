@@ -1,6 +1,6 @@
 # ScaleScore Roadmap
 
-> **Last Updated**: February 2026  
+> **Last Updated**: March 2026  
 > **Status**: Active Development  
 > **Owner**: Product & Engineering
 
@@ -8,336 +8,157 @@
 
 ## Vision
 
-ScaleScore will be the definitive operational readiness platform for scaling companies. We predict where organizations will break before they break, enabling proactive capacity planning and risk mitigation.
+ScaleScore will be the workflow-first scoring and diagnostic layer for **AI-enabled operational readiness**.
 
-**North Star Metrics:**
-- Assessment completion in < 30 seconds
-- Actionable recommendations in every report
-- 90%+ accuracy on bottleneck predictions (validated post-hoc)
+The product is no longer optimized around a broad "scaling companies" category. It is optimized around a more precise question:
 
----
+**Is this workflow ready to scale with AI without creating fragility, trust failures, or governance gaps?**
 
-## Guiding Principles for Implementation
+### North Star Metrics
 
-These principles apply to ALL roadmap items:
-
-### Build for Scale
-- Every feature designed for 100x data volume
-- Multi-tenancy is foundational, not retrofitted
-- Database queries optimized from day one
-- Background processing for any operation > 5 seconds
-
-### Graceful Architecture  
-- New code follows established patterns (see ARCHITECTURE.md)
-- Refactoring happens during feature work, not as tech debt sprints
-- Interface-first design for all new components
-- 80%+ test coverage for new code
-
-### Security-First
-- Data classification required for all new fields
-- Audit logging for state-changing operations
-- No secrets in code, ever
-- Security review for all external integrations
+- Workflow assessment completion in `< 30 seconds` for compatibility-mode runs
+- Actionable remediation output in every workflow report
+- Clear workflow-to-org rollup for AI operational readiness
+- Design-partner and suite users can distinguish ScaleScore from Mila and Sentinel in one pass
 
 ---
 
-## Release Strategy
+## Strategic Guardrails
 
-| Release Type | Cadence | Scope |
-|--------------|---------|-------|
-| **Major (1.0, 2.0)** | Quarterly | New pillars, major features, breaking changes |
-| **Minor (1.1, 1.2)** | Bi-weekly | New features, enhancements |
-| **Patch (1.1.1)** | As needed | Bug fixes, security patches |
-
----
-
-## Roadmap Phases
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           SCALESCORE ROADMAP                                 │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  Q1 2026                Q2 2026                Q3 2026           Q4 2026    │
-│  ─────────              ─────────              ─────────          ────────  │
-│                                                                              │
-│  ┌──────────┐          ┌──────────┐          ┌──────────┐      ┌─────────┐ │
-│  │ Phase 1  │─────────▶│ Phase 2  │─────────▶│ Phase 3  │─────▶│ Phase 4 │ │
-│  │   MVP    │          │ Platform │          │ Scale    │      │Enterprise│ │
-│  │ v0.1-0.3 │          │ v0.4-0.6 │          │ v0.7-0.9 │      │  v1.0   │ │
-│  └──────────┘          └──────────┘          └──────────┘      └─────────┘ │
-│                                                                              │
-│  • Core scoring         • Database            • OpsOrchestra    • SSO/SAML │
-│  • CSV import           • Authentication      • Background jobs • Audit    │
-│  • Basic API            • User management     • Additional      • Export   │
-│  • Streamlit UI         • API completion        pillars         • SLA      │
-│  • Demo dataset         • Trend analysis      • Benchmarks                 │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+- Build `module-first` for the USMI suite
+- Keep a `secondary standalone diagnostic` motion for consulting, design partners, and discovery
+- Preserve current org-level API and CSV compatibility while the workflow-first contract is introduced
+- Do **not** expand into generic financial, customer, or marketing benchmarking unless it directly improves AI workflow readiness scoring
+- Keep legacy `OpsOrchestra` naming only where required for technical backward compatibility
 
 ---
 
-## Phase 1: MVP Foundation (v0.1 - v0.3)
+## Current State
 
-**Timeline:** Weeks 1-4  
-**Goal:** Demonstrate core value proposition with working assessment pipeline
+### Already Implemented
 
-### v0.1.0 - Core Engine (✅ COMPLETE)
+| Area | Status |
+|------|--------|
+| Core models, scoring, bottleneck detection, recommendations | ✅ Complete |
+| Assessment persistence and report retrieval | ✅ Complete |
+| FastAPI auth, API keys, org/entity CRUD, trend history | ✅ Complete |
+| Async assessments and scheduling slice | ✅ Complete |
+| Staging validation gate and security baseline | ✅ Complete |
+| Workflow-first report enrichment (`workflow_context`, pillar scores, trust gaps, rollup metadata) | ✅ Initial additive slice complete |
+| Workflow-first HTTP submission across sync, async, and scheduled paths | ✅ Initial additive slice complete |
 
-| Item | Status | Description |
-|------|--------|-------------|
-| Pydantic models | ✅ Done | Core entities and scaling models |
-| Scoring engine | ✅ Done | Constraint-based scoring algorithm |
-| Bottleneck detector | ✅ Done | Capacity, cascade, concentration analysis |
-| Recommendation engine | ✅ Done | Pattern-based recommendation generation |
-| CSV connector | ✅ Done | Import all 6 entity types |
+### Compatibility Commitments
 
-**Deliverable:** Can run assessment from CSV files programmatically
-
-### v0.2.0 - API & UI (🔄 IN PROGRESS)
-
-| Item | Status | Description | ADR |
-|------|--------|-------------|-----|
-| FastAPI basic endpoints | ✅ Done | Assessment and health endpoints | - |
-| Streamlit dashboard | ✅ Done | Upload, dashboard, deep-dive views | - |
-| Demo dataset | ✅ Done | AcmeTech sample data | - |
-| API file upload | ✅ Done | Multi-file assessment endpoint | - |
-| Error handling | ✅ Done | Structured domain + request validation responses | ADR-0007 |
-| Request validation | ✅ Done | Pydantic request models and standardized 422 payloads | ADR-0007 |
-
-**Deliverable:** Interactive demo via Streamlit + API
-
-### v0.3.0 - Production Foundation
-
-| Item | Status | Description | ADR |
-|------|--------|-------------|-----|
-| Database persistence | ✅ Done (MVP scope) | SQLite snapshot persistence for assessments | ADR-0006 |
-| Repository pattern | 🔄 Partial | Repository implemented for assessment snapshots | ADR-0004 |
-| Report storage | ✅ Done | Immutable assessment snapshots stored and retrievable by ID | ADR-0015 |
-| Configuration management | ✅ Done | Environment-based config via `pydantic-settings` | ADR-0009 |
-| Structured logging | ✅ Done | JSON/text structured logs with correlation IDs and redaction | ADR-0010 |
-| Test infrastructure | ✅ Done | Pytest suite with unit/integration/e2e and strong coverage | ADR-0013 |
-
-**Deliverable:** Persistent storage, production-ready foundation
-
-### Phase 1 Success Criteria
-
-- [x] End-to-end assessment runs in < 10 seconds for demo data
-- [x] Reports persist and can be retrieved by ID
-- [x] 70%+ test coverage on core modules
-- [x] Compelling 10-minute demo walkthrough possible
-- [x] No critical security vulnerabilities (dependency scan clean)
+- Existing org-level assessment flow remains supported
+- Existing async, scheduling, and staging validation flows remain supported
+- Existing HTTP endpoints remain supported
+- Workflow-first becomes the canonical product narrative without breaking the current runtime
 
 ---
 
-## Phase 2: Platform Maturity (v0.4 - v0.6)
+## 90-Day Plan
 
-**Timeline:** Weeks 5-10  
-**Goal:** Production-ready platform with user management and history
+### Days 1-14: Strategy Reset
 
-### v0.4.0 - Authentication & Authorization
+**Goal:** Align portfolio and product materials around the same product.
 
-| Item | Description | Priority | ADR |
-|------|-------------|----------|-----|
-| JWT authentication | Token-based API auth | HIGH | ADR-0011 |
-| API key support | Service-to-service auth | HIGH (✅ implemented) | - |
-| User model | Basic user with org association | HIGH (✅ implemented) | - |
-| Role-based access | Viewer / Analyst / Admin / Super Admin roles | MEDIUM | ADR-0011 |
-| Session management | Token refresh + logout with SQLite-backed refresh token persistence | MEDIUM | ADR-0011 |
+| Item | Status |
+|------|--------|
+| USMI repositioning brief | ✅ Implemented |
+| Mission Control and product rollup updates | ✅ Implemented |
+| README rewrite | ✅ Implemented |
+| Technical spec rewrite | ✅ Implemented |
+| API and operator docs updated for workflow-first compatibility narrative | ✅ Implemented |
 
-**Security Milestone:** Assessment endpoints and report retrieval/list/history endpoints protected, audit logging enabled
+### Days 15-45: Product Contract Reset
 
-### v0.5.0 - API Completion
+**Goal:** Make workflow-first assessment the canonical contract while preserving org-level compatibility.
 
-| Item | Description | Priority |
-|------|-------------|----------|
-| GET /assessments/{id} | Retrieve stored assessment | HIGH (✅ implemented) |
-| GET /assessments | List assessments with pagination | HIGH (✅ implemented) |
-| GET /scores/{org_id}/history | Score trend over time | HIGH (✅ implemented; baseline timeline) |
-| Organization CRUD | Full entity management | MEDIUM (✅ implemented) |
-| Entity CRUD | Manage teams, systems, etc. | MEDIUM (✅ implemented) |
-| Webhook endpoints | OpsOrchestra integration prep | LOW (✅ implemented) |
+| Item | Status |
+|------|--------|
+| Define workflow assessment metadata object | ✅ Initial additive contract implemented |
+| Define readiness pillars and report outputs | ✅ Initial additive contract implemented |
+| Derive org rollup metadata from workflow reports | ✅ Initial additive contract implemented |
+| Introduce HTTP submission contract for workflow assessment targets | ✅ Initial additive contract implemented |
+| Map current org-level signals to workflow-first pillar logic | 🔄 Next |
+| Identify missing inputs required for stronger workflow scoring | 🔄 Next |
 
-### v0.6.0 - Analytics & Trends
+### Days 46-90: Implementation Preparation
 
-| Item | Description | Priority |
-|------|-------------|----------|
-| Score history storage | Track scores over time | HIGH |
-| Trend calculation | 7d, 30d, 90d trends | HIGH (✅ implemented) |
-| Comparative analysis | Score vs. previous assessment | MEDIUM (✅ implemented) |
-| Executive summary | Auto-generated narrative | MEDIUM (✅ implemented) |
-| PDF export | Downloadable report | LOW (✅ implemented) |
+**Goal:** Connect ScaleScore to real workflow context and package the first diagnostic motion.
 
-### Phase 2 Success Criteria
-
-- [x] User can sign up, authenticate, run assessments
-- [x] Historical assessments queryable
-- [x] Trend analysis shows score progression
-- [x] API documentation complete (OpenAPI + `docs/API.md`)
-- [x] Security audit passed (OWASP top 10; baseline in `docs/SECURITY_BASELINE.md`, evidence in `docs/SECURITY_OWASP_API_TOP10_AUDIT.md`)
+| Item | Status |
+|------|--------|
+| Minimal Mila integration path for workflow context | ✅ Initial direct integration implemented |
+| Mila-native workflow submission contract | ✅ Initial direct contract implemented |
+| Standalone COO diagnostic/report packaging | 🔄 Planned |
+| Compatibility guardrails for org-level flows | ✅ Preserved in current additive rollout |
 
 ---
 
-## Phase 3: Scale & Integration (v0.7 - v0.9)
+## Product Contract Priorities
 
-**Timeline:** Weeks 11-16  
-**Goal:** Enterprise features, OpsOrchestra integration, expanded coverage
+### Canonical Assessment Unit
 
-### v0.7.0 - OpsOrchestra Integration
+ScaleScore is now `workflow / use-case first`.
 
-| Item | Description | Priority | ADR |
-|------|-------------|----------|-----|
-| OpsOrchestra connector | Pull entities from knowledge graph | HIGH (✅ graph pull endpoint + outbound sync + webhook + retry/backoff + URL hardening + payload bounds implemented) | ADR-010 |
-| Bidirectional sync | Push risks back to OpsOrchestra | MEDIUM (✅ outbound sync endpoint implemented) | - |
-| Webhook handler | React to entity changes | MEDIUM (✅ implemented) | - |
-| Tenant context | Inherit auth from OpsOrchestra | HIGH (✅ OpsOrchestra JWT fallback auth mode with strict claims, JWKS/static-key support, fallback-claim alignment for upstream SSO variants) | - |
-| Staging validation | Release-gate checklist and smoke validation | HIGH (✅ runbook + evidence capture script added in `docs/STAGING_VALIDATION.md` + `scripts/collect_staging_validation_evidence.sh`) | - |
+Examples:
 
-### v0.8.0 - Background Processing
+- Support triage
+- Finance close automation
+- Vendor onboarding
+- Knowledge intake
 
-| Item | Description | Priority | ADR |
-|------|-------------|----------|-----|
-| Task queue | Queue infrastructure for deferred assessment processing | HIGH (🔄 persisted queue + execution modes (`poll`, `background`, `broker`) + `scalescore-worker` runtime implemented; scale validation pending) | ADR-011 |
-| Async assessments | Non-blocking for large orgs | HIGH (🔄 async upload/status + upload/queue abuse controls implemented; 1000+ entity benchmark pending) | - |
-| Scheduled assessments | Daily/weekly auto-run | MEDIUM (🔄 initial upload-driven schedule CRUD + worker-based due dispatch implemented; calendar breadth and notifications pending) | - |
-| Progress tracking | Real-time assessment status | MEDIUM (🔄 baseline stage/percentage/message fields implemented on async job status API; streaming UX pending) | - |
+Organization-level readiness remains important, but becomes a rollup derived from workflow assessments.
 
-### v0.9.0 - Expanded Pillars
+### Readiness Pillars
 
-| Item | Description | Priority |
-|------|-------------|----------|
-| Financial pillar | Unit economics, CAC/LTV, burn multiple | HIGH |
-| People pillar | Hiring velocity, attrition, manager ratio | HIGH |
-| Customer pillar | NPS, churn, expansion metrics | MEDIUM |
-| Industry benchmarks | Compare scores to peer group | MEDIUM |
-
-### Phase 3 Success Criteria
-
-- [ ] OpsOrchestra integration functional in staging
-- [ ] Assessments complete async for orgs with 1000+ entities
-- [ ] 8+ functional areas scored (up from 6)
-- [ ] Benchmark comparison available for 3+ company stages
+1. **Workflow stability**  
+   Repeatability, exception rate, process clarity, reversibility.
+2. **System and dependency resilience**  
+   Capacity headroom, vendor concentration, cascade risk, critical integrations.
+3. **Human oversight and ownership**  
+   Named owner, escalation path, override rights, fallback mode.
+4. **Control and evidence readiness**  
+   Approval traceability, logging, audit evidence, decision records.
+5. **Automation fit and blast radius**  
+   Task suitability, error tolerance, impact scope, containment ability.
 
 ---
 
-## Phase 4: Enterprise Ready (v1.0)
+## Public Interface Direction
 
-**Timeline:** Weeks 17-24  
-**Goal:** SOC2-ready, enterprise features, production SLA
+### Phase 1
 
-### v1.0.0 - Enterprise Features
+- No breaking HTTP API changes
+- No breaking CSV/demo changes
+- Additive report-model support for workflow context and rollup metadata
 
-| Item | Description | Priority | ADR |
-|------|-------------|----------|-----|
-| SSO/SAML | Enterprise identity integration | HIGH | ADR-012 |
-| Advanced audit | Comprehensive audit log export | HIGH | - |
-| Data retention | Configurable retention policies | HIGH | - |
-| Rate limiting | API quota management | HIGH | - |
-| Multi-region | Data residency options | MEDIUM | ADR-013 |
+### Phase 2
 
-### Security & Compliance
-
-| Item | Description | Priority |
-|------|-------------|----------|
-| SOC2 Type II prep | Control documentation | HIGH |
-| Penetration testing | Third-party security audit | HIGH |
-| Encryption at rest | Database encryption | HIGH |
-| Secret management | Vault integration | MEDIUM |
-
-### v1.0.0 Success Criteria
-
-- [ ] SOC2 Type I certification achieved
-- [ ] 99.9% uptime SLA achievable
-- [ ] Enterprise customer pilot complete
-- [ ] Comprehensive security documentation
-- [ ] Production runbook complete
+- Introduce first-class workflow assessment submission contract
+- Add a direct Mila workflow submission path that does not require dataset CSVs
+- Return workflow readiness score, pillar breakdown, trust gaps, and org rollup data from relevant report endpoints
+- Preserve org-level assessments in compatibility mode during transition
 
 ---
 
-## Technical Debt Policy
+## Success Criteria
 
-### Prevention Over Cure
-
-We prevent tech debt by:
-1. **Designing before building** - ADRs for significant decisions
-2. **Building incrementally** - Small, focused PRs
-3. **Refactoring in context** - Fix related tech debt during feature work
-4. **Maintaining test coverage** - New code requires tests
-
-### Debt Classification
-
-| Level | Definition | Action |
-|-------|------------|--------|
-| **Critical** | Blocks features or causes production issues | Fix immediately |
-| **High** | Slows development significantly | Fix within 2 sprints |
-| **Medium** | Causes friction but workaroundable | Fix when touching related code |
-| **Low** | Nice to have improvements | Opportunistic fixing |
-
-### Current Tech Debt Inventory
-
-| Item | Level | Description | Target |
-|------|-------|-------------|--------|
-| Filesystem `dataset_path` mode remains dev-only | Medium | Must stay disabled outside development | v0.4.1 |
-| OpsOrchestra staging execution sign-off | Medium | Integration hardening is implemented; staging smoke execution evidence still required per release | v0.7.0 |
-| Async task queue depth | Medium | Broker-capable worker mode is implemented; load/stress harness scripts are in place (`scripts/generate_async_benchmark_dataset.py`, `scripts/run_async_assessment_benchmark.py`), staging execution evidence is pending | v0.8.0 |
-| Scheduled assessments | Medium | Initial scheduler is implemented; broader recurrence options and delivery hooks are pending | v0.8.0 |
+- Portfolio and product docs describe the same product in the same language
+- A reader can distinguish ScaleScore from Mila and Sentinel immediately
+- A sample workflow assessment can output:
+  - workflow readiness score
+  - pillar breakdown
+  - top trust gaps
+  - prioritized remediation actions
+- Multiple workflow assessments can be rolled up into an organization-level readiness view
+- Standalone diagnostic packaging exists as a secondary motion, not the primary category claim
 
 ---
 
-## Milestones & Checkpoints
+## Explicitly Not Doing
 
-### Monthly Review Checkpoints
-
-| Date | Milestone | Key Deliverables |
-|------|-----------|------------------|
-| Feb 2026 | MVP Foundation Complete | Persistent snapshots, secured assessment flow, demo-ready |
-| Mar 2026 | Platform v0.5 | Durable auth store, API completion, trend analysis |
-| Apr 2026 | Integration v0.7 | OpsOrchestra connected |
-| May 2026 | Scale v0.9 | Async processing, expanded pillars |
-| Jun 2026 | Enterprise v1.0 | SSO, SOC2 prep complete |
-
-### Go/No-Go Criteria
-
-Before advancing to next phase:
-- [ ] All "HIGH" priority items complete
-- [ ] Test coverage meets target (70%+ Phase 1, 80%+ Phase 2+)
-- [ ] No critical or high security vulnerabilities
-- [ ] Documentation updated
-- [ ] Performance targets met
-
----
-
-## Dependencies & Risks
-
-### External Dependencies
-
-| Dependency | Risk | Mitigation |
-|------------|------|------------|
-| OpsOrchestra API | Changes could break connector | Version-pinned client, adapter pattern |
-| Auth provider (optional) | Vendor lock-in if tightly coupled to one IdP | Keep internal auth as OSS default and integrate external IdPs through provider-neutral OIDC/JWKS boundaries (ADR-0017) |
-| Cloud provider | Cost, availability | Multi-cloud deployment option |
-
-### Technical Risks
-
-| Risk | Probability | Impact | Mitigation |
-|------|-------------|--------|------------|
-| Scoring accuracy | Medium | High | Validation with real data, calibration framework |
-| Performance at scale | Low | High | Load testing, async architecture |
-| Security breach | Low | Critical | Security-first design, audits, monitoring |
-
----
-
-## Appendix: Feature Backlog
-
-Features prioritized but not yet scheduled:
-
-| Feature | Description | Phase Target |
-|---------|-------------|--------------|
-| Mobile-responsive UI | Dashboard works on mobile | Phase 3 |
-| Slack integration | Assessment notifications | Phase 3 |
-| Custom scoring weights | Org-specific weight configuration | Phase 2 |
-| What-if scenarios | Simulate changes before making them | Phase 3 |
-| AI recommendations | ML-powered action suggestions | Phase 4 |
-| White-label support | Customer branding | Phase 4 |
-| API rate analytics | Usage tracking and quotas | Phase 4 |
+- Repositioning ScaleScore as a generic operations benchmarking platform
+- Making ScaleScore responsible for runtime policy enforcement or compliance operations
+- Removing the current org-level surface before workflow-first submission paths are ready

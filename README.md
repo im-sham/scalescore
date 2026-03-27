@@ -2,36 +2,64 @@
 
 [![CI](https://github.com/im-sham/scalescore/actions/workflows/ci.yml/badge.svg)](https://github.com/im-sham/scalescore/actions/workflows/ci.yml)
 
-**Operational Readiness Prediction System**
+**Workflow-First AI Operational Readiness Scoring**
 
-> Know where you'll break before you break.
+> Know which AI-enabled workflows are ready to scale, and what will break trust first.
 
 ---
 
 ## What is ScaleScore?
 
-ScaleScore predicts where your organization will hit scaling bottlenecks before they happen. It combines organizational data with heuristic models derived from 15+ years of scaling experience to produce actionable readiness scores and recommendations.
+ScaleScore is the scoring and diagnostic layer for **AI-enabled operational readiness**.
 
-ScaleScore is open source and can run standalone. It is also designed to integrate with OpsOrchestra/Mila as an orchestration layer for execution.
+It helps a COO or operations leader answer a more specific question than generic company scalability:
 
-### The Problem
+**Is this workflow ready to scale with AI without creating fragility, trust failures, or governance gaps?**
 
-High-growth companies consistently encounter the same failure modes:
-- Hiring plans that outpace facility capacity
-- Systems that don't scale with transaction volume  
-- Vendor dependencies that become single points of failure
-- Governance structures that lag organizational complexity
+ScaleScore still uses traditional operations signals such as capacity, dependencies, governance, and vendor concentration. The difference is that those signals are now interpreted through the lens of AI-assisted work, human oversight, and operational trust.
 
-These failures are **predictable but rarely predicted**. Leaders react to fires instead of preventing them.
+### Primary Jobs
 
-### The Solution
+ScaleScore produces:
 
-ScaleScore ingests your organizational data and produces:
+1. **Workflow readiness scores** for AI-enabled use cases
+2. **Pillar breakdowns** across stability, resilience, oversight, controls, and blast radius
+3. **Top trust gaps** that could block safe AI scale
+4. **Prioritized remediation actions** for operations leaders
+5. **Organization rollups** derived from multiple workflow assessments
 
-1. **Readiness Scores** (0-100) by functional area
-2. **Bottleneck Predictions** with timeline estimates
-3. **Risk Heat Maps** visualizing constraint interdependencies
-4. **Actionable Recommendations** with effort/impact scoring
+### Examples
+
+- Support triage with AI
+- Finance close automation
+- Vendor onboarding
+- Knowledge intake and routing
+
+---
+
+## Product Boundaries
+
+| Product | Job |
+|---------|-----|
+| **Mila** | Workflow context, system of work, operational data |
+| **ScaleScore** | Readiness scoring, trust-gap diagnosis, remediation prioritization |
+| **Sentinel** | Runtime governance, control enforcement, compliance evidence |
+| **Forge** | Failure-pattern input and scoring-model refinement |
+
+ScaleScore remains `module-first` in the USMI suite, with a `secondary standalone diagnostic` motion for consulting, design partners, and discovery.
+
+---
+
+## Compatibility Mode
+
+ScaleScore is transitioning to workflow-first without breaking the current product surface.
+
+- Current org-level CSV assessment flows remain supported.
+- Current HTTP API endpoints remain supported.
+- Current async, scheduling, persistence, and staging validation flows remain supported.
+- Workflow-first readiness is now available as an additive Python/report contract.
+
+Legacy OpsOrchestra naming is retained only where required for technical backward compatibility. User-facing narrative should prefer `Mila` and `USMI suite`.
 
 ---
 
@@ -69,95 +97,77 @@ streamlit run ui/streamlit_app.py
 
 ---
 
-## Choose Your Path
+## Workflow-First Contract
 
-### Technical Teams
+The workflow-first contract is additive and currently lives in the Python/report layer while HTTP compatibility is preserved.
 
-- Start with this README and [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).
-- Use the API and CLI for integration workflows.
-- Follow [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and ADRs for extension decisions.
+```python
+from scalescore.core.assessment import run_assessment
+from scalescore.models.core import Organization
+from scalescore.models.scaling import WorkflowAssessmentContext, WorkflowBlastRadius
 
-### Operational Teams
+workflow = WorkflowAssessmentContext(
+    workflow_id="wf_support_triage",
+    name="Support Triage",
+    business_function="operations",
+    owner="COO",
+    ai_role="Classify and route inbound support tickets",
+    systems_touched=["zendesk", "crm"],
+    human_escalation_path=["Support Manager", "COO"],
+    control_requirements=["decision logging", "approval traceability"],
+    blast_radius=WorkflowBlastRadius.MEDIUM,
+    fallback_mode="Manual queue review",
+    override_rights=["Support Manager", "COO"],
+    error_tolerance="Low",
+    reversibility="Routing changes can be reverted within the same shift",
+)
 
-- Start with [docs/OPERATOR_QUICKSTART.md](docs/OPERATOR_QUICKSTART.md) to run an assessment in about 15 minutes.
-- Use the sample CSV structures in [`data/`](data/).
-- Focus on "top risks" and "top recommendations" outputs to drive weekly operating reviews.
+report = run_assessment(
+    organizations=[Organization(id="org_1", name="Acme")],
+    systems=[],
+    facilities=[],
+    growth_signals=[],
+    workflow_context=workflow,
+)
+
+print(report.workflow_readiness_score)
+print(report.top_trust_gaps)
+```
+
+Workflow reports now support:
+
+- `workflow_context`
+- `workflow_readiness_score`
+- `workflow_pillar_scores`
+- `top_trust_gaps`
+- `prioritized_remediation_actions`
+- `org_rollup`
 
 ---
 
-## Architecture
+## Current Status
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        ScaleScore                            │
-├─────────────────────────────────────────────────────────────┤
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐   │
-│  │  Connectors  │  │    Core      │  │       API        │   │
-│  │              │  │   Engine     │  │                  │   │
-│  │ • CSV Import │──│ • Scoring    │──│ • FastAPI REST   │   │
-│  │ • HRIS       │  │ • Prediction │  │ • WebSocket      │   │
-│  │ • OpsOrch*   │  │ • Recommend  │  │                  │   │
-│  └──────────────┘  └──────────────┘  └──────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
+### Platform Status
 
-* OpsOrchestra connector enables bidirectional data sharing
-```
+| Component | Status |
+|-----------|--------|
+| Core models and scoring | ✅ Implemented |
+| Assessment API and persistence | ✅ Implemented |
+| Auth and API keys | ✅ Implemented |
+| Async queue and scheduling slice | ✅ Implemented |
+| Staging validation gate | ✅ Implemented |
+| Workflow-first report contract | ✅ Initial additive slice implemented |
+| HTTP workflow submission contract | ✅ Implemented (sync, async, scheduled) |
+| Mila workflow-context integration | ✅ Initial direct integration implemented |
+| Standalone COO diagnostic packaging | 🔄 Planned |
 
----
+### Next Focus
 
-## OpsOrchestra / Mila Integration
-
-ScaleScore is designed to operate **standalone OR as an OpsOrchestra module**.
-
-| Mode | Data Source | Auth | Storage |
-|------|-------------|------|---------|
-| **Standalone** | CSV, direct API | Own JWT/API key (optional external OIDC profile) | SQLite/Postgres |
-| **Integrated** | OpsOrchestra knowledge graph | Tenant context + trusted upstream JWT | Shared DB |
-
-Auth0 is optional. Open-source/local/self-hosted ScaleScore remains fully usable with internal auth only. See [ADR-0017](docs/adr/0017-open-source-auth-provider-strategy.md).
-
-When integrated, ScaleScore becomes the "strategic layer" for OpsOrchestra/Mila:
-- **Layer 1 (OpsOrchestra):** What does the org know?
-- **Layer 2 (OpsOrchestra):** How does the org work?
-- **Layer 3 (ScaleScore):** Where will the org break?
-
----
-
-## Key Concepts
-
-### Entities
-- **Organization** — Top-level entity with headcount/revenue plans
-- **Team** — Departments with their own capacity constraints
-- **System** — Software tools with capacity limits and dependencies
-- **Vendor** — External dependencies with contract timelines
-- **Facility** — Physical locations with seat capacity
-
-### Scoring
-- **Growth Signals** — Planned changes that drive capacity needs
-- **Capacity Constraints** — Limits that could block scaling
-- **Risk Indicators** — Specific risks with probability and impact
-- **Readiness Scores** — 0-100 measure of preparedness
-
----
-
-## Project Structure
-
-```
-scalescore/
-├── src/scalescore/
-│   ├── models/          # Pydantic data models
-│   │   ├── core.py      # Entity models (compatible with OpsOrchestra)
-│   │   └── scaling.py   # Scoring and risk models
-│   ├── core/            # Core business logic
-│   ├── scoring/         # Scoring algorithms
-│   ├── connectors/      # Data import connectors
-│   └── api/             # FastAPI endpoints
-├── tests/               # Test suite
-├── ui/                  # Streamlit dashboard
-├── docs/                # Documentation (see below)
-├── data/                # Demo dataset
-└── pyproject.toml
-```
+- align all strategy and product docs around workflow-first AI operational readiness
+- map current org-level signals into workflow-first readiness pillars
+- deepen the Mila-native workflow scoring path beyond the initial direct integration
+- refine the Mila-native workflow submission contract as more workflow sources are added
+- preserve existing org-level compatibility during the transition
 
 ---
 
@@ -165,67 +175,34 @@ scalescore/
 
 | Document | Description |
 |----------|-------------|
-| [docs/TECHNICAL_SPEC.md](docs/TECHNICAL_SPEC.md) | Product specifications and requirements |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, principles, and patterns |
-| [docs/API.md](docs/API.md) | API reference with auth flows, endpoint matrix, and curl examples |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Implementation roadmap with milestones |
-| [docs/SECURITY.md](docs/SECURITY.md) | Security architecture and SOC2 alignment |
-| [docs/SECURITY_BASELINE.md](docs/SECURITY_BASELINE.md) | Executed dependency/API security baseline and outstanding risks |
-| [docs/SECURITY_OWASP_API_TOP10_AUDIT.md](docs/SECURITY_OWASP_API_TOP10_AUDIT.md) | OWASP API Top 10 audit evidence and control mapping |
+| [docs/TECHNICAL_SPEC.md](docs/TECHNICAL_SPEC.md) | Workflow-first product contract and assessment object |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | 90-day roadmap and guardrails |
+| [docs/API.md](docs/API.md) | HTTP API reference and compatibility notes |
+| [docs/OPERATOR_QUICKSTART.md](docs/OPERATOR_QUICKSTART.md) | Current operator onboarding and compatibility-mode workflow |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Underlying system architecture and platform patterns |
 | [docs/STAGING_VALIDATION.md](docs/STAGING_VALIDATION.md) | Staging smoke-test and release-gate checklist |
-| [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) | Development standards and practices |
-| [docs/OPERATOR_QUICKSTART.md](docs/OPERATOR_QUICKSTART.md) | Non-technical onboarding and 15-minute assessment flow |
+| [docs/SECURITY.md](docs/SECURITY.md) | Security architecture and control posture |
 | [GOVERNANCE.md](GOVERNANCE.md) | Project governance, roles, and decision model |
-| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community behavior expectations and enforcement |
-| [docs/adr/](docs/adr/) | Architecture Decision Records |
-
----
-
-## Roadmap
-
-See [docs/ROADMAP.md](docs/ROADMAP.md) for the complete implementation plan.
-
-### Current Status: Phase 2 Complete, Phase 3 In Progress
-
-| Component | Status |
-|-----------|--------|
-| Core models | ✅ Complete |
-| Scoring engine | ✅ Complete |
-| Bottleneck detection | ✅ Complete |
-| Recommendation engine | ✅ Complete |
-| CSV import | ✅ Complete |
-| FastAPI endpoints | ✅ Expanded (assessments + auth + org/entity CRUD + trend history) |
-| Auth foundation | ✅ Implemented (JWT + refresh + RBAC guards + user/API key persistence) |
-| Streamlit dashboard | ✅ Complete |
-| Assessment persistence | ✅ Implemented (SQLite snapshots + retrieval endpoint) |
-| Security scanning | ✅ Implemented (dependency audit in CI) |
-| OWASP API Top 10 audit | ✅ Completed (`docs/SECURITY_OWASP_API_TOP10_AUDIT.md`) |
-| OpsOrchestra connector hardening | ✅ Implemented (retry/backoff, stricter URL controls, claim fallback alignment) |
-| Async assessment queue slice | ✅ Initial vertical slice + execution modes (`poll`, `background`, `broker`) with `scalescore-worker` |
-| Scheduled assessments | ✅ Initial upload-driven scheduler endpoints + worker dispatch loop |
-| Async progress tracking | ✅ Baseline job progress fields (`progress_stage`, `progress_percentage`, `progress_message`) |
-
-### Next Focus: Phase 3 Scale & Integration
-
-- Staging validation and release gating (`docs/STAGING_VALIDATION.md`)
-- Execute load/stress validation in staging using `scripts/generate_async_benchmark_dataset.py` + `scripts/run_async_assessment_benchmark.py`
-- Expand scheduled assessments with richer calendars and notifications
-- Upgrade progress tracking from stage-based updates to granular streaming
-- Expanded scoring pillars (financial/people/customer)
-- API/SDK documentation and production runbooks
 
 ---
 
 ## Use Cases
 
-### For Job Interviews
-Walk through a demo assessment: "Here's how I'd evaluate your operational readiness for the growth you're planning..."
+### In the USMI Suite
 
-### For Consulting
-Run assessments for clients and deliver actionable reports with prioritized recommendations.
+- Score whether a Mila workflow is ready for more AI autonomy
+- Highlight trust and readiness gaps before Sentinel rollout
+- Feed workflow-level readiness signals from Forge learnings
 
-### For Product (Future)
-SaaS offering for scale-up companies to continuously monitor their operational readiness.
+### For COO Diagnostics
+
+- Run readiness diagnostics for specific AI-enabled workflows
+- Deliver trust-gap and remediation reports for design partners
+- Use workflow rollups to prioritize where automation should expand next
+
+### For Standalone Discovery
+
+- Offer a focused diagnostic/report product without claiming a broad generic operations platform category
 
 ---
 

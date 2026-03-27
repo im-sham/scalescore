@@ -11,6 +11,48 @@ from scalescore.models.scaling import ScaleScoreReport
 
 def generate_executive_summary(report: ScaleScoreReport) -> str:
     """Generate a concise narrative summary for executive readers."""
+    if report.workflow_context is not None:
+        workflow = report.workflow_context
+        workflow_score = (
+            report.workflow_readiness_score
+            if report.workflow_readiness_score is not None
+            else report.overall_score
+        )
+        workflow_grade = report.workflow_readiness_grade or report.overall_grade
+        readiness = "strong"
+        if workflow_score < 85:
+            readiness = "moderate"
+        if workflow_score < 70:
+            readiness = "fragile"
+
+        top_gap = (
+            report.top_trust_gaps[0]
+            if report.top_trust_gaps
+            else "Trust gaps have not yet been prioritized for this workflow."
+        )
+        top_action = (
+            report.prioritized_remediation_actions[0]
+            if report.prioritized_remediation_actions
+            else (
+                report.immediate_actions[0]
+                if report.immediate_actions
+                else "Prioritize remediation for the highest-impact workflow gap."
+            )
+        )
+        rollup_phrase = (
+            report.org_rollup.note
+            if report.org_rollup is not None and report.org_rollup.note
+            else "Use this workflow score as one input into the organization-level rollup."
+        )
+
+        return (
+            f"{workflow.name} currently shows {readiness} AI operational readiness with a workflow score "
+            f"of {workflow_score:.1f} ({workflow_grade}) for {report.org_name or report.org_id}. "
+            f"The workflow is owned by {workflow.owner} and scoped to {workflow.business_function} with the "
+            f"AI role defined as {workflow.ai_role}. Top trust gap: {top_gap}. "
+            f"Recommended immediate action: {top_action}. {rollup_phrase}"
+        )
+
     score = report.overall_score
     readiness = "strong"
     if score < 85:
@@ -41,8 +83,8 @@ def generate_executive_summary(report: ScaleScoreReport) -> str:
     )
 
     return (
-        f"{report.org_name or report.org_id} currently demonstrates {readiness} operational readiness "
-        f"with an overall score of {report.overall_score:.1f} ({report.overall_grade}). "
+        f"{report.org_name or report.org_id} currently demonstrates {readiness} AI-enabled operational "
+        f"readiness with an overall score of {report.overall_score:.1f} ({report.overall_grade}). "
         f"{trend_phrase} {constraints_phrase} {risk_phrase} "
         f"Top finding: {top_finding}. Recommended immediate action: {top_action}."
     )
@@ -115,7 +157,11 @@ def render_report_pdf(report: ScaleScoreReport) -> bytes:
                 y -= line_height
             y -= 1
 
-    title = f"{report.org_name or report.org_id} Readiness Report"
+    title = (
+        f"{report.workflow_context.name} Workflow Readiness Report"
+        if report.workflow_context is not None
+        else f"{report.org_name or report.org_id} Readiness Report"
+    )
     pdf.setFont("Helvetica-Bold", 18)
     pdf.drawString(margin, y, title)
     y -= 26
@@ -135,12 +181,61 @@ def render_report_pdf(report: ScaleScoreReport) -> bytes:
     )
     draw_text(f"Constraint count: {report.total_constraints}")
 
+    if report.workflow_context is not None:
+        workflow = report.workflow_context
+        draw_heading("Workflow Readiness Profile")
+        draw_text(
+            f"Workflow score: {(report.workflow_readiness_score or report.overall_score):.1f} "
+            f"({report.workflow_readiness_grade or report.overall_grade})"
+        )
+        draw_text(f"Business function: {workflow.business_function}")
+        draw_text(f"AI role: {workflow.ai_role}")
+        draw_text(f"Owner: {workflow.owner}")
+        draw_text(f"Blast radius: {workflow.blast_radius.value}")
+        draw_text(
+            "Systems touched: "
+            + (", ".join(workflow.systems_touched) if workflow.systems_touched else "Not documented")
+        )
+        draw_text(
+            "Escalation path: "
+            + (
+                " -> ".join(workflow.human_escalation_path)
+                if workflow.human_escalation_path
+                else "Not documented"
+            )
+        )
+
+        draw_heading("Workflow Readiness Pillars")
+        if report.workflow_pillar_scores:
+            for pillar in report.workflow_pillar_scores:
+                draw_text(
+                    f"{pillar.pillar.value}: {pillar.score:.1f} ({pillar.grade}) | {pillar.rationale}"
+                )
+        else:
+            draw_text("No workflow pillar scores recorded.")
+
+        draw_heading("Top Trust Gaps")
+        draw_bullets(report.top_trust_gaps)
+
     draw_heading("Key Findings")
     draw_bullets(report.key_findings)
 
     draw_heading("Immediate Actions")
-    action_items = report.immediate_actions or [rec.title for rec in report.recommendations[:3]]
+    action_items = (
+        report.prioritized_remediation_actions
+        or report.immediate_actions
+        or [rec.title for rec in report.recommendations[:3]]
+    )
     draw_bullets(action_items)
+
+    if report.org_rollup is not None:
+        draw_heading("Organization Rollup")
+        draw_text(
+            f"Workflow count: {report.org_rollup.workflow_count} | "
+            f"Average workflow score: {report.org_rollup.average_workflow_score:.1f} "
+            f"({report.org_rollup.overall_grade})"
+        )
+        draw_text(report.org_rollup.note or "No rollup note recorded.")
 
     draw_heading("Top Risks")
     if report.top_risks:

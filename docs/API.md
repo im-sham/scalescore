@@ -1,6 +1,6 @@
 # ScaleScore API Reference
 
-> **Last Updated:** February 24, 2026  
+> **Last Updated:** March 9, 2026  
 > **Version:** v1 (`/api/v1`)
 
 ---
@@ -13,6 +13,15 @@ ScaleScore provides a FastAPI HTTP interface for:
 - Managing organizations and entities
 - Importing CSV data
 - Receiving OpsOrchestra webhook events
+
+ScaleScore is transitioning to a workflow-first AI operational readiness model. The current HTTP API remains backward compatible, continues to support organization-level assessments, and now exposes additive workflow-first submission paths.
+
+Current compatibility rules:
+
+- existing org-level endpoints remain supported
+- existing CSV upload and demo flows remain supported
+- workflow-first report fields may appear on `ScaleScoreReport` payloads when reports are generated with workflow context via HTTP workflow submission endpoints or the Python/internal contract
+- legacy `OpsOrchestra` naming remains in some integration settings for backward compatibility, but user-facing narrative should prefer `Mila` / `USMI suite`
 
 Base URL (local): `http://localhost:8000`
 
@@ -181,6 +190,27 @@ Most business endpoints require one of:
 
 ## Endpoint Matrix
 
+### Workflow-first compatibility note
+
+The workflow-first contract is additive and now available on the HTTP surface without removing the existing organization assessment paths:
+
+- `workflow_context`
+- `workflow_readiness_score`
+- `workflow_readiness_grade`
+- `workflow_pillar_scores`
+- `top_trust_gaps`
+- `prioritized_remediation_actions`
+- `org_rollup`
+
+Current compatibility rules:
+
+- `POST /api/v1/assessments` remains the development-only org-compatibility path using `dataset_path`
+- `POST /api/v1/assessments/workflow` accepts `dataset_path` plus `workflow_context` as JSON
+- `POST /api/v1/assessments/mila/workflow` accepts direct Mila workflow metadata without requiring dataset CSVs
+- `POST /api/v1/assessments/upload` still accepts the six CSV files and now supports optional `workflow_context_json` form data for workflow scoring
+- `POST /api/v1/assessments/async/upload` supports optional `workflow_context_json` and echoes workflow context on job-status payloads
+- `POST /api/v1/assessments/schedules/upload` supports optional `workflow_context_json` and persists workflow context on schedule payloads
+
 ## Health
 
 | Method | Path | Auth | Notes |
@@ -205,12 +235,14 @@ Most business endpoints require one of:
 | Method | Path | Required permission | Notes |
 |-------|------|---------------------|-------|
 | `POST` | `/api/v1/assessments` | `assessment:create` | Requires `dataset_path`; development-only path execution |
-| `POST` | `/api/v1/assessments/upload` | `assessment:create` | Multipart upload of six CSV files |
-| `POST` | `/api/v1/assessments/async/upload` | `assessment:create` | Queue async assessment job (`202 Accepted`), with submit throttling, tenant queue cap, and per-file size limits |
-| `GET` | `/api/v1/assessments/async/{job_id}` | `assessment:read` | Poll queued/processing/completed async job status |
-| `POST` | `/api/v1/assessments/schedules/upload` | `assessment:create` | Create scheduled assessment from CSV upload (`daily`/`weekly`) |
-| `GET` | `/api/v1/assessments/schedules` | `assessment:read` | List scheduled assessments for tenant |
-| `GET` | `/api/v1/assessments/schedules/{schedule_id}` | `assessment:read` | Get scheduled assessment |
+| `POST` | `/api/v1/assessments/workflow` | `assessment:create` | JSON workflow submission (`dataset_path` + `workflow_context`); development-only dataset path execution |
+| `POST` | `/api/v1/assessments/mila/workflow` | `assessment:create` | Direct Mila workflow submission (`org_id`, `org_name`, `workflow_context`, optional baseline findings); no CSV dataset required |
+| `POST` | `/api/v1/assessments/upload` | `assessment:create` | Multipart upload of six CSV files; optional `workflow_context_json` form field enables workflow scoring |
+| `POST` | `/api/v1/assessments/async/upload` | `assessment:create` | Queue async assessment job (`202 Accepted`); optional `workflow_context_json` enables workflow scoring |
+| `GET` | `/api/v1/assessments/async/{job_id}` | `assessment:read` | Poll queued/processing/completed async job status; echoes workflow context when present |
+| `POST` | `/api/v1/assessments/schedules/upload` | `assessment:create` | Create scheduled assessment from CSV upload (`daily`/`weekly`); optional `workflow_context_json` enables workflow scoring |
+| `GET` | `/api/v1/assessments/schedules` | `assessment:read` | List scheduled assessments for tenant, including workflow context when present |
+| `GET` | `/api/v1/assessments/schedules/{schedule_id}` | `assessment:read` | Get scheduled assessment, including workflow context when present |
 | `POST` | `/api/v1/assessments/schedules/{schedule_id}/pause` | `assessment:create` | Pause scheduled assessment |
 | `POST` | `/api/v1/assessments/schedules/{schedule_id}/resume` | `assessment:create` | Resume scheduled assessment |
 | `GET` | `/api/v1/assessments` | `assessment:read` | Pagination via `limit`, `offset` |
@@ -291,6 +323,32 @@ curl -sS -X POST "$BASE_URL/api/v1/assessments?dataset_path=data" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
+Run workflow assessment from local dataset path (development mode only):
+
+```bash
+curl -sS -X POST "$BASE_URL/api/v1/assessments/workflow" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "dataset_path": "data",
+    "workflow_context": {
+      "workflow_id": "wf_support_triage",
+      "name": "Support Triage",
+      "business_function": "customer_support",
+      "owner": "Head of Support",
+      "ai_role": "ticket triage and routing",
+      "systems_touched": ["crm", "helpdesk"],
+      "human_escalation_path": ["support_lead", "ops_manager"],
+      "control_requirements": ["decision_logs", "approval_trace"],
+      "blast_radius": "medium",
+      "fallback_mode": "manual review queue",
+      "override_rights": ["support_manager"],
+      "error_tolerance": "low",
+      "reversibility": "tickets can be reassigned manually"
+    }
+  }'
+```
+
 Upload assessment via CSV:
 
 ```bash
@@ -304,11 +362,67 @@ curl -sS -X POST "$BASE_URL/api/v1/assessments/upload" \
   -F "growth_signals=@data/growth_signals.csv"
 ```
 
+Upload workflow assessment via CSV:
+
+```bash
+curl -sS -X POST "$BASE_URL/api/v1/assessments/upload" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F 'workflow_context_json={
+    "workflow_id":"wf_support_triage",
+    "name":"Support Triage",
+    "business_function":"customer_support",
+    "owner":"Head of Support",
+    "ai_role":"ticket triage and routing",
+    "systems_touched":["crm","helpdesk"],
+    "human_escalation_path":["support_lead","ops_manager"],
+    "control_requirements":["decision_logs","approval_trace"],
+    "blast_radius":"medium",
+    "fallback_mode":"manual review queue",
+    "override_rights":["support_manager"],
+    "error_tolerance":"low",
+    "reversibility":"tickets can be reassigned manually"
+  }' \
+  -F "organizations=@data/organizations.csv" \
+  -F "teams=@data/teams.csv" \
+  -F "systems=@data/systems.csv" \
+  -F "vendors=@data/vendors.csv" \
+  -F "facilities=@data/facilities.csv" \
+  -F "growth_signals=@data/growth_signals.csv"
+```
+
 Queue async assessment via CSV:
 
 ```bash
 curl -sS -X POST "$BASE_URL/api/v1/assessments/async/upload" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "organizations=@data/organizations.csv" \
+  -F "teams=@data/teams.csv" \
+  -F "systems=@data/systems.csv" \
+  -F "vendors=@data/vendors.csv" \
+  -F "facilities=@data/facilities.csv" \
+  -F "growth_signals=@data/growth_signals.csv"
+```
+
+Queue async workflow assessment via CSV:
+
+```bash
+curl -sS -X POST "$BASE_URL/api/v1/assessments/async/upload" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F 'workflow_context_json={
+    "workflow_id":"wf_support_triage",
+    "name":"Support Triage",
+    "business_function":"customer_support",
+    "owner":"Head of Support",
+    "ai_role":"ticket triage and routing",
+    "systems_touched":["crm","helpdesk"],
+    "human_escalation_path":["support_lead","ops_manager"],
+    "control_requirements":["decision_logs","approval_trace"],
+    "blast_radius":"medium",
+    "fallback_mode":"manual review queue",
+    "override_rights":["support_manager"],
+    "error_tolerance":"low",
+    "reversibility":"tickets can be reassigned manually"
+  }' \
   -F "organizations=@data/organizations.csv" \
   -F "teams=@data/teams.csv" \
   -F "systems=@data/systems.csv" \
@@ -359,6 +473,38 @@ curl -sS -X POST "$BASE_URL/api/v1/assessments/schedules/upload" \
   -F "cadence=daily" \
   -F "run_hour_utc=3" \
   -F "run_minute_utc=15" \
+  -F "organizations=@data/organizations.csv" \
+  -F "teams=@data/teams.csv" \
+  -F "systems=@data/systems.csv" \
+  -F "vendors=@data/vendors.csv" \
+  -F "facilities=@data/facilities.csv" \
+  -F "growth_signals=@data/growth_signals.csv"
+```
+
+Create scheduled workflow assessment via CSV upload:
+
+```bash
+curl -sS -X POST "$BASE_URL/api/v1/assessments/schedules/upload" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "name=Nightly Support Workflow Assessment" \
+  -F "cadence=daily" \
+  -F "run_hour_utc=3" \
+  -F "run_minute_utc=15" \
+  -F 'workflow_context_json={
+    "workflow_id":"wf_support_triage",
+    "name":"Support Triage",
+    "business_function":"customer_support",
+    "owner":"Head of Support",
+    "ai_role":"ticket triage and routing",
+    "systems_touched":["crm","helpdesk"],
+    "human_escalation_path":["support_lead","ops_manager"],
+    "control_requirements":["decision_logs","approval_trace"],
+    "blast_radius":"medium",
+    "fallback_mode":"manual review queue",
+    "override_rights":["support_manager"],
+    "error_tolerance":"low",
+    "reversibility":"tickets can be reassigned manually"
+  }' \
   -F "organizations=@data/organizations.csv" \
   -F "teams=@data/teams.csv" \
   -F "systems=@data/systems.csv" \

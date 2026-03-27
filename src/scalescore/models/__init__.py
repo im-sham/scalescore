@@ -10,10 +10,12 @@ from .core import (
     Vendor,
 )
 from .scaling import (
+    AssessmentMode,
     CapacityConstraint,
     ConstraintType,
     FunctionalArea,
     GrowthSignal,
+    OrgWorkflowRollup,
     ReadinessScore,
     RiskIndicator,
     RiskLevel,
@@ -22,6 +24,10 @@ from .scaling import (
     ScoreHistoryPoint,
     ScoreHistoryResponse,
     ScoreHistoryTrendWindow,
+    WorkflowAssessmentContext,
+    WorkflowBlastRadius,
+    WorkflowPillarScore,
+    WorkflowReadinessPillar,
 )
 
 __all__ = [
@@ -34,6 +40,7 @@ __all__ = [
     "Vendor",
     "Facility",
     # Scaling entities
+    "AssessmentMode",
     "RiskLevel",
     "ConstraintType",
     "FunctionalArea",
@@ -45,5 +52,10 @@ __all__ = [
     "ScoreHistoryTrendWindow",
     "ScoreHistoryComparison",
     "ScoreHistoryResponse",
+    "WorkflowBlastRadius",
+    "WorkflowReadinessPillar",
+    "WorkflowAssessmentContext",
+    "WorkflowPillarScore",
+    "OrgWorkflowRollup",
     "ScaleScoreReport",
 ]

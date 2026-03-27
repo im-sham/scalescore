@@ -9,8 +9,11 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Protocol
 
+from pydantic import ValidationError
+
 from scalescore.config import settings
 from scalescore.core.exceptions import DatabaseError
+from scalescore.models.scaling import WorkflowAssessmentContext
 
 
 class ScheduledAssessmentStatus(StrEnum):
@@ -35,6 +38,7 @@ class ScheduledAssessment:
     run_minute_utc: int
     run_day_of_week: int | None
     dataset_path: str
+    workflow_context: WorkflowAssessmentContext | None
     next_run_at: datetime
     created_at: datetime
     updated_at: datetime
@@ -56,6 +60,7 @@ class ScheduledAssessmentRepository(Protocol):
         run_minute_utc: int,
         run_day_of_week: int | None,
         dataset_path: str,
+        workflow_context: WorkflowAssessmentContext | None = None,
     ) -> ScheduledAssessment: ...
 
     def get_schedule(self, schedule_id: str, *, tenant_id: str) -> ScheduledAssessment | None: ...
@@ -117,6 +122,7 @@ class SQLiteScheduledAssessmentRepository:
                             run_minute_utc INTEGER NOT NULL,
                             run_day_of_week INTEGER,
                             dataset_path TEXT NOT NULL,
+                            workflow_context_json TEXT,
                             next_run_at TEXT NOT NULL,
                             created_at TEXT NOT NULL,
                             updated_at TEXT NOT NULL,
@@ -138,8 +144,30 @@ class SQLiteScheduledAssessmentRepository:
                         ON scheduled_assessments (status, next_run_at ASC)
                         """
                     )
+                    self._ensure_column(
+                        connection,
+                        "scheduled_assessments",
+                        "workflow_context_json",
+                        "TEXT",
+                    )
         except sqlite3.Error as err:
             raise DatabaseError("Failed to initialize scheduled assessment storage", cause=err) from err
+
+    @staticmethod
+    def _column_exists(connection: sqlite3.Connection, table: str, column: str) -> bool:
+        rows = connection.execute(f"PRAGMA table_info({table})").fetchall()
+        return any(row["name"] == column for row in rows)
+
+    def _ensure_column(
+        self,
+        connection: sqlite3.Connection,
+        table: str,
+        column: str,
+        definition: str,
+    ) -> None:
+        if self._column_exists(connection, table, column):
+            return
+        connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     @staticmethod
     def _parse_datetime(value: str | None) -> datetime | None:
@@ -150,6 +178,23 @@ class SQLiteScheduledAssessmentRepository:
     @staticmethod
     def _clip_error(message: str) -> str:
         return message.strip()[:500]
+
+    @staticmethod
+    def _serialize_workflow_context(
+        workflow_context: WorkflowAssessmentContext | None,
+    ) -> str | None:
+        if workflow_context is None:
+            return None
+        return workflow_context.model_dump_json()
+
+    @staticmethod
+    def _parse_workflow_context(value: str | None) -> WorkflowAssessmentContext | None:
+        if value is None:
+            return None
+        try:
+            return WorkflowAssessmentContext.model_validate_json(value)
+        except ValidationError as err:
+            raise DatabaseError("Stored scheduled workflow context is invalid", cause=err) from err
 
     @staticmethod
     def _compute_next_run_at(
@@ -194,6 +239,7 @@ class SQLiteScheduledAssessmentRepository:
             run_minute_utc=int(row["run_minute_utc"]),
             run_day_of_week=row["run_day_of_week"],
             dataset_path=row["dataset_path"],
+            workflow_context=self._parse_workflow_context(row["workflow_context_json"]),
             next_run_at=datetime.fromisoformat(row["next_run_at"]),
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
@@ -214,6 +260,7 @@ class SQLiteScheduledAssessmentRepository:
         run_minute_utc: int,
         run_day_of_week: int | None,
         dataset_path: str,
+        workflow_context: WorkflowAssessmentContext | None = None,
     ) -> ScheduledAssessment:
         if cadence == ScheduledAssessmentCadence.WEEKLY and run_day_of_week is None:
             raise ValueError("run_day_of_week is required when cadence is weekly")
@@ -245,10 +292,11 @@ class SQLiteScheduledAssessmentRepository:
                             run_minute_utc,
                             run_day_of_week,
                             dataset_path,
+                            workflow_context_json,
                             next_run_at,
                             created_at,
                             updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             schedule_id,
@@ -261,6 +309,7 @@ class SQLiteScheduledAssessmentRepository:
                             run_minute_utc,
                             run_day_of_week,
                             dataset_path,
+                            self._serialize_workflow_context(workflow_context),
                             next_run_at.isoformat(),
                             now_iso,
                             now_iso,
@@ -280,8 +329,8 @@ class SQLiteScheduledAssessmentRepository:
                 row = connection.execute(
                     """
                     SELECT schedule_id, tenant_id, created_by, name, status, cadence, run_hour_utc,
-                           run_minute_utc, run_day_of_week, dataset_path, next_run_at, created_at,
-                           updated_at, last_run_at, last_job_id, last_error
+                           run_minute_utc, run_day_of_week, dataset_path, workflow_context_json,
+                           next_run_at, created_at, updated_at, last_run_at, last_job_id, last_error
                     FROM scheduled_assessments
                     WHERE schedule_id = ? AND tenant_id = ?
                     """,
@@ -304,8 +353,8 @@ class SQLiteScheduledAssessmentRepository:
     ) -> list[ScheduledAssessment]:
         query = """
             SELECT schedule_id, tenant_id, created_by, name, status, cadence, run_hour_utc,
-                   run_minute_utc, run_day_of_week, dataset_path, next_run_at, created_at,
-                   updated_at, last_run_at, last_job_id, last_error
+                   run_minute_utc, run_day_of_week, dataset_path, workflow_context_json,
+                   next_run_at, created_at, updated_at, last_run_at, last_job_id, last_error
             FROM scheduled_assessments
             WHERE tenant_id = ?
         """
@@ -426,8 +475,8 @@ class SQLiteScheduledAssessmentRepository:
                         claimed_row = connection.execute(
                             """
                             SELECT schedule_id, tenant_id, created_by, name, status, cadence, run_hour_utc,
-                                   run_minute_utc, run_day_of_week, dataset_path, next_run_at, created_at,
-                                   updated_at, last_run_at, last_job_id, last_error
+                                   run_minute_utc, run_day_of_week, dataset_path, workflow_context_json,
+                                   next_run_at, created_at, updated_at, last_run_at, last_job_id, last_error
                             FROM scheduled_assessments
                             WHERE schedule_id = ?
                             """,
