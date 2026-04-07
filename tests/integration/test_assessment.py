@@ -13,7 +13,10 @@ from scalescore.models.scaling import (
     FunctionalArea,
     WorkflowAssessmentContext,
     WorkflowBlastRadius,
+    WorkflowControlCoverageInput,
+    WorkflowControlStatus,
     WorkflowEvidenceInput,
+    WorkflowEvidencePostureInput,
     WorkflowReadinessPillar,
 )
 
@@ -195,6 +198,19 @@ def test_run_workflow_assessment_uses_structured_workflow_evidence() -> None:
         workflow_context=workflow_context,
         baseline_operational_score=78.0,
         workflow_evidence=WorkflowEvidenceInput(
+            control_coverage=WorkflowControlCoverageInput(
+                approval_gate=WorkflowControlStatus.DOCUMENTED,
+                decision_logging=WorkflowControlStatus.MISSING,
+                evidence_retention=WorkflowControlStatus.DOCUMENTED,
+                exception_handling=WorkflowControlStatus.MISSING,
+                periodic_review=WorkflowControlStatus.MISSING,
+            ),
+            evidence_posture=WorkflowEvidencePostureInput(
+                control_evidence_coverage_percent=45.0,
+                freshest_evidence_age_days=210,
+                audit_trail_complete=False,
+                linked_artifacts=False,
+            ),
             owner_confirmed=False,
             systems_verified=False,
             escalation_tested=False,
@@ -211,6 +227,19 @@ def test_run_workflow_assessment_uses_structured_workflow_evidence() -> None:
         workflow_context=workflow_context,
         baseline_operational_score=78.0,
         workflow_evidence=WorkflowEvidenceInput(
+            control_coverage=WorkflowControlCoverageInput(
+                approval_gate=WorkflowControlStatus.VERIFIED,
+                decision_logging=WorkflowControlStatus.VERIFIED,
+                evidence_retention=WorkflowControlStatus.OPERATING,
+                exception_handling=WorkflowControlStatus.OPERATING,
+                periodic_review=WorkflowControlStatus.VERIFIED,
+            ),
+            evidence_posture=WorkflowEvidencePostureInput(
+                control_evidence_coverage_percent=94.0,
+                freshest_evidence_age_days=18,
+                audit_trail_complete=True,
+                linked_artifacts=True,
+            ),
             owner_confirmed=True,
             systems_verified=True,
             escalation_tested=True,
@@ -231,12 +260,19 @@ def test_run_workflow_assessment_uses_structured_workflow_evidence() -> None:
         for pillar in strong_report.workflow_pillar_scores
         if pillar.pillar == WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS
     )
+    weak_control = next(
+        pillar
+        for pillar in weak_report.workflow_pillar_scores
+        if pillar.pillar == WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS
+    )
     weak_automation = next(
         pillar
         for pillar in weak_report.workflow_pillar_scores
         if pillar.pillar == WorkflowReadinessPillar.AUTOMATION_FIT_AND_BLAST_RADIUS
     )
 
-    assert any("approval evidence sample" in strength for strength in strong_control.strengths)
+    assert strong_control.score > weak_control.score
+    assert any("verified by source evidence" in strength for strength in strong_control.strengths)
     assert "Workflow evidence includes 4 approval artifact(s)." in strong_report.key_findings
+    assert "Explicit workflow control coverage was provided for 5 control area(s)." in strong_report.key_findings
     assert any("Rollback path has not been tested" in gap for gap in weak_automation.gaps)

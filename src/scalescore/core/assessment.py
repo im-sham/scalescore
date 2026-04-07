@@ -22,7 +22,9 @@ from scalescore.models.scaling import (
     ScaleScoreReport,
     WorkflowAssessmentContext,
     WorkflowBlastRadius,
+    WorkflowControlCoverageInput,
     WorkflowEvidenceInput,
+    WorkflowEvidencePostureInput,
 )
 from scalescore.scoring.bottleneck_detector import BottleneckDetector
 from scalescore.scoring.engine import ScoringConfig, ScoringEngine
@@ -346,6 +348,13 @@ def _workflow_evidence_findings(workflow_evidence: WorkflowEvidenceInput | None)
         return []
 
     findings: list[str] = []
+    if workflow_evidence.control_coverage is not None:
+        covered_controls = _workflow_control_coverage_count(workflow_evidence.control_coverage)
+        findings.append(
+            f"Explicit workflow control coverage was provided for {covered_controls} control area(s)."
+        )
+    if workflow_evidence.evidence_posture is not None:
+        findings.extend(_workflow_evidence_posture_findings(workflow_evidence.evidence_posture))
     if workflow_evidence.approval_evidence_count is not None:
         findings.append(
             f"Workflow evidence includes {workflow_evidence.approval_evidence_count} approval artifact(s)."
@@ -363,3 +372,37 @@ def _workflow_evidence_findings(workflow_evidence: WorkflowEvidenceInput | None)
     elif workflow_evidence.rollback_tested is True:
         findings.append("Rollback path has been tested.")
     return list(dict.fromkeys(findings))[:5]
+
+
+def _workflow_control_coverage_count(control_coverage: WorkflowControlCoverageInput) -> int:
+    return sum(
+        1
+        for value in (
+            control_coverage.approval_gate,
+            control_coverage.decision_logging,
+            control_coverage.evidence_retention,
+            control_coverage.exception_handling,
+            control_coverage.periodic_review,
+        )
+        if value is not None
+    )
+
+
+def _workflow_evidence_posture_findings(
+    evidence_posture: WorkflowEvidencePostureInput,
+) -> list[str]:
+    findings: list[str] = []
+    if evidence_posture.control_evidence_coverage_percent is not None:
+        findings.append(
+            "Control evidence coverage is "
+            f"{evidence_posture.control_evidence_coverage_percent:.1f}%."
+        )
+    if evidence_posture.freshest_evidence_age_days is not None:
+        findings.append(
+            f"Freshest control evidence is {evidence_posture.freshest_evidence_age_days} day(s) old."
+        )
+    if evidence_posture.audit_trail_complete is True:
+        findings.append("Audit trail completeness is confirmed.")
+    elif evidence_posture.audit_trail_complete is False:
+        findings.append("Audit trail completeness is not confirmed.")
+    return findings

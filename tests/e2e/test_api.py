@@ -137,6 +137,19 @@ def _workflow_context_payload() -> dict[str, object]:
 
 def _workflow_evidence_payload() -> dict[str, object]:
     return {
+        "control_coverage": {
+            "approval_gate": "verified",
+            "decision_logging": "verified",
+            "evidence_retention": "operating",
+            "exception_handling": "operating",
+            "periodic_review": "verified",
+        },
+        "evidence_posture": {
+            "control_evidence_coverage_percent": 94.0,
+            "freshest_evidence_age_days": 18,
+            "audit_trail_complete": True,
+            "linked_artifacts": True,
+        },
         "owner_confirmed": True,
         "systems_verified": True,
         "escalation_tested": True,
@@ -290,7 +303,8 @@ def test_create_mila_workflow_assessment_direct() -> None:
         for pillar in payload["workflow_pillar_scores"]
         if pillar["pillar"] == "control_and_evidence_readiness"
     )
-    assert any("approval evidence sample" in strength for strength in control_pillar["strengths"])
+    assert any("verified by source evidence" in strength for strength in control_pillar["strengths"])
+    assert "Source evidence coverage for mapped workflow controls is high." in control_pillar["rationale"]
 
     get_response = client.get(
         f"/api/v1/assessments/{payload['report_id']}",

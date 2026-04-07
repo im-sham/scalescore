@@ -72,6 +72,15 @@ class WorkflowReadinessPillar(StrEnum):
     AUTOMATION_FIT_AND_BLAST_RADIUS = "automation_fit_and_blast_radius"
 
 
+class WorkflowControlStatus(StrEnum):
+    """Explicit maturity state for a workflow control area."""
+
+    MISSING = "missing"
+    DOCUMENTED = "documented"
+    OPERATING = "operating"
+    VERIFIED = "verified"
+
+
 class WorkflowAssessmentContext(BaseModel):
     """Metadata required to score an AI-enabled workflow."""
 
@@ -91,9 +100,30 @@ class WorkflowAssessmentContext(BaseModel):
     reversibility: str = ""
 
 
+class WorkflowControlCoverageInput(BaseModel):
+    """Explicit maturity for core workflow control areas."""
+
+    approval_gate: WorkflowControlStatus | None = None
+    decision_logging: WorkflowControlStatus | None = None
+    evidence_retention: WorkflowControlStatus | None = None
+    exception_handling: WorkflowControlStatus | None = None
+    periodic_review: WorkflowControlStatus | None = None
+
+
+class WorkflowEvidencePostureInput(BaseModel):
+    """Evidence completeness and freshness for a workflow submission."""
+
+    control_evidence_coverage_percent: float | None = Field(default=None, ge=0.0, le=100.0)
+    freshest_evidence_age_days: int | None = Field(default=None, ge=0)
+    audit_trail_complete: bool | None = None
+    linked_artifacts: bool | None = None
+
+
 class WorkflowEvidenceInput(BaseModel):
     """Optional structured evidence signals for direct workflow submissions."""
 
+    control_coverage: WorkflowControlCoverageInput | None = None
+    evidence_posture: WorkflowEvidencePostureInput | None = None
     owner_confirmed: bool | None = None
     systems_verified: bool | None = None
     escalation_tested: bool | None = None

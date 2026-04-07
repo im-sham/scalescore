@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 
 from scalescore.core.workflow_readiness import (
+    apply_workflow_evidence_inputs,
     apply_workflow_readiness_context,
     derive_org_workflow_rollup,
 )
@@ -9,6 +10,11 @@ from scalescore.models.scaling import (
     ScaleScoreReport,
     WorkflowAssessmentContext,
     WorkflowBlastRadius,
+    WorkflowControlCoverageInput,
+    WorkflowControlStatus,
+    WorkflowEvidenceInput,
+    WorkflowEvidencePostureInput,
+    WorkflowReadinessPillar,
 )
 
 
@@ -95,3 +101,62 @@ def test_derive_org_workflow_rollup_averages_multiple_reports() -> None:
         / 2,
         1,
     )
+
+
+def test_apply_workflow_evidence_inputs_scores_explicit_control_coverage() -> None:
+    base_report = apply_workflow_readiness_context(
+        _base_report("report_control", 78.0),
+        _workflow_context("wf_support", "Support Triage"),
+    )
+
+    weak_report = apply_workflow_evidence_inputs(
+        base_report,
+        WorkflowEvidenceInput(
+            control_coverage=WorkflowControlCoverageInput(
+                approval_gate=WorkflowControlStatus.DOCUMENTED,
+                decision_logging=WorkflowControlStatus.MISSING,
+                evidence_retention=WorkflowControlStatus.DOCUMENTED,
+                exception_handling=WorkflowControlStatus.MISSING,
+                periodic_review=WorkflowControlStatus.MISSING,
+            ),
+            evidence_posture=WorkflowEvidencePostureInput(
+                control_evidence_coverage_percent=42.0,
+                freshest_evidence_age_days=240,
+                audit_trail_complete=False,
+                linked_artifacts=False,
+            ),
+        ),
+    )
+    strong_report = apply_workflow_evidence_inputs(
+        base_report,
+        WorkflowEvidenceInput(
+            control_coverage=WorkflowControlCoverageInput(
+                approval_gate=WorkflowControlStatus.VERIFIED,
+                decision_logging=WorkflowControlStatus.VERIFIED,
+                evidence_retention=WorkflowControlStatus.OPERATING,
+                exception_handling=WorkflowControlStatus.OPERATING,
+                periodic_review=WorkflowControlStatus.VERIFIED,
+            ),
+            evidence_posture=WorkflowEvidencePostureInput(
+                control_evidence_coverage_percent=96.0,
+                freshest_evidence_age_days=14,
+                audit_trail_complete=True,
+                linked_artifacts=True,
+            ),
+        ),
+    )
+
+    weak_control = next(
+        pillar
+        for pillar in weak_report.workflow_pillar_scores
+        if pillar.pillar == WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS
+    )
+    strong_control = next(
+        pillar
+        for pillar in strong_report.workflow_pillar_scores
+        if pillar.pillar == WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS
+    )
+
+    assert strong_control.score > weak_control.score
+    assert any("verified by source evidence" in strength for strength in strong_control.strengths)
+    assert any("missing from the workflow control coverage" in gap for gap in weak_control.gaps)

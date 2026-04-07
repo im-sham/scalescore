@@ -12,7 +12,10 @@ from scalescore.models.scaling import (
     ScaleScoreReport,
     WorkflowAssessmentContext,
     WorkflowBlastRadius,
+    WorkflowControlCoverageInput,
+    WorkflowControlStatus,
     WorkflowEvidenceInput,
+    WorkflowEvidencePostureInput,
     WorkflowPillarScore,
     WorkflowReadinessPillar,
 )
@@ -449,7 +452,18 @@ def _build_workflow_evidence_adjustments(
             rationale="Source evidence does not confirm the override path.",
         )
 
-    if workflow_evidence.approval_evidence_count is not None:
+    if workflow_evidence.control_coverage is not None:
+        _apply_explicit_control_coverage(
+            workflow_evidence.control_coverage,
+            add=add,
+        )
+
+    if workflow_evidence.evidence_posture is not None:
+        _apply_explicit_evidence_posture(
+            workflow_evidence.evidence_posture,
+            add=add,
+        )
+    elif workflow_evidence.approval_evidence_count is not None:
         if workflow_evidence.approval_evidence_count >= 3:
             add(
                 WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
@@ -475,7 +489,7 @@ def _build_workflow_evidence_adjustments(
                 rationale="The submission did not include approval traceability artifacts.",
             )
 
-    if workflow_evidence.decision_log_count is not None:
+    if workflow_evidence.evidence_posture is None and workflow_evidence.decision_log_count is not None:
         if workflow_evidence.decision_log_count >= 10:
             add(
                 WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
@@ -528,6 +542,159 @@ def _build_workflow_evidence_adjustments(
         )
 
     return adjustments
+
+
+def _apply_explicit_control_coverage(
+    control_coverage: WorkflowControlCoverageInput,
+    *,
+    add,
+) -> None:
+    control_labels = {
+        "approval_gate": "Approval gate",
+        "decision_logging": "Decision logging",
+        "evidence_retention": "Evidence retention",
+        "exception_handling": "Exception handling",
+        "periodic_review": "Periodic control review",
+    }
+    status_delta = {
+        WorkflowControlStatus.MISSING: -6.0,
+        WorkflowControlStatus.DOCUMENTED: -1.5,
+        WorkflowControlStatus.OPERATING: 2.5,
+        WorkflowControlStatus.VERIFIED: 4.5,
+    }
+
+    for field_name, label in control_labels.items():
+        status = getattr(control_coverage, field_name)
+        if status is None:
+            continue
+
+        rationale = f"{label} control is marked as {status.value} in source evidence."
+        if status == WorkflowControlStatus.MISSING:
+            add(
+                WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
+                delta=status_delta[status],
+                gap=f"{label} control is missing from the workflow control coverage.",
+                rationale=rationale,
+            )
+        elif status == WorkflowControlStatus.DOCUMENTED:
+            add(
+                WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
+                delta=status_delta[status],
+                gap=f"{label} control is documented but not yet operating.",
+                rationale=rationale,
+            )
+        elif status == WorkflowControlStatus.OPERATING:
+            add(
+                WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
+                delta=status_delta[status],
+                strength=f"{label} control is operating in the workflow.",
+                rationale=rationale,
+            )
+        else:
+            add(
+                WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
+                delta=status_delta[status],
+                strength=f"{label} control is verified by source evidence.",
+                rationale=rationale,
+            )
+
+
+def _apply_explicit_evidence_posture(
+    evidence_posture: WorkflowEvidencePostureInput,
+    *,
+    add,
+) -> None:
+    if evidence_posture.control_evidence_coverage_percent is not None:
+        coverage = evidence_posture.control_evidence_coverage_percent
+        if coverage >= 90.0:
+            add(
+                WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
+                delta=6.0,
+                strength=f"Control evidence covers {coverage:.1f}% of the mapped workflow controls.",
+                rationale="Source evidence coverage for mapped workflow controls is high.",
+            )
+        elif coverage >= 75.0:
+            add(
+                WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
+                delta=3.0,
+                strength=f"Control evidence covers {coverage:.1f}% of the mapped workflow controls.",
+                rationale="Source evidence coverage for mapped workflow controls is adequate.",
+            )
+        elif coverage >= 50.0:
+            add(
+                WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
+                delta=-2.0,
+                gap=f"Control evidence covers only {coverage:.1f}% of the mapped workflow controls.",
+                rationale="Source evidence coverage for mapped workflow controls is only partial.",
+            )
+        else:
+            add(
+                WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
+                delta=-8.0,
+                gap=f"Control evidence covers only {coverage:.1f}% of the mapped workflow controls.",
+                rationale="Source evidence coverage for mapped workflow controls is materially incomplete.",
+            )
+
+    if evidence_posture.freshest_evidence_age_days is not None:
+        evidence_age = evidence_posture.freshest_evidence_age_days
+        if evidence_age <= 30:
+            add(
+                WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
+                delta=4.0,
+                strength=f"Fresh control evidence is {evidence_age} day(s) old.",
+                rationale="The freshest control evidence is recent.",
+            )
+        elif evidence_age <= 90:
+            add(
+                WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
+                delta=1.0,
+                strength=f"Fresh control evidence is {evidence_age} day(s) old.",
+                rationale="The freshest control evidence is reasonably current.",
+            )
+        elif evidence_age <= 180:
+            add(
+                WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
+                delta=-3.0,
+                gap=f"Fresh control evidence is {evidence_age} day(s) old.",
+                rationale="The freshest control evidence is aging and should be refreshed.",
+            )
+        else:
+            add(
+                WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
+                delta=-7.0,
+                gap=f"Fresh control evidence is {evidence_age} day(s) old.",
+                rationale="The freshest control evidence is stale.",
+            )
+
+    if evidence_posture.audit_trail_complete is True:
+        add(
+            WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
+            delta=5.0,
+            strength="Audit trail completeness is confirmed in source evidence.",
+            rationale="Source evidence confirms the workflow audit trail is complete.",
+        )
+    elif evidence_posture.audit_trail_complete is False:
+        add(
+            WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
+            delta=-8.0,
+            gap="Audit trail completeness is not confirmed for this workflow.",
+            rationale="Source evidence does not confirm audit trail completeness.",
+        )
+
+    if evidence_posture.linked_artifacts is True:
+        add(
+            WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
+            delta=3.0,
+            strength="Workflow evidence includes linked artifacts for reviewer follow-up.",
+            rationale="Source evidence includes linked supporting artifacts.",
+        )
+    elif evidence_posture.linked_artifacts is False:
+        add(
+            WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
+            delta=-5.0,
+            gap="Workflow evidence does not include linked artifacts for reviewer follow-up.",
+            rationale="Source evidence is not linked to supporting artifacts.",
+        )
 
 
 def _apply_workflow_evidence_adjustment(

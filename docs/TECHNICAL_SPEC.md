@@ -104,7 +104,7 @@ The Python/report contract now supports:
 Current HTTP API endpoints remain backward compatible and now support workflow submission across sync, async, and scheduled paths:
 
 - `POST /api/v1/assessments/workflow` accepts `dataset_path` plus `workflow_context`
-- `POST /api/v1/assessments/mila/workflow` accepts direct workflow metadata from Mila (`org_id`, `org_name`, `workflow_context`, optional `workflow_evidence`, optional baseline findings)
+- `POST /api/v1/assessments/mila/workflow` accepts direct workflow metadata from Mila (`org_id`, `org_name`, `workflow_context`, optional `workflow_evidence` including explicit control coverage and evidence posture, optional baseline findings)
 - `POST /api/v1/assessments/upload` accepts optional `workflow_context_json`
 - `POST /api/v1/assessments/async/upload` accepts optional `workflow_context_json`
 - `POST /api/v1/assessments/schedules/upload` accepts optional `workflow_context_json`
@@ -153,6 +153,8 @@ Measures:
 - approval traceability
 - evidence expectations
 - decision logging
+- explicit workflow control coverage
+- evidence freshness and audit posture
 - governance-related findings
 
 ### 4.5 Automation Fit and Blast Radius
