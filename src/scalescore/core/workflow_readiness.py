@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import dataclass, field
 
 from scalescore.models.scaling import (
     AssessmentMode,
@@ -11,9 +12,18 @@ from scalescore.models.scaling import (
     ScaleScoreReport,
     WorkflowAssessmentContext,
     WorkflowBlastRadius,
+    WorkflowEvidenceInput,
     WorkflowPillarScore,
     WorkflowReadinessPillar,
 )
+
+
+@dataclass
+class _WorkflowEvidenceAdjustment:
+    delta: float = 0.0
+    strengths: list[str] = field(default_factory=list)
+    gaps: list[str] = field(default_factory=list)
+    rationale_fragments: list[str] = field(default_factory=list)
 
 
 def apply_workflow_readiness_context(
@@ -52,6 +62,49 @@ def apply_workflow_readiness_context(
             "workflow_readiness_score": workflow_score,
             "workflow_readiness_grade": workflow_grade,
             "workflow_pillar_scores": pillar_scores,
+            "top_trust_gaps": trust_gaps,
+            "prioritized_remediation_actions": prioritized_actions,
+            "org_rollup": org_rollup,
+        }
+    )
+
+
+def apply_workflow_evidence_inputs(
+    report: ScaleScoreReport,
+    workflow_evidence: WorkflowEvidenceInput | None,
+) -> ScaleScoreReport:
+    """Adjust workflow readiness pillars using structured evidence from direct submissions."""
+
+    if workflow_evidence is None or report.workflow_context is None or not report.workflow_pillar_scores:
+        return report
+
+    adjustments = _build_workflow_evidence_adjustments(workflow_evidence)
+    adjusted_pillars = [
+        _apply_workflow_evidence_adjustment(pillar, adjustments[pillar.pillar])
+        for pillar in report.workflow_pillar_scores
+    ]
+    workflow_score = round(sum(pillar.score for pillar in adjusted_pillars) / len(adjusted_pillars), 1)
+    workflow_grade = _grade_for_score(workflow_score)
+    trust_gaps = _collect_top_trust_gaps(adjusted_pillars, report.top_risks)
+    prioritized_actions = _prioritized_actions(report, trust_gaps)
+    org_rollup = (
+        report.org_rollup.model_copy(
+            update={
+                "average_workflow_score": workflow_score,
+                "overall_grade": workflow_grade,
+                "lowest_workflow_score": workflow_score,
+                "highest_workflow_score": workflow_score,
+            }
+        )
+        if report.org_rollup is not None
+        else None
+    )
+
+    return report.model_copy(
+        update={
+            "workflow_pillar_scores": adjusted_pillars,
+            "workflow_readiness_score": workflow_score,
+            "workflow_readiness_grade": workflow_grade,
             "top_trust_gaps": trust_gaps,
             "prioritized_remediation_actions": prioritized_actions,
             "org_rollup": org_rollup,
@@ -285,6 +338,219 @@ def _build_workflow_pillar_scores(
     ]
 
 
+def _build_workflow_evidence_adjustments(
+    workflow_evidence: WorkflowEvidenceInput,
+) -> dict[WorkflowReadinessPillar, _WorkflowEvidenceAdjustment]:
+    adjustments = {
+        pillar: _WorkflowEvidenceAdjustment() for pillar in WorkflowReadinessPillar
+    }
+
+    def add(
+        pillar: WorkflowReadinessPillar,
+        *,
+        delta: float = 0.0,
+        strength: str | None = None,
+        gap: str | None = None,
+        rationale: str | None = None,
+    ) -> None:
+        adjustment = adjustments[pillar]
+        adjustment.delta += delta
+        if strength:
+            adjustment.strengths.append(strength)
+        if gap:
+            adjustment.gaps.append(gap)
+        if rationale:
+            adjustment.rationale_fragments.append(rationale)
+
+    if workflow_evidence.owner_confirmed is True:
+        add(
+            WorkflowReadinessPillar.HUMAN_OVERSIGHT_AND_OWNERSHIP,
+            delta=4.0,
+            strength="Named workflow ownership is confirmed in source evidence.",
+            rationale="Source evidence confirms the named workflow owner.",
+        )
+    elif workflow_evidence.owner_confirmed is False:
+        add(
+            WorkflowReadinessPillar.HUMAN_OVERSIGHT_AND_OWNERSHIP,
+            delta=-10.0,
+            gap="Named workflow ownership is not confirmed in the source evidence.",
+            rationale="Source evidence does not confirm the named workflow owner.",
+        )
+
+    if workflow_evidence.systems_verified is True:
+        add(
+            WorkflowReadinessPillar.SYSTEM_AND_DEPENDENCY_RESILIENCE,
+            delta=4.0,
+            strength="Systems touched are verified in source evidence.",
+            rationale="Source evidence confirms the systems touched by this workflow.",
+        )
+    elif workflow_evidence.systems_verified is False:
+        add(
+            WorkflowReadinessPillar.SYSTEM_AND_DEPENDENCY_RESILIENCE,
+            delta=-8.0,
+            gap="Systems touched have not been verified against source evidence.",
+            rationale="Source evidence does not verify the systems touched by this workflow.",
+        )
+
+    if workflow_evidence.escalation_tested is True:
+        add(
+            WorkflowReadinessPillar.HUMAN_OVERSIGHT_AND_OWNERSHIP,
+            delta=5.0,
+            strength="Human escalation path has been tested in source evidence.",
+            rationale="Source evidence shows the escalation path has been exercised.",
+        )
+    elif workflow_evidence.escalation_tested is False:
+        add(
+            WorkflowReadinessPillar.HUMAN_OVERSIGHT_AND_OWNERSHIP,
+            delta=-10.0,
+            gap="Human escalation path exists but has not been tested.",
+            rationale="Source evidence does not show the escalation path being exercised.",
+        )
+
+    if workflow_evidence.fallback_tested is True:
+        add(
+            WorkflowReadinessPillar.WORKFLOW_STABILITY,
+            delta=3.0,
+            strength="Fallback mode has been tested in source evidence.",
+            rationale="Source evidence confirms the fallback path has been exercised.",
+        )
+        add(
+            WorkflowReadinessPillar.AUTOMATION_FIT_AND_BLAST_RADIUS,
+            delta=5.0,
+            strength="Fallback mode has been exercised for this workflow.",
+            rationale="Source evidence confirms the fallback path can contain failures.",
+        )
+    elif workflow_evidence.fallback_tested is False:
+        add(
+            WorkflowReadinessPillar.WORKFLOW_STABILITY,
+            delta=-5.0,
+            gap="Fallback mode is documented but has not been tested.",
+            rationale="Source evidence does not show the documented fallback path being exercised.",
+        )
+        add(
+            WorkflowReadinessPillar.AUTOMATION_FIT_AND_BLAST_RADIUS,
+            delta=-7.0,
+            gap="Fallback mode has not been tested for blast-radius containment.",
+            rationale="Source evidence does not confirm the fallback path can contain failures.",
+        )
+
+    if workflow_evidence.override_reviewed is True:
+        add(
+            WorkflowReadinessPillar.HUMAN_OVERSIGHT_AND_OWNERSHIP,
+            delta=3.0,
+            strength="Override rights have been reviewed in source evidence.",
+            rationale="Source evidence confirms the override path was reviewed.",
+        )
+    elif workflow_evidence.override_reviewed is False:
+        add(
+            WorkflowReadinessPillar.HUMAN_OVERSIGHT_AND_OWNERSHIP,
+            delta=-6.0,
+            gap="Override rights are documented but not confirmed in source evidence.",
+            rationale="Source evidence does not confirm the override path.",
+        )
+
+    if workflow_evidence.approval_evidence_count is not None:
+        if workflow_evidence.approval_evidence_count >= 3:
+            add(
+                WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
+                delta=6.0,
+                strength=(
+                    f"{workflow_evidence.approval_evidence_count} approval evidence sample(s) "
+                    "were provided."
+                ),
+                rationale="Approval traceability artifacts were included in the submission.",
+            )
+        elif workflow_evidence.approval_evidence_count > 0:
+            add(
+                WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
+                delta=-4.0,
+                gap="Approval evidence coverage is still thin for this workflow.",
+                rationale="Only limited approval traceability artifacts were provided.",
+            )
+        else:
+            add(
+                WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
+                delta=-12.0,
+                gap="No approval evidence samples were provided with the workflow submission.",
+                rationale="The submission did not include approval traceability artifacts.",
+            )
+
+    if workflow_evidence.decision_log_count is not None:
+        if workflow_evidence.decision_log_count >= 10:
+            add(
+                WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
+                delta=5.0,
+                strength=(
+                    f"{workflow_evidence.decision_log_count} decision log sample(s) were provided."
+                ),
+                rationale="Decision logging samples were included in the submission.",
+            )
+        elif workflow_evidence.decision_log_count > 0:
+            add(
+                WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
+                delta=-3.0,
+                gap="Decision log sampling is still limited for this workflow.",
+                rationale="Only a small number of decision log samples were provided.",
+            )
+        else:
+            add(
+                WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS,
+                delta=-10.0,
+                gap="No decision log samples were provided with the workflow submission.",
+                rationale="The submission did not include decision logging samples.",
+            )
+
+    if workflow_evidence.rollback_tested is True:
+        add(
+            WorkflowReadinessPillar.WORKFLOW_STABILITY,
+            delta=3.0,
+            strength="Rollback path has been tested in source evidence.",
+            rationale="Source evidence confirms the rollback path has been exercised.",
+        )
+        add(
+            WorkflowReadinessPillar.AUTOMATION_FIT_AND_BLAST_RADIUS,
+            delta=6.0,
+            strength="Rollback path has been verified for containment.",
+            rationale="Source evidence confirms the rollback path can contain failures.",
+        )
+    elif workflow_evidence.rollback_tested is False:
+        add(
+            WorkflowReadinessPillar.WORKFLOW_STABILITY,
+            delta=-6.0,
+            gap="Rollback path has not been tested for this workflow.",
+            rationale="Source evidence does not confirm the rollback path was exercised.",
+        )
+        add(
+            WorkflowReadinessPillar.AUTOMATION_FIT_AND_BLAST_RADIUS,
+            delta=-10.0,
+            gap="Rollback path has not been tested for blast-radius containment.",
+            rationale="Source evidence does not confirm rollback containment.",
+        )
+
+    return adjustments
+
+
+def _apply_workflow_evidence_adjustment(
+    pillar: WorkflowPillarScore,
+    adjustment: _WorkflowEvidenceAdjustment,
+) -> WorkflowPillarScore:
+    score = round(max(0.0, min(100.0, pillar.score + adjustment.delta)), 1)
+    strengths = _dedupe_compact_items([*pillar.strengths, *adjustment.strengths])[:5]
+    gaps = _dedupe_compact_items([*pillar.gaps, *adjustment.gaps])[:5]
+    rationale = pillar.rationale
+    if adjustment.rationale_fragments:
+        rationale = f"{pillar.rationale} {' '.join(adjustment.rationale_fragments)}".strip()
+    return pillar.model_copy(
+        update={
+            "score": score,
+            "grade": _grade_for_score(score),
+            "strengths": strengths,
+            "gaps": gaps,
+            "rationale": rationale,
+        }
+    )
+
+
 def _matching_constraints(
     constraints: list[CapacityConstraint],
     systems_touched: list[str],
@@ -388,3 +654,7 @@ def _normalize_values(values: list[str]) -> set[str]:
 
 def _compact_items(values: list[str | None]) -> list[str]:
     return [value for value in values if value]
+
+
+def _dedupe_compact_items(values: list[str | None]) -> list[str]:
+    return list(dict.fromkeys(_compact_items(values)))

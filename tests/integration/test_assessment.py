@@ -3,12 +3,18 @@ from pathlib import Path
 import pytest
 
 from scalescore.config import settings
-from scalescore.core.assessment import run_assessment, run_assessment_from_csv
+from scalescore.core.assessment import (
+    run_assessment,
+    run_assessment_from_csv,
+    run_workflow_assessment,
+)
 from scalescore.models.core import Facility, Organization, System
 from scalescore.models.scaling import (
     FunctionalArea,
     WorkflowAssessmentContext,
     WorkflowBlastRadius,
+    WorkflowEvidenceInput,
+    WorkflowReadinessPillar,
 )
 
 
@@ -164,3 +170,73 @@ def test_run_assessment_can_enrich_with_workflow_readiness_context() -> None:
     assert report.prioritized_remediation_actions
     assert report.org_rollup is not None
     assert report.org_rollup.workflow_count == 1
+
+
+def test_run_workflow_assessment_uses_structured_workflow_evidence() -> None:
+    workflow_context = WorkflowAssessmentContext(
+        workflow_id="wf_finance_close",
+        name="Finance Close Automation",
+        business_function="finance",
+        owner="Controller",
+        ai_role="Draft close-pack anomalies and reconciliation recommendations",
+        systems_touched=["sys_billing", "Billing"],
+        human_escalation_path=["Controller", "CFO"],
+        control_requirements=["approval traceability", "decision logging"],
+        blast_radius=WorkflowBlastRadius.HIGH,
+        fallback_mode="Manual finance close process",
+        override_rights=["Controller", "CFO"],
+        error_tolerance="Low tolerance for misclassification in month-end close",
+        reversibility="All AI-produced adjustments require human approval before posting",
+    )
+
+    weak_report = run_workflow_assessment(
+        org_id="org_1",
+        org_name="Acme",
+        workflow_context=workflow_context,
+        baseline_operational_score=78.0,
+        workflow_evidence=WorkflowEvidenceInput(
+            owner_confirmed=False,
+            systems_verified=False,
+            escalation_tested=False,
+            fallback_tested=False,
+            override_reviewed=False,
+            approval_evidence_count=0,
+            decision_log_count=0,
+            rollback_tested=False,
+        ),
+    )
+    strong_report = run_workflow_assessment(
+        org_id="org_1",
+        org_name="Acme",
+        workflow_context=workflow_context,
+        baseline_operational_score=78.0,
+        workflow_evidence=WorkflowEvidenceInput(
+            owner_confirmed=True,
+            systems_verified=True,
+            escalation_tested=True,
+            fallback_tested=True,
+            override_reviewed=True,
+            approval_evidence_count=4,
+            decision_log_count=18,
+            rollback_tested=True,
+        ),
+    )
+
+    assert strong_report.workflow_readiness_score is not None
+    assert weak_report.workflow_readiness_score is not None
+    assert strong_report.workflow_readiness_score > weak_report.workflow_readiness_score
+
+    strong_control = next(
+        pillar
+        for pillar in strong_report.workflow_pillar_scores
+        if pillar.pillar == WorkflowReadinessPillar.CONTROL_AND_EVIDENCE_READINESS
+    )
+    weak_automation = next(
+        pillar
+        for pillar in weak_report.workflow_pillar_scores
+        if pillar.pillar == WorkflowReadinessPillar.AUTOMATION_FIT_AND_BLAST_RADIUS
+    )
+
+    assert any("approval evidence sample" in strength for strength in strong_control.strengths)
+    assert "Workflow evidence includes 4 approval artifact(s)." in strong_report.key_findings
+    assert any("Rollback path has not been tested" in gap for gap in weak_automation.gaps)

@@ -91,6 +91,19 @@ class WorkflowAssessmentContext(BaseModel):
     reversibility: str = ""
 
 
+class WorkflowEvidenceInput(BaseModel):
+    """Optional structured evidence signals for direct workflow submissions."""
+
+    owner_confirmed: bool | None = None
+    systems_verified: bool | None = None
+    escalation_tested: bool | None = None
+    fallback_tested: bool | None = None
+    override_reviewed: bool | None = None
+    approval_evidence_count: int | None = Field(default=None, ge=0)
+    decision_log_count: int | None = Field(default=None, ge=0)
+    rollback_tested: bool | None = None
+
+
 class WorkflowPillarScore(BaseModel):
     """Score and rationale for a single workflow readiness pillar."""
 

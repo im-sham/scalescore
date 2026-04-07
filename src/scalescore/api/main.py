@@ -68,6 +68,7 @@ from scalescore.models.scaling import (
     ScoreHistoryResponse,
     ScoreHistoryTrendWindow,
     WorkflowAssessmentContext,
+    WorkflowEvidenceInput,
 )
 from scalescore.storage.assessment_repository import (
     AssessmentRepository,
@@ -284,6 +285,7 @@ class CreateMilaWorkflowAssessmentRequest(BaseModel):
     org_id: str = Field(min_length=1)
     org_name: str = Field(min_length=1)
     workflow_context: WorkflowAssessmentContext
+    workflow_evidence: WorkflowEvidenceInput | None = None
     baseline_operational_score: float | None = Field(default=None, ge=0.0, le=100.0)
     source_system: str = Field(default="mila", min_length=1)
     source_workflow_type: str | None = None
@@ -676,6 +678,7 @@ async def create_mila_workflow_assessment(
         org_name=payload.org_name,
         workflow_context=payload.workflow_context,
         baseline_operational_score=payload.baseline_operational_score,
+        workflow_evidence=payload.workflow_evidence,
         source_findings=source_findings,
     )
     repository.save_report(report, tenant_id=current_user.tenant_id)

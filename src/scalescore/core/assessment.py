@@ -8,7 +8,10 @@ from scalescore.core.exceptions import (
     OrganizationRequiredError,
 )
 from scalescore.core.reporting import generate_executive_summary
-from scalescore.core.workflow_readiness import apply_workflow_readiness_context
+from scalescore.core.workflow_readiness import (
+    apply_workflow_evidence_inputs,
+    apply_workflow_readiness_context,
+)
 from scalescore.models.core import Facility, Organization, System, Team, Vendor
 from scalescore.models.scaling import (
     AssessmentMode,
@@ -19,6 +22,7 @@ from scalescore.models.scaling import (
     ScaleScoreReport,
     WorkflowAssessmentContext,
     WorkflowBlastRadius,
+    WorkflowEvidenceInput,
 )
 from scalescore.scoring.bottleneck_detector import BottleneckDetector
 from scalescore.scoring.engine import ScoringConfig, ScoringEngine
@@ -148,11 +152,12 @@ def run_workflow_assessment(
     org_name: str,
     workflow_context: WorkflowAssessmentContext,
     baseline_operational_score: float | None = None,
+    workflow_evidence: WorkflowEvidenceInput | None = None,
     source_findings: list[str] | None = None,
 ) -> ScaleScoreReport:
     """Build a workflow-first report from direct workflow metadata without CSV datasets."""
 
-    source_findings = source_findings or []
+    source_findings = list(source_findings or [])
     operational_baseline = _workflow_operational_baseline_score(
         workflow_context=workflow_context,
         baseline_operational_score=baseline_operational_score,
@@ -182,10 +187,11 @@ def run_workflow_assessment(
         immediate_actions=[],
     )
     report = apply_workflow_readiness_context(report, workflow_context)
+    report = apply_workflow_evidence_inputs(report, workflow_evidence)
 
     workflow_score = report.workflow_readiness_score or operational_baseline
     workflow_grade = report.workflow_readiness_grade or _grade_for_score(workflow_score)
-    key_findings = _workflow_key_findings(report, source_findings)
+    key_findings = _workflow_key_findings(report, source_findings, workflow_evidence)
     immediate_actions = report.prioritized_remediation_actions[:3] or report.immediate_actions
 
     report = report.model_copy(
@@ -324,10 +330,36 @@ def _workflow_source_findings(
 def _workflow_key_findings(
     report: ScaleScoreReport,
     source_findings: list[str],
+    workflow_evidence: WorkflowEvidenceInput | None,
 ) -> list[str]:
     findings = [
         *source_findings,
+        *_workflow_evidence_findings(workflow_evidence),
         f"Workflow readiness score: {(report.workflow_readiness_score or report.overall_score):.1f}.",
         *report.top_trust_gaps[:3],
     ]
     return list(dict.fromkeys(finding for finding in findings if finding))[:5]
+
+
+def _workflow_evidence_findings(workflow_evidence: WorkflowEvidenceInput | None) -> list[str]:
+    if workflow_evidence is None:
+        return []
+
+    findings: list[str] = []
+    if workflow_evidence.approval_evidence_count is not None:
+        findings.append(
+            f"Workflow evidence includes {workflow_evidence.approval_evidence_count} approval artifact(s)."
+        )
+    if workflow_evidence.decision_log_count is not None:
+        findings.append(
+            f"Workflow evidence includes {workflow_evidence.decision_log_count} decision log sample(s)."
+        )
+    if workflow_evidence.escalation_tested is False:
+        findings.append("Human escalation path has not been tested.")
+    elif workflow_evidence.escalation_tested is True:
+        findings.append("Human escalation path has been tested.")
+    if workflow_evidence.rollback_tested is False:
+        findings.append("Rollback path has not been tested.")
+    elif workflow_evidence.rollback_tested is True:
+        findings.append("Rollback path has been tested.")
+    return list(dict.fromkeys(findings))[:5]

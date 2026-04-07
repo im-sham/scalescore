@@ -135,6 +135,19 @@ def _workflow_context_payload() -> dict[str, object]:
     }
 
 
+def _workflow_evidence_payload() -> dict[str, object]:
+    return {
+        "owner_confirmed": True,
+        "systems_verified": True,
+        "escalation_tested": True,
+        "fallback_tested": True,
+        "override_reviewed": True,
+        "approval_evidence_count": 4,
+        "decision_log_count": 18,
+        "rollback_tested": True,
+    }
+
+
 def _issue_opsorchestra_token(
     *,
     private_key: rsa.RSAPrivateKey,
@@ -248,6 +261,7 @@ def test_create_mila_workflow_assessment_direct() -> None:
             "org_id": "tenant_default",
             "org_name": "Default Tenant",
             "workflow_context": _workflow_context_payload(),
+            "workflow_evidence": _workflow_evidence_payload(),
             "baseline_operational_score": 82.0,
             "source_system": "mila",
             "source_workflow_type": "runbook_playbook",
@@ -271,6 +285,12 @@ def test_create_mila_workflow_assessment_direct() -> None:
     assert payload["workflow_readiness_score"] is not None
     assert payload["overall_score"] == payload["workflow_readiness_score"]
     assert "Runbook readiness is 90% (at_risk)." in payload["key_findings"]
+    control_pillar = next(
+        pillar
+        for pillar in payload["workflow_pillar_scores"]
+        if pillar["pillar"] == "control_and_evidence_readiness"
+    )
+    assert any("approval evidence sample" in strength for strength in control_pillar["strengths"])
 
     get_response = client.get(
         f"/api/v1/assessments/{payload['report_id']}",
