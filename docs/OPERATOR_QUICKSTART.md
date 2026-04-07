@@ -1,4 +1,4 @@
-# ScaleScore Operator Quickstart
+# Proofhouse Readiness Operator Quickstart
 
 > **Audience:** Operations-focused users with limited coding experience  
 > **Goal:** Generate your first useful readiness assessment in about 15 minutes
@@ -13,7 +13,7 @@ At the end of this flow, you will have:
 - Top risks to address first.
 - Recommended mitigation actions.
 
-**Compatibility note:** This quickstart still uses the current org-level CSV flow. ScaleScore's canonical direction is workflow-first AI operational readiness, but the existing upload path remains supported during the transition.
+**Compatibility note:** This quickstart still uses the current org-level CSV flow. Readiness' canonical direction is workflow-first AI operational readiness, but the existing upload path remains supported during the transition. If your technical team references the current repository or CLI, those identifiers still use `scalescore` during this migration phase.
 
 ---
 
@@ -114,7 +114,7 @@ Prioritize recommendations with:
 
 Use this minimal handoff request:
 
-> "Please validate my six CSV files against ScaleScore schema, run the same dataset through API, and confirm whether any parsing or auth errors are occurring."
+> "Please validate my six CSV files against the current Readiness assessment schema in the `scalescore` service, run the same dataset through API, and confirm whether any parsing or auth errors are occurring."
 
 ---
 

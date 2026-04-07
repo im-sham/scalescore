@@ -1,4 +1,4 @@
-# ScaleScore API Reference
+# Proofhouse Readiness API Reference
 
 > **Last Updated:** March 9, 2026  
 > **Version:** v1 (`/api/v1`)
@@ -7,21 +7,22 @@
 
 ## Overview
 
-ScaleScore provides a FastAPI HTTP interface for:
+Proofhouse Readiness currently ships through the `scalescore` FastAPI service, which provides:
 - Authentication and API key management
 - Running and retrieving assessments
 - Managing organizations and entities
 - Importing CSV data
 - Receiving OpsOrchestra webhook events
 
-ScaleScore is transitioning to a workflow-first AI operational readiness model. The current HTTP API remains backward compatible, continues to support organization-level assessments, and now exposes additive workflow-first submission paths.
+Readiness is transitioning to a workflow-first AI operational readiness model. The current HTTP API remains backward compatible, continues to support organization-level assessments, and now exposes additive workflow-first submission paths.
 
 Current compatibility rules:
 
 - existing org-level endpoints remain supported
 - existing CSV upload and demo flows remain supported
 - workflow-first report fields may appear on `ScaleScoreReport` payloads when reports are generated with workflow context via HTTP workflow submission endpoints or the Python/internal contract
-- legacy `OpsOrchestra` naming remains in some integration settings for backward compatibility, but user-facing narrative should prefer `Mila` / `USMI suite`
+- legacy `OpsOrchestra` and `ScaleScore` naming remains in some integration settings for backward compatibility, but user-facing narrative should prefer `Workflow Context` / `Proofhouse`
+- repo/package/env/auth/API identifiers remain `scalescore` in this phase; the planned repo-root rename to `proofhouse-readiness` is a separate later wave
 
 Base URL (local): `http://localhost:8000`
 
@@ -50,7 +51,7 @@ Note: `.env.example` sets `AUTH_SKIP_AUTH=true` for development convenience.
 
 ## Authentication
 
-ScaleScore supports two auth methods:
+The current `scalescore` service supports two auth methods:
 - `Authorization: Bearer <access_token>`
 - `X-API-Key: <api_key>`
 
@@ -206,7 +207,7 @@ Current compatibility rules:
 
 - `POST /api/v1/assessments` remains the development-only org-compatibility path using `dataset_path`
 - `POST /api/v1/assessments/workflow` accepts `dataset_path` plus `workflow_context` as JSON
-- `POST /api/v1/assessments/mila/workflow` accepts direct Mila workflow metadata without requiring dataset CSVs
+- `POST /api/v1/assessments/mila/workflow` is the current Workflow Context compatibility endpoint and accepts direct workflow metadata without requiring dataset CSVs
 - `POST /api/v1/assessments/upload` still accepts the six CSV files and now supports optional `workflow_context_json` form data for workflow scoring
 - `POST /api/v1/assessments/async/upload` supports optional `workflow_context_json` and echoes workflow context on job-status payloads
 - `POST /api/v1/assessments/schedules/upload` supports optional `workflow_context_json` and persists workflow context on schedule payloads
@@ -236,7 +237,7 @@ Current compatibility rules:
 |-------|------|---------------------|-------|
 | `POST` | `/api/v1/assessments` | `assessment:create` | Requires `dataset_path`; development-only path execution |
 | `POST` | `/api/v1/assessments/workflow` | `assessment:create` | JSON workflow submission (`dataset_path` + `workflow_context`); development-only dataset path execution |
-| `POST` | `/api/v1/assessments/mila/workflow` | `assessment:create` | Direct Mila workflow submission (`org_id`, `org_name`, `workflow_context`, optional baseline findings); no CSV dataset required |
+| `POST` | `/api/v1/assessments/mila/workflow` | `assessment:create` | Workflow Context compatibility submission (`org_id`, `org_name`, `workflow_context`, optional baseline findings); no CSV dataset required |
 | `POST` | `/api/v1/assessments/upload` | `assessment:create` | Multipart upload of six CSV files; optional `workflow_context_json` form field enables workflow scoring |
 | `POST` | `/api/v1/assessments/async/upload` | `assessment:create` | Queue async assessment job (`202 Accepted`); optional `workflow_context_json` enables workflow scoring |
 | `GET` | `/api/v1/assessments/async/{job_id}` | `assessment:read` | Poll queued/processing/completed async job status; echoes workflow context when present |

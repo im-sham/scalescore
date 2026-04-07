@@ -1,6 +1,14 @@
-# ScaleScore Documentation
+# Proofhouse Readiness Documentation
 
 > **Documentation Philosophy**: Every architectural decision, security consideration, and implementation choice should be documented with enough context that future developers understand not just *what* was decided, but *why*.
+
+---
+
+## Repository Scope Note
+
+This is the active technical documentation set for the current `scalescore` repo.
+
+Public Proofhouse naming describes this capability as `Readiness`, but the repo root, package/module names, CLI commands, env vars, auth settings, and API routes remain `scalescore` until a later migration wave explicitly changes them.
 
 ---
 
