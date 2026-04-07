@@ -1,4 +1,4 @@
-# ScaleScore
+# Proofhouse Readiness
 
 [![CI](https://github.com/im-sham/scalescore/actions/workflows/ci.yml/badge.svg)](https://github.com/im-sham/scalescore/actions/workflows/ci.yml)
 
@@ -8,9 +8,17 @@
 
 ---
 
-## What is ScaleScore?
+## Repository Note
 
-ScaleScore is the scoring and diagnostic layer for **AI-enabled operational readiness**.
+Readiness is the active capability name for this layer inside the Proofhouse platform.
+
+In this migration phase, the technical repo root, Python package, CLI commands, env vars, auth claims, and API routes remain `scalescore`. `ScaleScore` should be treated as the current technical identifier and internal lineage reference, not the preferred market-facing name. The planned repo-root target is `proofhouse-readiness`, but that rename is a later wave and is intentionally separate from runtime identifier changes.
+
+---
+
+## What is Readiness?
+
+Readiness is the scoring and diagnostic layer for **AI-enabled operational readiness**.
 
 It helps a COO or operations leader answer a more specific question than generic company scalability:
 
@@ -20,7 +28,7 @@ ScaleScore still uses traditional operations signals such as capacity, dependenc
 
 ### Primary Jobs
 
-ScaleScore produces:
+Readiness produces:
 
 1. **Workflow readiness scores** for AI-enabled use cases
 2. **Pillar breakdowns** across stability, resilience, oversight, controls, and blast radius
@@ -41,33 +49,35 @@ ScaleScore produces:
 
 | Product | Job |
 |---------|-----|
-| **Mila** | Workflow context, system of work, operational data |
-| **ScaleScore** | Readiness scoring, trust-gap diagnosis, remediation prioritization |
-| **Sentinel** | Runtime governance, control enforcement, compliance evidence |
+| **Workflow Context** | Canonical workflow truth, system of work, evidence linkage, operational context |
+| **Readiness** | Readiness scoring, trust-gap diagnosis, remediation prioritization |
+| **Governance** | Runtime governance, control enforcement, compliance evidence |
 | **Forge** | Failure-pattern input and scoring-model refinement |
 
-ScaleScore remains `module-first` in the USMI suite, with a `secondary standalone diagnostic` motion for consulting, design partners, and discovery.
+Readiness is primarily a Proofhouse capability layer, with a secondary standalone diagnostic motion for consulting, design partners, and discovery.
 
 ---
 
 ## Compatibility Mode
 
-ScaleScore is transitioning to workflow-first without breaking the current product surface.
+Readiness is transitioning to workflow-first without breaking the current product surface.
 
 - Current org-level CSV assessment flows remain supported.
 - Current HTTP API endpoints remain supported.
 - Current async, scheduling, persistence, and staging validation flows remain supported.
 - Workflow-first readiness is now available as an additive Python/report contract.
 
-Legacy OpsOrchestra naming is retained only where required for technical backward compatibility. User-facing narrative should prefer `Mila` and `USMI suite`.
+Legacy `OpsOrchestra` and `ScaleScore` naming is retained only where required for technical backward compatibility. User-facing narrative should prefer `Proofhouse`, `Workflow Context`, and `Readiness`.
+Current repo/package/runtime identifiers also remain `scalescore` until a later rename wave.
 
 ---
 
 ## Quick Start
 
 ```bash
-# Clone the repository
+# Clone the current technical repository
 git clone https://github.com/im-sham/scalescore.git
+# The checkout folder can remain "scalescore" until the repo-root rename wave.
 cd scalescore
 
 # Create and activate virtual environment
@@ -158,15 +168,15 @@ Workflow reports now support:
 | Staging validation gate | ✅ Implemented |
 | Workflow-first report contract | ✅ Initial additive slice implemented |
 | HTTP workflow submission contract | ✅ Implemented (sync, async, scheduled) |
-| Mila workflow-context integration | ✅ Initial direct integration implemented |
+| Workflow Context integration | ✅ Initial direct integration implemented |
 | Standalone COO diagnostic packaging | 🔄 Planned |
 
 ### Next Focus
 
-- align all strategy and product docs around workflow-first AI operational readiness
+- align all strategy and product docs around workflow-first AI operational readiness inside Proofhouse
 - map current org-level signals into workflow-first readiness pillars
-- deepen the Mila-native workflow scoring path beyond the initial direct integration
-- refine the Mila-native workflow submission contract as more workflow sources are added
+- deepen the Workflow Context-native workflow scoring path beyond the initial direct integration
+- refine the Workflow Context-native submission contract as more workflow sources are added
 - preserve existing org-level compatibility during the transition
 
 ---
@@ -188,10 +198,10 @@ Workflow reports now support:
 
 ## Use Cases
 
-### In the USMI Suite
+### In the Proofhouse Platform
 
-- Score whether a Mila workflow is ready for more AI autonomy
-- Highlight trust and readiness gaps before Sentinel rollout
+- Score whether a Workflow Context workflow is ready for more AI autonomy
+- Highlight trust and readiness gaps before Governance rollout
 - Feed workflow-level readiness signals from Forge learnings
 
 ### For COO Diagnostics

@@ -1,4 +1,4 @@
-# Contributing to ScaleScore
+# Contributing to Proofhouse Readiness
 
 Thank you for your interest in contributing to ScaleScore! This document provides guidelines and standards for contributing to the project.
 
@@ -17,6 +17,12 @@ Thank you for your interest in contributing to ScaleScore! This document provide
 
 ## Getting Started
 
+### Repository naming note
+
+Readiness is the public capability name for this layer in the current Proofhouse portfolio.
+
+During this migration phase, the technical repo root, package name, CLI commands, env vars, auth claims, and API routes remain `scalescore`. `ScaleScore` should be treated as the current technical identifier and lineage reference. The future repo-root target is `proofhouse-readiness`, but that rename is a separate wave.
+
 ### Prerequisites
 
 - Python 3.11 or higher
@@ -26,8 +32,9 @@ Thank you for your interest in contributing to ScaleScore! This document provide
 ### Development Setup
 
 ```bash
-# Clone the repository
+# Clone the current technical repository
 git clone https://github.com/im-sham/scalescore.git
+# The checkout folder can remain "scalescore" until the repo-root rename wave.
 cd scalescore
 
 # Create virtual environment
@@ -50,10 +57,12 @@ uvicorn scalescore.api.main:app --reload
 streamlit run ui/streamlit_app.py
 ```
 
+Use current technical identifiers in code, tooling, and tests until the repo-root rename wave is explicitly started.
+
 ### Project Structure
 
 ```
-scalescore/
+repo-root/
 ├── src/scalescore/
 │   ├── api/              # FastAPI endpoints
 │   ├── connectors/       # Data import connectors
