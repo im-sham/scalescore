@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "scalescore"
 version = "0.1.0"
-description = "Workflow-first AI operational readiness scoring for AI-enabled teams"
+description = "Readiness scoring and trust-gap diagnosis for AI-enabled workflows in the Proofhouse platform"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
@@ -58,6 +58,8 @@ dev = [
     "mypy>=1.0.0",
 ]
 
+# Keep the current technical package name for the Workflow Context integration extra
+# until a dedicated package/integration rename wave is approved.
 opsorchestra = [
     "opsorchestra>=0.1.0",
 ]
@@ -66,6 +68,7 @@ worker = [
     "redis>=5.0",
 ]
 
+# Keep current GitHub URLs until the repo-root and slug rename actually happen.
 [project.urls]
 Homepage = "https://github.com/im-sham/scalescore"
 Documentation = "https://github.com/im-sham/scalescore#readme"
