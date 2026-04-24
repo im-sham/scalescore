@@ -1,6 +1,6 @@
 # Contributing to Proofhouse Readiness
 
-Thank you for your interest in contributing to ScaleScore! This document provides guidelines and standards for contributing to the project.
+Thank you for your interest in contributing to Proofhouse Readiness. This document provides guidelines and standards for contributing to the current `scalescore` technical repository.
 
 ---
 
@@ -22,6 +22,8 @@ Thank you for your interest in contributing to ScaleScore! This document provide
 Readiness is the public capability name for this layer in the current Proofhouse portfolio.
 
 During this migration phase, the technical repo root, package name, CLI commands, env vars, auth claims, and API routes remain `scalescore`. `ScaleScore` should be treated as the current technical identifier and lineage reference. The future repo-root target is `proofhouse-readiness`, but that rename is a separate wave.
+
+See [../NAMING.md](../NAMING.md) for the current product-vs-technical naming rules.
 
 ### Prerequisites
 
@@ -403,4 +405,4 @@ New dependencies require justification:
 
 Contributors who submit accepted PRs will be added to CONTRIBUTORS.md.
 
-Thank you for contributing to ScaleScore!
+Thank you for contributing to Proofhouse Readiness.

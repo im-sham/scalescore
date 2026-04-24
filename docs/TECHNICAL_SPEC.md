@@ -1,15 +1,17 @@
-# ScaleScore Technical Specification
+# Proofhouse Readiness Technical Specification
 
 **Version:** 0.2.0  
 **Author:** Shamim Rehman  
-**Updated:** March 2026  
+**Updated:** April 24, 2026
 **Status:** Active specification
 
 ---
 
 ## Executive Summary
 
-ScaleScore is the workflow-first scoring and diagnostic layer for **AI-enabled operational readiness**.
+Proofhouse Readiness is the workflow-first scoring and diagnostic layer for **AI-enabled operational readiness**.
+
+The current technical repository, package, CLI, and API identifiers remain `scalescore` during this migration phase. `ScaleScore` is still valid when referring to the current service implementation, compatibility API, or concrete report classes such as `ScaleScoreReport`.
 
 The product is designed to help operations leaders determine whether a specific workflow is ready to scale with AI without creating fragility, trust failures, or governance gaps. Organization-level readiness remains important, but is derived from workflow assessments rather than treated as the only primary object.
 
@@ -35,20 +37,20 @@ Know which AI-enabled workflows are ready to scale, and what will break trust fi
 
 | Product | Responsibility |
 |---------|----------------|
-| **Mila** | Workflow context, operating data, system of work |
-| **ScaleScore** | Readiness scoring, trust-gap diagnosis, remediation prioritization |
-| **Sentinel** | Runtime governance, control enforcement, compliance evidence |
-| **Forge** | Failure-pattern input and scoring-model refinement |
+| **Workflow Context** | Canonical workflow truth, operating data, evidence linkage, system of work |
+| **Readiness** | Readiness scoring, trust-gap diagnosis, remediation prioritization, Operational Learning suitability scoring |
+| **Governance** | Rights, policy, redaction review, use approvals, export control, manifests, audit-grade use control |
+| **Forge** | Incident memory, failure-pattern learning, scoring-model feedback |
 
-**Boundary rule:** ScaleScore scores readiness and recommends remediation. It does not own runtime policy enforcement or compliance operations.
+**Boundary rule:** Readiness scores suitability and recommends remediation. It does not own canonical workflow truth, approval decisions, export eligibility, or compliance operations.
 
-Operational Learning is an additive Readiness lens for candidate scoring only. ScaleScore does not own workflow truth, rights profiles, export eligibility, promotion approvals, or asset derivation.
+Operational Learning is an additive Readiness lens for candidate scoring only. Readiness does not own workflow truth, rights profiles, export eligibility, promotion approvals, or asset derivation.
 
 ---
 
 ## 2. Canonical Assessment Unit
 
-ScaleScore is now **workflow / use-case first**.
+Readiness is now **workflow / use-case first**.
 
 Examples:
 
@@ -107,7 +109,7 @@ The Python/report contract now supports:
 Current HTTP API endpoints remain backward compatible and now support workflow submission across sync, async, and scheduled paths:
 
 - `POST /api/v1/assessments/workflow` accepts `dataset_path` plus `workflow_context`
-- `POST /api/v1/assessments/mila/workflow` accepts direct workflow metadata from Mila (`org_id`, `org_name`, `workflow_context`, optional `workflow_evidence` including explicit control coverage and evidence posture, optional `operational_learning_inputs`, optional baseline findings)
+- `POST /api/v1/assessments/mila/workflow` is the current Workflow Context compatibility endpoint. The route name remains technical compatibility debt for now; it accepts direct workflow metadata (`org_id`, `org_name`, `workflow_context`, optional `workflow_evidence` including explicit control coverage and evidence posture, optional `operational_learning_inputs`, optional baseline findings)
 - `POST /api/v1/assessments/upload` accepts optional `workflow_context_json`
 - `POST /api/v1/assessments/async/upload` accepts optional `workflow_context_json`
 - `POST /api/v1/assessments/schedules/upload` accepts optional `workflow_context_json`
@@ -116,7 +118,7 @@ Current HTTP API endpoints remain backward compatible and now support workflow s
 
 ## 4. Readiness Pillars
 
-ScaleScore workflow readiness is scored across five pillars:
+Readiness workflow scoring is organized across five pillars:
 
 ### 4.1 Workflow Stability
 
@@ -254,8 +256,8 @@ The initial rollup method is a simple mean of workflow readiness scores. This is
 - No breaking CSV/demo change in this phase
 - Org-level assessments remain supported during the workflow-first transition
 - Async, scheduling, persistence, and staging validation flows remain supported
-- Legacy `OpsOrchestra` naming remains only where needed for existing technical integrations
-- User-facing narrative should prefer `Mila` and `USMI suite`
+- Legacy `OpsOrchestra`, `Mila`, and `ScaleScore` naming remains only where needed for existing technical integrations, compatibility routes, historical ADRs, or concrete code identifiers
+- User-facing narrative should prefer `Proofhouse`, `Workflow Context`, `Readiness`, `Governance`, and `Forge`
 
 ---
 
@@ -263,19 +265,19 @@ The initial rollup method is a simple mean of workflow readiness scores. This is
 
 ### Phase 1: Strategy and Docs
 
-- align USMI and ScaleScore docs to the workflow-first positioning
+- align USMI and Readiness docs to the workflow-first positioning
 - update roadmap and technical spec to match the new contract
 
 ### Phase 2: Product Contract
 
 - map current org-level signals into workflow-first readiness logic
 - identify missing workflow metadata and evidence inputs
-- define the Mila-native workflow submission contract for direct suite ingestion
+- define the Workflow Context-native workflow submission contract for direct suite ingestion
 
 ### Phase 3: Integration and Packaging
 
-- specify first Mila integration point for workflow scoring
-- preserve compatibility mode while Mila-native workflow coverage expands
+- specify first Workflow Context integration point for workflow scoring
+- preserve compatibility mode while Workflow Context-native workflow coverage expands
 - package the standalone COO diagnostic/report offer
 
 ---
@@ -283,6 +285,6 @@ The initial rollup method is a simple mean of workflow readiness scores. This is
 ## 9. Explicit Non-Goals
 
 - becoming a generic operations benchmarking platform
-- owning runtime governance or compliance evidence operations
+- owning workflow truth, use approvals, rights decisions, export control, or compliance evidence operations
 - removing the current org-level surface before workflow submission is ready
 - expanding into unrelated benchmarking pillars that do not improve AI workflow readiness

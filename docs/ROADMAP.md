@@ -1,6 +1,6 @@
-# ScaleScore Roadmap
+# Proofhouse Readiness Roadmap
 
-> **Last Updated**: March 2026  
+> **Last Updated**: April 24, 2026
 > **Status**: Active Development  
 > **Owner**: Product & Engineering
 
@@ -8,7 +8,9 @@
 
 ## Vision
 
-ScaleScore will be the workflow-first scoring and diagnostic layer for **AI-enabled operational readiness**.
+Proofhouse Readiness is the workflow-first scoring and diagnostic layer for **AI-enabled operational readiness**.
+
+The current technical service remains `scalescore` until a later rename wave. Product and roadmap language should use Readiness.
 
 The product is no longer optimized around a broad "scaling companies" category. It is optimized around a more precise question:
 
@@ -19,7 +21,7 @@ The product is no longer optimized around a broad "scaling companies" category. 
 - Workflow assessment completion in `< 30 seconds` for compatibility-mode runs
 - Actionable remediation output in every workflow report
 - Clear workflow-to-org rollup for AI operational readiness
-- Design-partner and suite users can distinguish ScaleScore from Mila and Sentinel in one pass
+- Design-partner and suite users can distinguish Readiness from Workflow Context, Governance, and Forge in one pass
 
 ---
 
@@ -29,7 +31,8 @@ The product is no longer optimized around a broad "scaling companies" category. 
 - Keep a `secondary standalone diagnostic` motion for consulting, design partners, and discovery
 - Preserve current org-level API and CSV compatibility while the workflow-first contract is introduced
 - Do **not** expand into generic financial, customer, or marketing benchmarking unless it directly improves AI workflow readiness scoring
-- Keep legacy `OpsOrchestra` naming only where required for technical backward compatibility
+- Keep legacy `OpsOrchestra`, `Mila`, and `ScaleScore` naming only where required for technical backward compatibility
+- Treat Operational Learning as a suitability lens; Governance remains the approval plane for rights, redaction, promotion, and export decisions
 
 ---
 
@@ -85,12 +88,13 @@ The product is no longer optimized around a broad "scaling companies" category. 
 
 ### Days 46-90: Implementation Preparation
 
-**Goal:** Connect ScaleScore to real workflow context and package the first diagnostic motion.
+**Goal:** Connect Readiness to real Workflow Context data and package the first diagnostic motion.
 
 | Item | Status |
 |------|--------|
-| Minimal Mila integration path for workflow context | ✅ Initial direct integration implemented |
-| Mila-native workflow submission contract | ✅ Initial direct contract implemented |
+| Minimal Workflow Context integration path | ✅ Initial direct integration implemented |
+| Workflow Context-native submission contract | ✅ Initial direct contract implemented |
+| Operational Learning suitability lens | ✅ Initial additive slice implemented |
 | Standalone COO diagnostic/report packaging | 🔄 Planned |
 | Compatibility guardrails for org-level flows | ✅ Preserved in current additive rollout |
 
@@ -100,7 +104,7 @@ The product is no longer optimized around a broad "scaling companies" category. 
 
 ### Canonical Assessment Unit
 
-ScaleScore is now `workflow / use-case first`.
+Readiness is now `workflow / use-case first`.
 
 Examples:
 
@@ -137,8 +141,9 @@ Organization-level readiness remains important, but becomes a rollup derived fro
 ### Phase 2
 
 - Introduce first-class workflow assessment submission contract
-- Add a direct Mila workflow submission path that does not require dataset CSVs
+- Add a direct Workflow Context submission path that does not require dataset CSVs
 - Return workflow readiness score, pillar breakdown, trust gaps, and org rollup data from relevant report endpoints
+- Return optional Operational Learning suitability when supplied with governance dependency inputs
 - Preserve org-level assessments in compatibility mode during transition
 
 ---
@@ -146,12 +151,13 @@ Organization-level readiness remains important, but becomes a rollup derived fro
 ## Success Criteria
 
 - Portfolio and product docs describe the same product in the same language
-- A reader can distinguish ScaleScore from Mila and Sentinel immediately
+- A reader can distinguish Readiness from Workflow Context, Governance, and Forge immediately
 - A sample workflow assessment can output:
   - workflow readiness score
   - pillar breakdown
   - top trust gaps
   - prioritized remediation actions
+  - optional Operational Learning suitability status
 - Multiple workflow assessments can be rolled up into an organization-level readiness view
 - Standalone diagnostic packaging exists as a secondary motion, not the primary category claim
 
@@ -159,6 +165,6 @@ Organization-level readiness remains important, but becomes a rollup derived fro
 
 ## Explicitly Not Doing
 
-- Repositioning ScaleScore as a generic operations benchmarking platform
-- Making ScaleScore responsible for runtime policy enforcement or compliance operations
+- Repositioning Readiness as a generic operations benchmarking platform
+- Making Readiness responsible for workflow truth, runtime policy enforcement, use approvals, export control, or compliance operations
 - Removing the current org-level surface before workflow-first submission paths are ready

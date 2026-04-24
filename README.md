@@ -24,7 +24,7 @@ It helps a COO or operations leader answer a more specific question than generic
 
 **Is this workflow ready to scale with AI without creating fragility, trust failures, or governance gaps?**
 
-ScaleScore still uses traditional operations signals such as capacity, dependencies, governance, and vendor concentration. The difference is that those signals are now interpreted through the lens of AI-assisted work, human oversight, and operational trust.
+The current `scalescore` service still uses traditional operations signals such as capacity, dependencies, governance, and vendor concentration. The difference is that those signals are now interpreted through the lens of AI-assisted work, human oversight, and operational trust.
 
 Readiness can also add a separate **Operational Learning suitability** lens for workflow reports. This sibling score evaluates candidate quality for internal eval use and internal training candidacy without changing `workflow_readiness_score`, and it does not replace Governance approval decisions.
 
@@ -54,8 +54,8 @@ Readiness produces:
 |---------|-----|
 | **Workflow Context** | Canonical workflow truth, system of work, evidence linkage, operational context |
 | **Readiness** | Readiness scoring, trust-gap diagnosis, remediation prioritization |
-| **Governance** | Runtime governance, control enforcement, compliance evidence |
-| **Forge** | Failure-pattern input and scoring-model refinement |
+| **Governance** | Rights, policy, redaction review, use approvals, export control, manifests, audit-grade use control |
+| **Forge** | Incident memory, failure-pattern learning, scoring-model refinement |
 
 Readiness is primarily a Proofhouse capability layer, with a secondary standalone diagnostic motion for consulting, design partners, and discovery.
 
@@ -72,7 +72,7 @@ Readiness is transitioning to workflow-first without breaking the current produc
 - Current async, scheduling, persistence, and staging validation flows remain supported.
 - Workflow-first readiness is now available as an additive Python/report contract.
 
-Legacy `OpsOrchestra` and `ScaleScore` naming is retained only where required for technical backward compatibility. User-facing narrative should prefer `Proofhouse`, `Workflow Context`, and `Readiness`.
+Legacy `OpsOrchestra`, `Mila`, and `ScaleScore` naming is retained only where required for technical backward compatibility. User-facing narrative should prefer `Proofhouse`, `Workflow Context`, `Readiness`, `Governance`, and `Forge`.
 Current repo/package/runtime identifiers also remain `scalescore` until a later rename wave.
 
 ---
@@ -194,6 +194,7 @@ Workflow reports now support:
 | [docs/TECHNICAL_SPEC.md](docs/TECHNICAL_SPEC.md) | Workflow-first product contract and assessment object |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | 90-day roadmap and guardrails |
 | [docs/API.md](docs/API.md) | HTTP API reference and compatibility notes |
+| [NAMING.md](NAMING.md) | Current product-vs-technical naming rules |
 | [docs/OPERATOR_QUICKSTART.md](docs/OPERATOR_QUICKSTART.md) | Current operator onboarding and compatibility-mode workflow |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Underlying system architecture and platform patterns |
 | [docs/STAGING_VALIDATION.md](docs/STAGING_VALIDATION.md) | Staging smoke-test and release-gate checklist |

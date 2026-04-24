@@ -1,10 +1,10 @@
-# ScaleScore Architecture
+# Proofhouse Readiness Architecture
 
-> **Last Updated**: January 2026  
+> **Last Updated**: April 24, 2026
 > **Status**: Living Document  
 > **Owner**: Engineering
 
-> **Positioning note (March 2026):** The runtime architecture in this document remains applicable, but the product has been repositioned as workflow-first AI operational readiness scoring. Use `README.md`, `docs/ROADMAP.md`, and `docs/TECHNICAL_SPEC.md` for the current product framing and contract.
+> **Positioning note:** The current technical service remains `scalescore`, but the active product name is Proofhouse Readiness. Use `README.md`, `NAMING.md`, `docs/ROADMAP.md`, and `docs/TECHNICAL_SPEC.md` for the current product framing and naming boundary.
 
 ---
 
@@ -142,8 +142,8 @@ These principles guide all architectural decisions. They are ordered by priority
 │  ┌──────────────────────────────────────────────────────────────────────┐   │
 │  │                        Connectors                                     │   │
 │  │  ┌─────────┐  ┌─────────┐  ┌─────────────┐  ┌─────────────────────┐  │   │
-│  │  │   CSV   │  │  HRIS   │  │     ERP     │  │   OpsOrchestra      │  │   │
-│  │  │ Import  │  │ (Future)│  │  (Future)   │  │   (Bidirectional)   │  │   │
+│  │  │   CSV   │  │  HRIS   │  │     ERP     │  │  Workflow Context   │  │   │
+│  │  │ Import  │  │ (Future)│  │  (Future)   │  │   (Compatibility)   │  │   │
 │  │  └─────────┘  └─────────┘  └─────────────┘  └─────────────────────┘  │   │
 │  └──────────────────────────────────────────────────────────────────────┘   │
 │                                                                              │
@@ -255,7 +255,7 @@ class AssessmentService:
 
 **Design Decisions:**
 - Repository pattern for all data access
-- Abstract base class defines interface; concrete implementations for SQL/OpsOrchestra
+- Abstract base class defines interface; concrete implementations for SQL and Workflow Context compatibility integrations
 - All queries scoped by `org_id` (tenant isolation enforced here)
 - Soft deletes for audit trail preservation
 
@@ -405,13 +405,13 @@ class OrgScopedRepository(ABC):
 
 ## 5. Integration Architecture
 
-### 5.1 OpsOrchestra Integration
+### 5.1 Workflow Context Integration
 
-ScaleScore is designed for bidirectional integration with OpsOrchestra:
+Readiness is designed to consume workflow truth from Workflow Context while keeping the current `scalescore` technical integration settings stable:
 
 ```
 ┌─────────────────────┐                    ┌─────────────────────┐
-│    OpsOrchestra     │                    │     ScaleScore      │
+│  Workflow Context   │                    │     Readiness       │
 │                     │                    │                     │
 │  ┌───────────────┐  │   Entity Sync      │  ┌───────────────┐  │
 │  │  Knowledge    │──┼───────────────────▶│  │   Connector   │  │
@@ -431,9 +431,11 @@ ScaleScore is designed for bidirectional integration with OpsOrchestra:
 
 | Mode | Data Flow | Use Case |
 |------|-----------|----------|
-| **Standalone** | CSV/API → ScaleScore | Independent usage |
-| **Read-only** | OpsOrchestra → ScaleScore | Use OpsOrch as data source |
-| **Bidirectional** | OpsOrchestra ↔ ScaleScore | Full integration, risk feedback |
+| **Standalone** | CSV/API → Readiness | Independent diagnostic usage |
+| **Read-only** | Workflow Context → Readiness | Score workflow truth without mutating it |
+| **Feedback** | Workflow Context ↔ Readiness | Return readiness findings and remediation signals without making Readiness the workflow source of truth |
+
+Legacy `OpsOrchestra` env vars and routes remain only as compatibility identifiers until a dedicated rename wave changes them.
 
 ### 5.2 Connector Interface
 
@@ -514,7 +516,7 @@ All significant technology decisions are documented as ADRs. Summary:
 
 | Decision | Choice | Key Rationale |
 |----------|--------|---------------|
-| Language | Python 3.11+ | Ecosystem, team expertise, OpsOrchestra alignment |
+| Language | Python 3.11+ | Ecosystem, team expertise, Workflow Context compatibility alignment |
 | API Framework | FastAPI | Async, OpenAPI, Pydantic integration |
 | Data Validation | Pydantic v2 | Performance, type safety, FastAPI integration |
 | Database | PostgreSQL | Reliability, JSONB support, scaling path |
