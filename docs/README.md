@@ -40,6 +40,8 @@ docs/
 
 Top-level [../NAMING.md](../NAMING.md) holds the product-vs-technical naming rules for this repo.
 
+Top-level [../CONTRACTS.md](../CONTRACTS.md) maps Readiness to the Proofhouse shared-contract registry.
+
 ---
 
 ## Core Documents

@@ -195,6 +195,7 @@ Workflow reports now support:
 | [docs/ROADMAP.md](docs/ROADMAP.md) | 90-day roadmap and guardrails |
 | [docs/API.md](docs/API.md) | HTTP API reference and compatibility notes |
 | [NAMING.md](NAMING.md) | Current product-vs-technical naming rules |
+| [CONTRACTS.md](CONTRACTS.md) | Readiness shared-contract ownership and handoff rules |
 | [docs/OPERATOR_QUICKSTART.md](docs/OPERATOR_QUICKSTART.md) | Current operator onboarding and compatibility-mode workflow |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Underlying system architecture and platform patterns |
 | [docs/STAGING_VALIDATION.md](docs/STAGING_VALIDATION.md) | Staging smoke-test and release-gate checklist |
