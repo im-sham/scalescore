@@ -11,6 +11,11 @@ from scalescore.core.assessment import (
 from scalescore.models.core import Facility, Organization, System
 from scalescore.models.scaling import (
     FunctionalArea,
+    OperationalLearningCompletenessState,
+    OperationalLearningGovernanceDependencyInput,
+    OperationalLearningInputs,
+    OperationalLearningSuitabilityStatus,
+    RiskLevel,
     WorkflowAssessmentContext,
     WorkflowBlastRadius,
     WorkflowControlCoverageInput,
@@ -276,3 +281,99 @@ def test_run_workflow_assessment_uses_structured_workflow_evidence() -> None:
     assert "Workflow evidence includes 4 approval artifact(s)." in strong_report.key_findings
     assert "Explicit workflow control coverage was provided for 5 control area(s)." in strong_report.key_findings
     assert any("Rollback path has not been tested" in gap for gap in weak_automation.gaps)
+
+
+def test_run_workflow_assessment_adds_operational_learning_suitability() -> None:
+    workflow_context = WorkflowAssessmentContext(
+        workflow_id="wf_finance_close",
+        name="Finance Close Automation",
+        business_function="finance",
+        owner="Controller",
+        ai_role="Draft close-pack anomalies and reconciliation recommendations",
+        systems_touched=["sys_billing", "Billing"],
+        human_escalation_path=["Controller", "CFO"],
+        control_requirements=["approval traceability", "decision logging"],
+        blast_radius=WorkflowBlastRadius.HIGH,
+        fallback_mode="Manual finance close process",
+        override_rights=["Controller", "CFO"],
+        error_tolerance="Low tolerance for misclassification in month-end close",
+        reversibility="All AI-produced adjustments require human approval before posting",
+    )
+
+    report = run_workflow_assessment(
+        org_id="org_1",
+        org_name="Acme",
+        workflow_context=workflow_context,
+        baseline_operational_score=78.0,
+        operational_learning_inputs=OperationalLearningInputs(
+            sop_reference_present=True,
+            sop_clarity_signal=82.0,
+            outcome_spec_present=True,
+            outcome_observability_signal=85.0,
+            repeatability_signal=86.0,
+            review_path_present=True,
+            review_density_signal=74.0,
+            redaction_manageability_signal=80.0,
+            governance_dependency_state=OperationalLearningGovernanceDependencyInput(
+                rights_completeness=OperationalLearningCompletenessState.COMPLETE,
+                provenance_completeness=OperationalLearningCompletenessState.COMPLETE,
+                redaction_readiness=OperationalLearningCompletenessState.COMPLETE,
+                residual_risk_band=RiskLevel.LOW,
+            ),
+        ),
+    )
+
+    assert report.workflow_readiness_score is not None
+    assert report.overall_score == report.workflow_readiness_score
+    assert report.operational_learning_suitability is not None
+    assert (
+        report.operational_learning_suitability.status
+        == OperationalLearningSuitabilityStatus.TRAINING_CANDIDATE
+    )
+    assert report.operational_learning_suitability.top_blockers == []
+
+
+def test_run_workflow_assessment_marks_operational_learning_blocked_when_governance_inputs_missing() -> None:
+    workflow_context = WorkflowAssessmentContext(
+        workflow_id="wf_finance_close",
+        name="Finance Close Automation",
+        business_function="finance",
+        owner="Controller",
+        ai_role="Draft close-pack anomalies and reconciliation recommendations",
+        systems_touched=["sys_billing", "Billing"],
+        human_escalation_path=["Controller", "CFO"],
+        control_requirements=["approval traceability", "decision logging"],
+        blast_radius=WorkflowBlastRadius.HIGH,
+        fallback_mode="Manual finance close process",
+        override_rights=["Controller", "CFO"],
+        error_tolerance="Low tolerance for misclassification in month-end close",
+        reversibility="All AI-produced adjustments require human approval before posting",
+    )
+
+    report = run_workflow_assessment(
+        org_id="org_1",
+        org_name="Acme",
+        workflow_context=workflow_context,
+        baseline_operational_score=78.0,
+        operational_learning_inputs=OperationalLearningInputs(
+            sop_reference_present=True,
+            sop_clarity_signal=72.0,
+            outcome_spec_present=True,
+            outcome_observability_signal=74.0,
+            repeatability_signal=79.0,
+            review_path_present=True,
+            review_density_signal=67.0,
+            redaction_manageability_signal=75.0,
+        ),
+    )
+
+    assert report.operational_learning_suitability is not None
+    assert report.workflow_readiness_score is not None
+    assert (
+        report.operational_learning_suitability.status
+        == OperationalLearningSuitabilityStatus.BLOCKED
+    )
+    assert any(
+        "Governance dependency state is missing" in blocker
+        for blocker in report.operational_learning_suitability.top_blockers
+    )

@@ -62,6 +62,7 @@ from scalescore.models.core import (
     Vendor,
 )
 from scalescore.models.scaling import (
+    OperationalLearningInputs,
     ScaleScoreReport,
     ScoreHistoryComparison,
     ScoreHistoryPoint,
@@ -286,6 +287,7 @@ class CreateMilaWorkflowAssessmentRequest(BaseModel):
     org_name: str = Field(min_length=1)
     workflow_context: WorkflowAssessmentContext
     workflow_evidence: WorkflowEvidenceInput | None = None
+    operational_learning_inputs: OperationalLearningInputs | None = None
     baseline_operational_score: float | None = Field(default=None, ge=0.0, le=100.0)
     source_system: str = Field(default="mila", min_length=1)
     source_workflow_type: str | None = None
@@ -679,6 +681,7 @@ async def create_mila_workflow_assessment(
         workflow_context=payload.workflow_context,
         baseline_operational_score=payload.baseline_operational_score,
         workflow_evidence=payload.workflow_evidence,
+        operational_learning_inputs=payload.operational_learning_inputs,
         source_findings=source_findings,
     )
     repository.save_report(report, tenant_id=current_user.tenant_id)

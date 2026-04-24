@@ -44,6 +44,16 @@ def generate_executive_summary(report: ScaleScoreReport) -> str:
             if report.org_rollup is not None and report.org_rollup.note
             else "Use this workflow score as one input into the organization-level rollup."
         )
+        operational_learning_phrase = ""
+        if report.operational_learning_suitability is not None:
+            operational_learning = report.operational_learning_suitability
+            operational_learning_phrase = (
+                " Operational Learning suitability is "
+                f"{operational_learning.status.value.replace('_', ' ')} "
+                f"(eval {operational_learning.eval_suitability.score:.1f}, "
+                f"training {operational_learning.internal_training_candidacy.score:.1f}). "
+                f"{operational_learning.governance_dependency_state.summary}"
+            )
 
         return (
             f"{workflow.name} currently shows {readiness} AI operational readiness with a workflow score "
@@ -51,6 +61,7 @@ def generate_executive_summary(report: ScaleScoreReport) -> str:
             f"The workflow is owned by {workflow.owner} and scoped to {workflow.business_function} with the "
             f"AI role defined as {workflow.ai_role}. Top trust gap: {top_gap}. "
             f"Recommended immediate action: {top_action}. {rollup_phrase}"
+            f"{operational_learning_phrase}"
         )
 
     score = report.overall_score
@@ -216,6 +227,25 @@ def render_report_pdf(report: ScaleScoreReport) -> bytes:
 
         draw_heading("Top Trust Gaps")
         draw_bullets(report.top_trust_gaps)
+
+        if report.operational_learning_suitability is not None:
+            operational_learning = report.operational_learning_suitability
+            draw_heading("Operational Learning Suitability")
+            draw_text(
+                "Status: "
+                f"{operational_learning.status.value} | "
+                f"Eval score: {operational_learning.eval_suitability.score:.1f} | "
+                f"Training score: {operational_learning.internal_training_candidacy.score:.1f}"
+            )
+            draw_text(operational_learning.governance_dependency_state.summary)
+            if operational_learning.top_blockers:
+                draw_text("Top blockers:")
+                draw_bullets(operational_learning.top_blockers[:3])
+            else:
+                draw_text("Top reasons:")
+                draw_bullets(operational_learning.top_reasons[:3])
+            draw_text("Recommended next actions:")
+            draw_bullets(operational_learning.recommended_next_actions[:3])
 
     draw_heading("Key Findings")
     draw_bullets(report.key_findings)

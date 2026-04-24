@@ -7,6 +7,7 @@ from scalescore.core.exceptions import (
     MultipleOrganizationsError,
     OrganizationRequiredError,
 )
+from scalescore.core.operational_learning import apply_operational_learning_inputs
 from scalescore.core.reporting import generate_executive_summary
 from scalescore.core.workflow_readiness import (
     apply_workflow_evidence_inputs,
@@ -17,6 +18,7 @@ from scalescore.models.scaling import (
     AssessmentMode,
     CapacityConstraint,
     FunctionalArea,
+    OperationalLearningInputs,
     RiskIndicator,
     RiskLevel,
     ScaleScoreReport,
@@ -155,6 +157,7 @@ def run_workflow_assessment(
     workflow_context: WorkflowAssessmentContext,
     baseline_operational_score: float | None = None,
     workflow_evidence: WorkflowEvidenceInput | None = None,
+    operational_learning_inputs: OperationalLearningInputs | None = None,
     source_findings: list[str] | None = None,
 ) -> ScaleScoreReport:
     """Build a workflow-first report from direct workflow metadata without CSV datasets."""
@@ -190,11 +193,20 @@ def run_workflow_assessment(
     )
     report = apply_workflow_readiness_context(report, workflow_context)
     report = apply_workflow_evidence_inputs(report, workflow_evidence)
+    report = apply_operational_learning_inputs(report, operational_learning_inputs)
 
     workflow_score = report.workflow_readiness_score or operational_baseline
     workflow_grade = report.workflow_readiness_grade or _grade_for_score(workflow_score)
     key_findings = _workflow_key_findings(report, source_findings, workflow_evidence)
-    immediate_actions = report.prioritized_remediation_actions[:3] or report.immediate_actions
+    immediate_actions = (
+        report.prioritized_remediation_actions[:3]
+        or report.immediate_actions
+        or (
+            report.operational_learning_suitability.recommended_next_actions[:3]
+            if report.operational_learning_suitability is not None
+            else []
+        )
+    )
 
     report = report.model_copy(
         update={

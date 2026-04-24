@@ -42,6 +42,8 @@ Know which AI-enabled workflows are ready to scale, and what will break trust fi
 
 **Boundary rule:** ScaleScore scores readiness and recommends remediation. It does not own runtime policy enforcement or compliance operations.
 
+Operational Learning is an additive Readiness lens for candidate scoring only. ScaleScore does not own workflow truth, rights profiles, export eligibility, promotion approvals, or asset derivation.
+
 ---
 
 ## 2. Canonical Assessment Unit
@@ -99,12 +101,13 @@ The Python/report contract now supports:
 - `workflow_pillar_scores`
 - `top_trust_gaps`
 - `prioritized_remediation_actions`
+- `operational_learning_suitability`
 - `org_rollup`
 
 Current HTTP API endpoints remain backward compatible and now support workflow submission across sync, async, and scheduled paths:
 
 - `POST /api/v1/assessments/workflow` accepts `dataset_path` plus `workflow_context`
-- `POST /api/v1/assessments/mila/workflow` accepts direct workflow metadata from Mila (`org_id`, `org_name`, `workflow_context`, optional `workflow_evidence` including explicit control coverage and evidence posture, optional baseline findings)
+- `POST /api/v1/assessments/mila/workflow` accepts direct workflow metadata from Mila (`org_id`, `org_name`, `workflow_context`, optional `workflow_evidence` including explicit control coverage and evidence posture, optional `operational_learning_inputs`, optional baseline findings)
 - `POST /api/v1/assessments/upload` accepts optional `workflow_context_json`
 - `POST /api/v1/assessments/async/upload` accepts optional `workflow_context_json`
 - `POST /api/v1/assessments/schedules/upload` accepts optional `workflow_context_json`
@@ -167,6 +170,27 @@ Measures:
 - reversibility
 - impact if the workflow fails
 
+### 4.6 Operational Learning Suitability
+
+Operational Learning suitability is a separate sibling lens, not part of the five readiness pillars and not merged into `workflow_readiness_score`.
+
+The initial additive slice scores:
+
+- repeatability
+- SOP clarity
+- outcome observability
+- review density
+- redaction manageability
+- governance safety
+
+It produces:
+
+- internal eval suitability
+- internal training candidacy
+- explicit `eval_suitable`, `training_candidate`, `blocked`, or `unsuitable` statuses
+
+This lens is intended to score candidate quality for internal eval and internal training use. Governance remains the approval plane for rights, redaction, promotion, and export decisions.
+
 ---
 
 ## 5. Report Contract
@@ -191,6 +215,7 @@ When workflow context is present, the report also includes:
 - per-pillar scores and rationales
 - top trust gaps
 - prioritized remediation actions
+- optional `operational_learning_suitability`
 - org rollup metadata
 
 ### 5.3 Executive Narrative

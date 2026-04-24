@@ -26,6 +26,8 @@ It helps a COO or operations leader answer a more specific question than generic
 
 ScaleScore still uses traditional operations signals such as capacity, dependencies, governance, and vendor concentration. The difference is that those signals are now interpreted through the lens of AI-assisted work, human oversight, and operational trust.
 
+Readiness can also add a separate **Operational Learning suitability** lens for workflow reports. This sibling score evaluates candidate quality for internal eval use and internal training candidacy without changing `workflow_readiness_score`, and it does not replace Governance approval decisions.
+
 ### Primary Jobs
 
 Readiness produces:
@@ -35,6 +37,7 @@ Readiness produces:
 3. **Top trust gaps** that could block safe AI scale
 4. **Prioritized remediation actions** for operations leaders
 5. **Organization rollups** derived from multiple workflow assessments
+6. **Operational Learning suitability** for internal eval and internal training candidacy
 
 ### Examples
 
@@ -55,6 +58,8 @@ Readiness produces:
 | **Forge** | Failure-pattern input and scoring-model refinement |
 
 Readiness is primarily a Proofhouse capability layer, with a secondary standalone diagnostic motion for consulting, design partners, and discovery.
+
+Operational Learning suitability remains a Readiness scoring lens only. Readiness does not become the source of workflow truth, rights profiles, export eligibility, promotion approvals, or asset derivation.
 
 ---
 
@@ -151,6 +156,7 @@ Workflow reports now support:
 - `workflow_pillar_scores`
 - `top_trust_gaps`
 - `prioritized_remediation_actions`
+- `operational_learning_suitability`
 - `org_rollup`
 
 ---

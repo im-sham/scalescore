@@ -161,6 +161,25 @@ def _workflow_evidence_payload() -> dict[str, object]:
     }
 
 
+def _operational_learning_payload() -> dict[str, object]:
+    return {
+        "sop_reference_present": True,
+        "sop_clarity_signal": 84.0,
+        "outcome_spec_present": True,
+        "outcome_observability_signal": 86.0,
+        "repeatability_signal": 88.0,
+        "review_path_present": True,
+        "review_density_signal": 78.0,
+        "redaction_manageability_signal": 82.0,
+        "governance_dependency_state": {
+            "rights_completeness": "complete",
+            "provenance_completeness": "complete",
+            "redaction_readiness": "complete",
+            "residual_risk_band": "low",
+        },
+    }
+
+
 def _issue_opsorchestra_token(
     *,
     private_key: rsa.RSAPrivateKey,
@@ -275,6 +294,7 @@ def test_create_mila_workflow_assessment_direct() -> None:
             "org_name": "Default Tenant",
             "workflow_context": _workflow_context_payload(),
             "workflow_evidence": _workflow_evidence_payload(),
+            "operational_learning_inputs": _operational_learning_payload(),
             "baseline_operational_score": 82.0,
             "source_system": "mila",
             "source_workflow_type": "runbook_playbook",
@@ -297,6 +317,13 @@ def test_create_mila_workflow_assessment_direct() -> None:
     assert payload["workflow_context"]["workflow_id"] == "wf_support_triage"
     assert payload["workflow_readiness_score"] is not None
     assert payload["overall_score"] == payload["workflow_readiness_score"]
+    assert payload["operational_learning_suitability"] is not None
+    assert payload["operational_learning_suitability"]["status"] == "training_candidate"
+    assert payload["operational_learning_suitability"]["eval_suitability"]["status"] == "eval_suitable"
+    assert (
+        payload["operational_learning_suitability"]["internal_training_candidacy"]["status"]
+        == "training_candidate"
+    )
     assert "Runbook readiness is 90% (at_risk)." in payload["key_findings"]
     control_pillar = next(
         pillar

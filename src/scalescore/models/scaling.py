@@ -134,6 +134,113 @@ class WorkflowEvidenceInput(BaseModel):
     rollback_tested: bool | None = None
 
 
+class OperationalLearningSuitabilityStatus(StrEnum):
+    """Suitability status for operational-learning candidate evaluation."""
+
+    EVAL_SUITABLE = "eval_suitable"
+    TRAINING_CANDIDATE = "training_candidate"
+    BLOCKED = "blocked"
+    UNSUITABLE = "unsuitable"
+
+
+class OperationalLearningDimension(StrEnum):
+    """Dimensions scored for operational-learning suitability."""
+
+    REPEATABILITY = "repeatability"
+    SOP_CLARITY = "sop_clarity"
+    OUTCOME_OBSERVABILITY = "outcome_observability"
+    REVIEW_DENSITY = "review_density"
+    REDACTION_MANAGEABILITY = "redaction_manageability"
+    GOVERNANCE_SAFETY = "governance_safety"
+
+
+class OperationalLearningCompletenessState(StrEnum):
+    """Completeness state for governance dependencies."""
+
+    COMPLETE = "complete"
+    PARTIAL = "partial"
+    MISSING = "missing"
+
+
+class OperationalLearningGovernanceStateStatus(StrEnum):
+    """Normalized governance dependency posture for operational learning."""
+
+    READY = "ready"
+    PARTIAL = "partial"
+    INCOMPLETE = "incomplete"
+    HIGH_RISK = "high_risk"
+
+
+class OperationalLearningGovernanceDependencyInput(BaseModel):
+    """Optional governance dependency inputs from upstream workflow systems."""
+
+    rights_completeness: OperationalLearningCompletenessState | None = None
+    provenance_completeness: OperationalLearningCompletenessState | None = None
+    redaction_readiness: OperationalLearningCompletenessState | None = None
+    residual_risk_band: RiskLevel | None = None
+
+
+class OperationalLearningInputs(BaseModel):
+    """Optional upstream inputs for operational-learning candidate scoring."""
+
+    sop_reference_present: bool | None = None
+    sop_clarity_signal: float | None = Field(default=None, ge=0.0, le=100.0)
+    outcome_spec_present: bool | None = None
+    outcome_observability_signal: float | None = Field(default=None, ge=0.0, le=100.0)
+    run_frequency_per_week: float | None = Field(default=None, ge=0.0)
+    repeatability_signal: float | None = Field(default=None, ge=0.0, le=100.0)
+    review_path_present: bool | None = None
+    review_density_signal: float | None = Field(default=None, ge=0.0, le=100.0)
+    redaction_manageability_signal: float | None = Field(default=None, ge=0.0, le=100.0)
+    governance_dependency_state: OperationalLearningGovernanceDependencyInput | None = None
+
+
+class OperationalLearningDimensionScore(BaseModel):
+    """Score and rationale for a single operational-learning dimension."""
+
+    dimension: OperationalLearningDimension
+    score: float = Field(ge=0.0, le=100.0)
+    rationale: str = ""
+
+
+class OperationalLearningGovernanceDependencyState(BaseModel):
+    """Normalized governance dependency posture for operational-learning use."""
+
+    rights_completeness: OperationalLearningCompletenessState | None = None
+    provenance_completeness: OperationalLearningCompletenessState | None = None
+    redaction_readiness: OperationalLearningCompletenessState | None = None
+    residual_risk_band: RiskLevel | None = None
+    status: OperationalLearningGovernanceStateStatus = (
+        OperationalLearningGovernanceStateStatus.INCOMPLETE
+    )
+    summary: str = ""
+
+
+class OperationalLearningAssessmentResult(BaseModel):
+    """Derived eval or internal-training suitability result."""
+
+    score: float = Field(ge=0.0, le=100.0)
+    status: OperationalLearningSuitabilityStatus
+    threshold: float
+    threshold_met: bool = False
+    hard_blocked: bool = False
+
+
+class OperationalLearningSuitabilitySummary(BaseModel):
+    """Additive workflow suitability summary for operational learning."""
+
+    status: OperationalLearningSuitabilityStatus
+    dimension_scores: list[OperationalLearningDimensionScore] = Field(default_factory=list)
+    eval_suitability: OperationalLearningAssessmentResult
+    internal_training_candidacy: OperationalLearningAssessmentResult
+    top_blockers: list[str] = Field(default_factory=list)
+    top_reasons: list[str] = Field(default_factory=list)
+    recommended_next_actions: list[str] = Field(default_factory=list)
+    governance_dependency_state: OperationalLearningGovernanceDependencyState = Field(
+        default_factory=OperationalLearningGovernanceDependencyState
+    )
+
+
 class WorkflowPillarScore(BaseModel):
     """Score and rationale for a single workflow readiness pillar."""
 
@@ -463,6 +570,7 @@ class ScaleScoreReport(BaseModel):
     workflow_pillar_scores: list[WorkflowPillarScore] = Field(default_factory=list)
     top_trust_gaps: list[str] = Field(default_factory=list)
     prioritized_remediation_actions: list[str] = Field(default_factory=list)
+    operational_learning_suitability: OperationalLearningSuitabilitySummary | None = None
     org_rollup: OrgWorkflowRollup | None = None
 
     # Findings
