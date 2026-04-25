@@ -152,6 +152,8 @@ print(report.top_trust_gaps)
 Workflow reports now support:
 
 - `workflow_context`
+- `workflow_ref`
+- `assessment_ref`
 - `workflow_readiness_score`
 - `workflow_pillar_scores`
 - `top_trust_gaps`

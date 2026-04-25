@@ -98,6 +98,8 @@ The initial additive contract also supports:
 The Python/report contract now supports:
 
 - `workflow_context`
+- `workflow_ref`
+- `assessment_ref`
 - `workflow_readiness_score`
 - `workflow_readiness_grade`
 - `workflow_pillar_scores`
@@ -109,7 +111,7 @@ The Python/report contract now supports:
 Current HTTP API endpoints remain backward compatible and now support workflow submission across sync, async, and scheduled paths:
 
 - `POST /api/v1/assessments/workflow` accepts `dataset_path` plus `workflow_context`
-- `POST /api/v1/assessments/mila/workflow` is the current Workflow Context compatibility endpoint. The route name remains technical compatibility debt for now; it accepts direct workflow metadata (`org_id`, `org_name`, `workflow_context`, optional `workflow_evidence` including explicit control coverage and evidence posture, optional `operational_learning_inputs`, optional baseline findings)
+- `POST /api/v1/assessments/mila/workflow` is the current Workflow Context compatibility endpoint. The route name remains technical compatibility debt for now; it accepts direct workflow metadata (`org_id`, `org_name`, `workflow_context`, optional `workflow_ref` from Workflow Context, optional `workflow_evidence` including explicit control coverage and evidence posture, optional `operational_learning_inputs`, optional baseline findings)
 - `POST /api/v1/assessments/upload` accepts optional `workflow_context_json`
 - `POST /api/v1/assessments/async/upload` accepts optional `workflow_context_json`
 - `POST /api/v1/assessments/schedules/upload` accepts optional `workflow_context_json`

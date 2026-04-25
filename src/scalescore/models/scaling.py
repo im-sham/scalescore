@@ -7,6 +7,7 @@ and the readiness scores that are the primary outputs of ScaleScore.
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -79,6 +80,53 @@ class WorkflowControlStatus(StrEnum):
     DOCUMENTED = "documented"
     OPERATING = "operating"
     VERIFIED = "verified"
+
+
+ProofhouseCachePolicy = Literal[
+    "ref_only",
+    "summary_snapshot",
+    "digest_snapshot",
+    "owner_dereference_required",
+]
+
+
+class WorkflowRef(BaseModel):
+    """Canonical workflow reference emitted by Workflow Context."""
+
+    ref_id: str
+    ref_type: Literal["workflow"] = "workflow"
+    source_capability: Literal["workflow_context"] = "workflow_context"
+    organization_id: str
+    environment_id: str = "production"
+    external_uri: str | None = None
+    snapshot_id: str | None = None
+    version: str | None = None
+    created_at: datetime | str
+    updated_at: datetime | str
+    summary: str
+    workflow_id: str
+    title: str
+    subject_type: str
+    subject_key: str | None = None
+    owner: str | None = None
+    review_status: str
+
+
+class WorkflowRefEnvelope(BaseModel):
+    """Proofhouse V0.1 envelope for Workflow Context refs."""
+
+    contract_version: Literal["proofhouse-shared-contracts/v0.1"] = (
+        "proofhouse-shared-contracts/v0.1"
+    )
+    contract_name: Literal["WorkflowRef"] = "WorkflowRef"
+    producer_capability: Literal["workflow_context"] = "workflow_context"
+    producer_system: Literal["proofhouse-workflow-context"] = (
+        "proofhouse-workflow-context"
+    )
+    canonical_owner: Literal["workflow_context"] = "workflow_context"
+    issued_at: datetime | str
+    cache_policy: ProofhouseCachePolicy = "summary_snapshot"
+    ref: WorkflowRef
 
 
 class WorkflowAssessmentContext(BaseModel):
@@ -266,6 +314,49 @@ class OrgWorkflowRollup(BaseModel):
     highest_workflow_score: float | None = None
     total_critical_risks: int = 0
     note: str = ""
+
+
+class AssessmentRef(BaseModel):
+    """Compact Readiness-owned reference for downstream consumers."""
+
+    ref_id: str
+    ref_type: Literal["assessment"] = "assessment"
+    source_capability: Literal["readiness"] = "readiness"
+    organization_id: str
+    environment_id: str = "production"
+    external_uri: str | None = None
+    snapshot_id: str | None = None
+    version: str | None = None
+    created_at: datetime
+    summary: str
+    assessment_id: str
+    workflow_id: str | None = None
+    workflow_ref: WorkflowRefEnvelope | None = None
+    assessment_type: Literal[
+        "workflow_readiness",
+        "operational_learning_suitability",
+    ] = "workflow_readiness"
+    score: float | None = None
+    grade: str | None = None
+    status: str
+    top_blockers: list[str] = Field(default_factory=list)
+    top_reasons: list[str] = Field(default_factory=list)
+    report_uri: str | None = None
+
+
+class AssessmentRefEnvelope(BaseModel):
+    """Proofhouse V0.1 envelope for Readiness assessment refs."""
+
+    contract_version: Literal["proofhouse-shared-contracts/v0.1"] = (
+        "proofhouse-shared-contracts/v0.1"
+    )
+    contract_name: Literal["AssessmentRef"] = "AssessmentRef"
+    producer_capability: Literal["readiness"] = "readiness"
+    producer_system: Literal["proofhouse-readiness"] = "proofhouse-readiness"
+    canonical_owner: Literal["readiness"] = "readiness"
+    issued_at: datetime
+    cache_policy: ProofhouseCachePolicy = "summary_snapshot"
+    ref: AssessmentRef
 
 
 class GrowthSignal(BaseModel):
@@ -565,6 +656,8 @@ class ScaleScoreReport(BaseModel):
 
     # Workflow-first assessment context
     workflow_context: WorkflowAssessmentContext | None = None
+    workflow_ref: WorkflowRefEnvelope | None = None
+    assessment_ref: AssessmentRefEnvelope | None = None
     workflow_readiness_score: float | None = None
     workflow_readiness_grade: str | None = None
     workflow_pillar_scores: list[WorkflowPillarScore] = Field(default_factory=list)

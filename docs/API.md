@@ -196,6 +196,8 @@ Most business endpoints require one of:
 The workflow-first contract is additive and now available on the HTTP surface without removing the existing organization assessment paths:
 
 - `workflow_context`
+- `workflow_ref`
+- `assessment_ref`
 - `workflow_readiness_score`
 - `workflow_readiness_grade`
 - `workflow_pillar_scores`
@@ -209,6 +211,7 @@ Current compatibility rules:
 - `POST /api/v1/assessments` remains the development-only org-compatibility path using `dataset_path`
 - `POST /api/v1/assessments/workflow` accepts `dataset_path` plus `workflow_context` as JSON
 - `POST /api/v1/assessments/mila/workflow` is the current Workflow Context compatibility endpoint and accepts direct workflow metadata without requiring dataset CSVs
+  Optional `workflow_ref` can be supplied as a Proofhouse V0.1 `WorkflowRef` envelope from Workflow Context. Readiness preserves it on `ScaleScoreReport.workflow_ref` and emits `ScaleScoreReport.assessment_ref` as the compact Readiness-owned downstream reference.
   Optional `workflow_evidence` can be supplied to deepen pillar scoring from source evidence. This now supports explicit `control_coverage` (`approval_gate`, `decision_logging`, `evidence_retention`, `exception_handling`, `periodic_review` with `missing|documented|operating|verified`) and `evidence_posture` (`control_evidence_coverage_percent`, `freshest_evidence_age_days`, `audit_trail_complete`, `linked_artifacts`), with legacy approval/decision counts retained as fallback
   Optional `operational_learning_inputs` can be supplied to add a separate operational-learning suitability block. Supported v1 inputs are `sop_reference_present`, `sop_clarity_signal`, `outcome_spec_present`, `outcome_observability_signal`, `run_frequency_per_week` or `repeatability_signal`, `review_path_present` or `review_density_signal`, `redaction_manageability_signal`, and `governance_dependency_state` (`rights_completeness`, `provenance_completeness`, `redaction_readiness`, `residual_risk_band`)
 - `POST /api/v1/assessments/upload` still accepts the six CSV files and now supports optional `workflow_context_json` form data for workflow scoring
@@ -240,7 +243,7 @@ Current compatibility rules:
 |-------|------|---------------------|-------|
 | `POST` | `/api/v1/assessments` | `assessment:create` | Requires `dataset_path`; development-only path execution |
 | `POST` | `/api/v1/assessments/workflow` | `assessment:create` | JSON workflow submission (`dataset_path` + `workflow_context`); development-only dataset path execution |
-| `POST` | `/api/v1/assessments/mila/workflow` | `assessment:create` | Workflow Context compatibility submission (`org_id`, `org_name`, `workflow_context`, optional `workflow_evidence`, optional `operational_learning_inputs`, optional baseline findings); no CSV dataset required |
+| `POST` | `/api/v1/assessments/mila/workflow` | `assessment:create` | Workflow Context compatibility submission (`org_id`, `org_name`, `workflow_context`, optional `workflow_ref`, optional `workflow_evidence`, optional `operational_learning_inputs`, optional baseline findings); no CSV dataset required |
 | `POST` | `/api/v1/assessments/upload` | `assessment:create` | Multipart upload of six CSV files; optional `workflow_context_json` form field enables workflow scoring |
 | `POST` | `/api/v1/assessments/async/upload` | `assessment:create` | Queue async assessment job (`202 Accepted`); optional `workflow_context_json` enables workflow scoring |
 | `GET` | `/api/v1/assessments/async/{job_id}` | `assessment:read` | Poll queued/processing/completed async job status; echoes workflow context when present |

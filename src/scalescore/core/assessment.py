@@ -16,6 +16,8 @@ from scalescore.core.workflow_readiness import (
 from scalescore.models.core import Facility, Organization, System, Team, Vendor
 from scalescore.models.scaling import (
     AssessmentMode,
+    AssessmentRef,
+    AssessmentRefEnvelope,
     CapacityConstraint,
     FunctionalArea,
     OperationalLearningInputs,
@@ -27,6 +29,7 @@ from scalescore.models.scaling import (
     WorkflowControlCoverageInput,
     WorkflowEvidenceInput,
     WorkflowEvidencePostureInput,
+    WorkflowRefEnvelope,
 )
 from scalescore.scoring.bottleneck_detector import BottleneckDetector
 from scalescore.scoring.engine import ScoringConfig, ScoringEngine
@@ -146,6 +149,7 @@ def run_assessment(
     if workflow_context is not None:
         report = apply_workflow_readiness_context(report, workflow_context)
     report.executive_summary = generate_executive_summary(report)
+    report = apply_assessment_ref(report)
 
     return report
 
@@ -155,6 +159,7 @@ def run_workflow_assessment(
     org_id: str,
     org_name: str,
     workflow_context: WorkflowAssessmentContext,
+    workflow_ref: WorkflowRefEnvelope | None = None,
     baseline_operational_score: float | None = None,
     workflow_evidence: WorkflowEvidenceInput | None = None,
     operational_learning_inputs: OperationalLearningInputs | None = None,
@@ -178,6 +183,7 @@ def run_workflow_assessment(
         overall_grade=_grade_for_score(operational_baseline),
         overall_trend="stable",
         area_scores=[],
+        workflow_ref=workflow_ref,
         top_risks=[],
         constraints=[],
         recommendations=[],
@@ -217,7 +223,100 @@ def run_workflow_assessment(
         }
     )
     report.executive_summary = generate_executive_summary(report)
+    report = apply_assessment_ref(report, workflow_ref=workflow_ref)
     return report
+
+
+def apply_assessment_ref(
+    report: ScaleScoreReport,
+    *,
+    workflow_ref: WorkflowRefEnvelope | None = None,
+) -> ScaleScoreReport:
+    """Attach the compact Readiness-owned ref for workflow reports."""
+
+    upstream_workflow_ref = workflow_ref or report.workflow_ref
+    workflow_context = report.workflow_context
+    if workflow_context is None and upstream_workflow_ref is None:
+        return report
+
+    score = (
+        report.workflow_readiness_score
+        if report.workflow_readiness_score is not None
+        else report.overall_score
+    )
+    grade = report.workflow_readiness_grade or report.overall_grade
+    workflow_id = (
+        workflow_context.workflow_id
+        if workflow_context is not None
+        else upstream_workflow_ref.ref.workflow_id
+        if upstream_workflow_ref is not None
+        else None
+    )
+    workflow_name = (
+        workflow_context.name
+        if workflow_context is not None
+        else upstream_workflow_ref.ref.title
+        if upstream_workflow_ref is not None
+        else "workflow"
+    )
+    report_uri = f"/api/v1/assessments/{report.report_id}"
+    top_blockers = _assessment_ref_top_blockers(report)
+    top_reasons = _assessment_ref_top_reasons(report)
+    assessment_ref = AssessmentRefEnvelope(
+        issued_at=report.generated_at,
+        ref=AssessmentRef(
+            ref_id=f"assessment:{report.org_id}:{report.report_id}",
+            organization_id=report.org_id,
+            external_uri=report_uri,
+            version=report.report_version,
+            created_at=report.generated_at,
+            summary=(
+                f"Workflow readiness assessment for {workflow_name}: "
+                f"{score:.1f} ({grade or 'ungraded'})"
+            ),
+            assessment_id=report.report_id,
+            workflow_id=workflow_id,
+            workflow_ref=upstream_workflow_ref,
+            score=score,
+            grade=grade,
+            status=_assessment_ref_status(score),
+            top_blockers=top_blockers,
+            top_reasons=top_reasons,
+            report_uri=report_uri,
+        ),
+    )
+    return report.model_copy(
+        update={
+            "workflow_ref": upstream_workflow_ref,
+            "assessment_ref": assessment_ref,
+        }
+    )
+
+
+def _assessment_ref_status(score: float) -> str:
+    if score >= 80.0:
+        return "ready"
+    if score >= 65.0:
+        return "watch"
+    if score >= 50.0:
+        return "at_risk"
+    return "blocked"
+
+
+def _assessment_ref_top_blockers(report: ScaleScoreReport) -> list[str]:
+    blockers: list[str] = []
+    if report.operational_learning_suitability is not None:
+        blockers.extend(report.operational_learning_suitability.top_blockers)
+    blockers.extend(report.top_trust_gaps)
+    return list(dict.fromkeys(blocker for blocker in blockers if blocker))[:5]
+
+
+def _assessment_ref_top_reasons(report: ScaleScoreReport) -> list[str]:
+    reasons: list[str] = []
+    if report.operational_learning_suitability is not None:
+        reasons.extend(report.operational_learning_suitability.top_reasons)
+    reasons.extend(report.key_findings)
+    return list(dict.fromkeys(reason for reason in reasons if reason))[:5]
 
 
 def _assessment_areas(

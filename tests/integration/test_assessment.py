@@ -178,6 +178,10 @@ def test_run_assessment_can_enrich_with_workflow_readiness_context() -> None:
     assert report.prioritized_remediation_actions
     assert report.org_rollup is not None
     assert report.org_rollup.workflow_count == 1
+    assert report.assessment_ref is not None
+    assert report.assessment_ref.contract_name == "AssessmentRef"
+    assert report.assessment_ref.ref.assessment_id == report.report_id
+    assert report.assessment_ref.ref.workflow_id == "wf_finance_close"
 
 
 def test_run_workflow_assessment_uses_structured_workflow_evidence() -> None:

@@ -29,6 +29,12 @@ Readiness does not own:
 
 Consumed as workflow context for assessment. The current compatibility mapping lands in `WorkflowAssessmentContext`.
 
+Current implementation:
+
+- `CreateMilaWorkflowAssessmentRequest.workflow_ref` accepts the V0.1 `WorkflowRef` envelope.
+- `ScaleScoreReport.workflow_ref` preserves and echoes the upstream canonical Workflow Context ref.
+- `workflow_context` remains the scoring compatibility payload and is not replaced by `workflow_ref`.
+
 ### `EvidenceRef`
 
 Consumed as source evidence posture for scoring. The current compatibility mapping lands in `WorkflowEvidenceInput`.
@@ -54,6 +60,12 @@ Minimum V0.1 projection:
 - `top_blockers`
 - `top_reasons`
 - `report_uri` when available
+
+Current implementation:
+
+- `ScaleScoreReport.assessment_ref` emits the V0.1 `AssessmentRef` envelope for workflow reports.
+- `AssessmentRef.workflow_ref` carries the upstream `WorkflowRef` envelope when Workflow Context supplies one.
+- `AssessmentRef.workflow_id` remains as a compatibility field when a caller only supplies `workflow_context`.
 
 ## Current Implementation Seams
 

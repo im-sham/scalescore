@@ -135,6 +135,36 @@ def _workflow_context_payload() -> dict[str, object]:
     }
 
 
+def _workflow_ref_payload() -> dict[str, object]:
+    return {
+        "contract_version": "proofhouse-shared-contracts/v0.1",
+        "contract_name": "WorkflowRef",
+        "producer_capability": "workflow_context",
+        "producer_system": "proofhouse-workflow-context",
+        "canonical_owner": "workflow_context",
+        "issued_at": "2026-04-25T12:00:00Z",
+        "cache_policy": "summary_snapshot",
+        "ref": {
+            "ref_id": "workflow:tenant_default:wf_support_triage",
+            "ref_type": "workflow",
+            "source_capability": "workflow_context",
+            "organization_id": "tenant_default",
+            "environment_id": "production",
+            "external_uri": "/api/workflows/wf_support_triage",
+            "snapshot_id": "snapshot-support-triage-1",
+            "created_at": "2026-04-25T11:55:00Z",
+            "updated_at": "2026-04-25T11:59:00Z",
+            "summary": "Support Triage (customer_support)",
+            "workflow_id": "wf_support_triage",
+            "title": "Support Triage",
+            "subject_type": "customer_support",
+            "subject_key": "support_triage",
+            "owner": "Head of Support",
+            "review_status": "approved",
+        },
+    }
+
+
 def _workflow_evidence_payload() -> dict[str, object]:
     return {
         "control_coverage": {
@@ -293,6 +323,7 @@ def test_create_mila_workflow_assessment_direct() -> None:
             "org_id": "tenant_default",
             "org_name": "Default Tenant",
             "workflow_context": _workflow_context_payload(),
+            "workflow_ref": _workflow_ref_payload(),
             "workflow_evidence": _workflow_evidence_payload(),
             "operational_learning_inputs": _operational_learning_payload(),
             "baseline_operational_score": 82.0,
@@ -315,6 +346,20 @@ def test_create_mila_workflow_assessment_direct() -> None:
     assert payload["org_id"] == "tenant_default"
     assert payload["org_name"] == "Default Tenant"
     assert payload["workflow_context"]["workflow_id"] == "wf_support_triage"
+    assert payload["workflow_ref"]["contract_name"] == "WorkflowRef"
+    assert payload["workflow_ref"]["ref"]["snapshot_id"] == "snapshot-support-triage-1"
+    assert payload["assessment_ref"]["contract_name"] == "AssessmentRef"
+    assert payload["assessment_ref"]["producer_capability"] == "readiness"
+    assert payload["assessment_ref"]["ref"]["assessment_id"] == payload["report_id"]
+    assert payload["assessment_ref"]["ref"]["workflow_id"] == "wf_support_triage"
+    assert (
+        payload["assessment_ref"]["ref"]["workflow_ref"]["ref"]["workflow_id"]
+        == "wf_support_triage"
+    )
+    assert payload["assessment_ref"]["ref"]["score"] == payload["workflow_readiness_score"]
+    assert payload["assessment_ref"]["ref"]["report_uri"] == (
+        f"/api/v1/assessments/{payload['report_id']}"
+    )
     assert payload["workflow_readiness_score"] is not None
     assert payload["overall_score"] == payload["workflow_readiness_score"]
     assert payload["operational_learning_suitability"] is not None
@@ -338,7 +383,10 @@ def test_create_mila_workflow_assessment_direct() -> None:
         headers=_auth_headers(),
     )
     assert get_response.status_code == 200
-    assert get_response.json()["report_id"] == payload["report_id"]
+    stored_payload = get_response.json()
+    assert stored_payload["report_id"] == payload["report_id"]
+    assert stored_payload["workflow_ref"]["ref"]["snapshot_id"] == "snapshot-support-triage-1"
+    assert stored_payload["assessment_ref"]["ref"]["assessment_id"] == payload["report_id"]
 
 
 def test_create_assessment_from_upload(tmp_path: Path) -> None:
