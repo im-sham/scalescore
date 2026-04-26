@@ -1,6 +1,6 @@
 # Proofhouse Readiness Roadmap
 
-> **Last Updated**: April 24, 2026
+> **Last Updated**: April 26, 2026
 > **Status**: Active Development  
 > **Owner**: Product & Engineering
 
@@ -95,6 +95,7 @@ The product is no longer optimized around a broad "scaling companies" category. 
 | Minimal Workflow Context integration path | ✅ Initial direct integration implemented |
 | Workflow Context-native submission contract | ✅ Initial direct contract implemented |
 | Operational Learning suitability lens | ✅ Initial additive slice implemented |
+| Regulated document-operations suitability profile | ✅ Initial additive slice implemented |
 | Standalone COO diagnostic/report packaging | 🔄 Planned |
 | Compatibility guardrails for org-level flows | ✅ Preserved in current additive rollout |
 
@@ -144,6 +145,7 @@ Organization-level readiness remains important, but becomes a rollup derived fro
 - Add a direct Workflow Context submission path that does not require dataset CSVs
 - Return workflow readiness score, pillar breakdown, trust gaps, and org rollup data from relevant report endpoints
 - Return optional Operational Learning suitability when supplied with governance dependency inputs
+- Return document-operations suitability when supplied with the flagship profile derived from Workflow Context refs/snapshots
 - Preserve org-level assessments in compatibility mode during transition
 
 ---
@@ -158,6 +160,7 @@ Organization-level readiness remains important, but becomes a rollup derived fro
   - top trust gaps
   - prioritized remediation actions
   - optional Operational Learning suitability status
+  - compact `AssessmentRef` for downstream Proofhouse consumers
 - Multiple workflow assessments can be rolled up into an organization-level readiness view
 - Standalone diagnostic packaging exists as a secondary motion, not the primary category claim
 

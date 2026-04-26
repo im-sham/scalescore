@@ -62,17 +62,48 @@ def test_score_operational_learning_marks_blocked_when_governance_prerequisites_
     assert result.governance_dependency_state.status == OperationalLearningGovernanceStateStatus.INCOMPLETE
 
 
-def test_score_operational_learning_marks_unsuitable_without_hard_blockers() -> None:
+def test_score_operational_learning_marks_weak_candidate_without_hard_blockers() -> None:
     result = score_operational_learning_suitability(
         OperationalLearningInputs(
             sop_reference_present=True,
-            sop_clarity_signal=62.0,
+            sop_clarity_signal=58.0,
             outcome_spec_present=True,
-            outcome_observability_signal=61.0,
-            repeatability_signal=55.0,
+            outcome_observability_signal=57.0,
+            repeatability_signal=51.0,
             review_path_present=True,
-            review_density_signal=52.0,
-            redaction_manageability_signal=65.0,
+            review_density_signal=48.0,
+            redaction_manageability_signal=58.0,
+            governance_dependency_state=OperationalLearningGovernanceDependencyInput(
+                rights_completeness=OperationalLearningCompletenessState.PARTIAL,
+                provenance_completeness=OperationalLearningCompletenessState.PARTIAL,
+                redaction_readiness=OperationalLearningCompletenessState.PARTIAL,
+                residual_risk_band=RiskLevel.MEDIUM,
+            ),
+        )
+    )
+
+    assert result.status == OperationalLearningSuitabilityStatus.WEAK_CANDIDATE
+    assert result.eval_suitability.status == OperationalLearningSuitabilityStatus.WEAK_CANDIDATE
+    assert (
+        result.internal_training_candidacy.status
+        == OperationalLearningSuitabilityStatus.WEAK_CANDIDATE
+    )
+    assert result.top_blockers == []
+    assert result.governance_dependency_state.status == OperationalLearningGovernanceStateStatus.PARTIAL
+    assert any("Repeatability" in reason for reason in result.top_reasons)
+
+
+def test_score_operational_learning_marks_unsuitable_when_non_blocked_signals_are_too_weak() -> None:
+    result = score_operational_learning_suitability(
+        OperationalLearningInputs(
+            sop_reference_present=True,
+            sop_clarity_signal=42.0,
+            outcome_spec_present=True,
+            outcome_observability_signal=43.0,
+            repeatability_signal=39.0,
+            review_path_present=True,
+            review_density_signal=41.0,
+            redaction_manageability_signal=45.0,
             governance_dependency_state=OperationalLearningGovernanceDependencyInput(
                 rights_completeness=OperationalLearningCompletenessState.PARTIAL,
                 provenance_completeness=OperationalLearningCompletenessState.PARTIAL,
@@ -86,5 +117,3 @@ def test_score_operational_learning_marks_unsuitable_without_hard_blockers() -> 
     assert result.eval_suitability.status == OperationalLearningSuitabilityStatus.UNSUITABLE
     assert result.internal_training_candidacy.status == OperationalLearningSuitabilityStatus.UNSUITABLE
     assert result.top_blockers == []
-    assert result.governance_dependency_state.status == OperationalLearningGovernanceStateStatus.PARTIAL
-    assert any("Repeatability" in reason for reason in result.top_reasons)

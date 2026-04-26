@@ -114,6 +114,17 @@ def score_operational_learning_suitability(
         and score_by_dimension[OperationalLearningDimension.REDACTION_MANAGEABILITY] >= 70.0
         and score_by_dimension[OperationalLearningDimension.GOVERNANCE_SAFETY] >= 60.0
     )
+    weak_candidate = (
+        not hard_blocked
+        and not eval_threshold_met
+        and eval_score >= 50.0
+        and score_by_dimension[OperationalLearningDimension.REPEATABILITY] >= 45.0
+        and score_by_dimension[OperationalLearningDimension.SOP_CLARITY] >= 45.0
+        and score_by_dimension[OperationalLearningDimension.OUTCOME_OBSERVABILITY] >= 45.0
+        and score_by_dimension[OperationalLearningDimension.REVIEW_DENSITY] >= 40.0
+        and score_by_dimension[OperationalLearningDimension.REDACTION_MANAGEABILITY] >= 40.0
+        and score_by_dimension[OperationalLearningDimension.GOVERNANCE_SAFETY] >= 35.0
+    )
 
     if training_threshold_met:
         overall_status = OperationalLearningSuitabilityStatus.TRAINING_CANDIDATE
@@ -121,6 +132,8 @@ def score_operational_learning_suitability(
         overall_status = OperationalLearningSuitabilityStatus.EVAL_SUITABLE
     elif hard_blocked:
         overall_status = OperationalLearningSuitabilityStatus.BLOCKED
+    elif weak_candidate:
+        overall_status = OperationalLearningSuitabilityStatus.WEAK_CANDIDATE
     else:
         overall_status = OperationalLearningSuitabilityStatus.UNSUITABLE
 
@@ -130,6 +143,8 @@ def score_operational_learning_suitability(
         else (
             OperationalLearningSuitabilityStatus.EVAL_SUITABLE
             if eval_threshold_met
+            else OperationalLearningSuitabilityStatus.WEAK_CANDIDATE
+            if weak_candidate
             else OperationalLearningSuitabilityStatus.UNSUITABLE
         )
     )
@@ -139,6 +154,8 @@ def score_operational_learning_suitability(
         else (
             OperationalLearningSuitabilityStatus.TRAINING_CANDIDATE
             if training_threshold_met
+            else OperationalLearningSuitabilityStatus.WEAK_CANDIDATE
+            if weak_candidate
             else OperationalLearningSuitabilityStatus.UNSUITABLE
         )
     )

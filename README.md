@@ -28,6 +28,8 @@ The current `scalescore` service still uses traditional operations signals such 
 
 Readiness can also add a separate **Operational Learning suitability** lens for workflow reports. This sibling score evaluates candidate quality for internal eval use and internal training candidacy without changing `workflow_readiness_score`, and it does not replace Governance approval decisions.
 
+The first flagship workflow profile is regulated document operations: a claims and benefits packet review flow with a normal reviewed case, an escalated exception case, and a redaction-review dependency before internal-eval use.
+
 ### Primary Jobs
 
 Readiness produces:
@@ -159,6 +161,7 @@ Workflow reports now support:
 - `top_trust_gaps`
 - `prioritized_remediation_actions`
 - `operational_learning_suitability`
+- optional `document_operations_profile` input on the current Workflow Context compatibility route
 - `org_rollup`
 
 ---
@@ -213,6 +216,7 @@ Workflow reports now support:
 - Score whether a Workflow Context workflow is ready for more AI autonomy
 - Highlight trust and readiness gaps before Governance rollout
 - Feed workflow-level readiness signals from Forge learnings
+- Score the regulated document-operations fixture from Workflow Context refs/snapshots while emitting a Readiness-owned `AssessmentRef`
 
 ### For COO Diagnostics
 

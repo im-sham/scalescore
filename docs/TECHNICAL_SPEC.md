@@ -2,7 +2,7 @@
 
 **Version:** 0.2.0  
 **Author:** Shamim Rehman  
-**Updated:** April 24, 2026
+**Updated:** April 26, 2026
 **Status:** Active specification
 
 ---
@@ -112,6 +112,7 @@ Current HTTP API endpoints remain backward compatible and now support workflow s
 
 - `POST /api/v1/assessments/workflow` accepts `dataset_path` plus `workflow_context`
 - `POST /api/v1/assessments/mila/workflow` is the current Workflow Context compatibility endpoint. The route name remains technical compatibility debt for now; it accepts direct workflow metadata (`org_id`, `org_name`, `workflow_context`, optional `workflow_ref` from Workflow Context, optional `workflow_evidence` including explicit control coverage and evidence posture, optional `operational_learning_inputs`, optional baseline findings)
+- The same Workflow Context compatibility endpoint also accepts optional `document_operations_profile` for the flagship `document_ops_regulated_review_v0` fixture. This profile is a Readiness-local projection of Workflow Context snapshot signals, not canonical workflow truth.
 - `POST /api/v1/assessments/upload` accepts optional `workflow_context_json`
 - `POST /api/v1/assessments/async/upload` accepts optional `workflow_context_json`
 - `POST /api/v1/assessments/schedules/upload` accepts optional `workflow_context_json`
@@ -191,9 +192,24 @@ It produces:
 
 - internal eval suitability
 - internal training candidacy
-- explicit `eval_suitable`, `training_candidate`, `blocked`, or `unsuitable` statuses
+- explicit `eval_suitable`, `training_candidate`, `weak_candidate`, `blocked`, or `unsuitable` statuses
 
 This lens is intended to score candidate quality for internal eval and internal training use. Governance remains the approval plane for rights, redaction, promotion, and export decisions.
+
+### 4.7 Document-Operations Suitability Profile
+
+The first workflow-specific profile is regulated document operations, currently represented as a local `DocumentOperationsReadinessProfile`.
+
+It consumes summary/snapshot signals for:
+
+- fixture id `document_ops_regulated_review_v0`
+- `document_packet` subject context
+- normal packet reviewed and closed with evidence
+- exception packet escalated and requiring compliance signoff
+- SOP refs, outcome refs, required-document rules, evidence refs, review density, and control-evidence posture
+- redaction-review dependency and Governance dependency state
+
+Readiness derives existing `WorkflowEvidenceInput` and `OperationalLearningInputs` from the profile when explicit inputs are not supplied. This preserves the five readiness pillars and keeps Workflow Context as the source of workflow truth.
 
 ---
 
@@ -220,6 +236,7 @@ When workflow context is present, the report also includes:
 - top trust gaps
 - prioritized remediation actions
 - optional `operational_learning_suitability`
+- `assessment_ref` as the compact Readiness-owned `proofhouse-shared-contracts/v0.1` projection
 - org rollup metadata
 
 ### 5.3 Executive Narrative

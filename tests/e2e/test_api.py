@@ -210,6 +210,40 @@ def _operational_learning_payload() -> dict[str, object]:
     }
 
 
+def _document_operations_profile_payload() -> dict[str, object]:
+    return {
+        "fixture_id": "document_ops_regulated_review_v0",
+        "subject_type": "document_packet",
+        "subject_key": "claims-benefits-sample",
+        "normal_case_id": "normal-packet",
+        "normal_case_state": "closed_with_evidence",
+        "normal_case_closed_with_evidence": True,
+        "exception_case_id": "exception-packet",
+        "exception_case_state": "requires_compliance_signoff",
+        "exception_case_escalated": True,
+        "exception_requires_compliance_signoff": True,
+        "redaction_review_required_before_internal_eval": True,
+        "sop_refs_present": True,
+        "outcome_refs_present": True,
+        "required_document_rules_present": True,
+        "evidence_refs_present": True,
+        "owner_confirmed": True,
+        "systems_verified": True,
+        "review_sla_defined": True,
+        "weekly_packet_volume": 55.0,
+        "reviewed_case_count": 42,
+        "source_evidence_ref_count": 12,
+        "control_evidence_coverage_percent": 96.0,
+        "freshest_evidence_age_days": 6,
+        "governance_dependency_state": {
+            "rights_completeness": "complete",
+            "provenance_completeness": "complete",
+            "redaction_readiness": "complete",
+            "residual_risk_band": "low",
+        },
+    }
+
+
 def _issue_opsorchestra_token(
     *,
     private_key: rsa.RSAPrivateKey,
@@ -387,6 +421,73 @@ def test_create_mila_workflow_assessment_direct() -> None:
     assert stored_payload["report_id"] == payload["report_id"]
     assert stored_payload["workflow_ref"]["ref"]["snapshot_id"] == "snapshot-support-triage-1"
     assert stored_payload["assessment_ref"]["ref"]["assessment_id"] == payload["report_id"]
+
+
+def test_create_mila_workflow_assessment_accepts_document_operations_profile() -> None:
+    response = client.post(
+        "/api/v1/assessments/mila/workflow",
+        json={
+            "org_id": "tenant_default",
+            "org_name": "Default Tenant",
+            "workflow_context": {
+                "workflow_id": "document_ops_regulated_review_v0",
+                "name": "Claims and Benefits Packet Review",
+                "business_function": "document_operations",
+                "owner": "Document Operations Lead",
+                "ai_role": "Classify packets, extract fields, and route exception cases",
+                "systems_touched": ["intake_queue", "document_store", "review_console"],
+                "human_escalation_path": [
+                    "Document Operations Lead",
+                    "Compliance Reviewer",
+                ],
+                "control_requirements": [
+                    "required document checks",
+                    "review-required decision logging",
+                    "evidence retention",
+                ],
+                "blast_radius": "high",
+                "fallback_mode": "Manual packet review with compliance escalation",
+                "override_rights": ["Document Operations Lead", "Compliance Reviewer"],
+                "error_tolerance": "Low tolerance for unsupported determinations",
+                "reversibility": "Reviewer decisions can be corrected before packaging.",
+            },
+            "workflow_ref": {
+                **_workflow_ref_payload(),
+                "ref": {
+                    **_workflow_ref_payload()["ref"],
+                    "ref_id": "workflow:tenant_default:document_ops_regulated_review_v0",
+                    "workflow_id": "document_ops_regulated_review_v0",
+                    "title": "Claims and Benefits Packet Review",
+                    "subject_type": "document_packet",
+                    "subject_key": "claims-benefits-sample",
+                    "owner": "Document Operations Lead",
+                    "review_status": "human_reviewed",
+                },
+            },
+            "document_operations_profile": _document_operations_profile_payload(),
+            "baseline_operational_score": 84.0,
+            "source_system": "mila",
+            "source_workflow_type": "document_operations_fixture",
+        },
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["workflow_context"]["workflow_id"] == "document_ops_regulated_review_v0"
+    assert payload["workflow_readiness_score"] is not None
+    assert len(payload["workflow_pillar_scores"]) == 5
+    assert payload["assessment_ref"]["contract_version"] == "proofhouse-shared-contracts/v0.1"
+    assert payload["assessment_ref"]["ref"]["workflow_id"] == "document_ops_regulated_review_v0"
+    assert (
+        payload["assessment_ref"]["ref"]["workflow_ref"]["ref"]["subject_type"]
+        == "document_packet"
+    )
+    assert payload["operational_learning_suitability"]["status"] == "training_candidate"
+    assert any(
+        "document_ops_regulated_review_v0" in finding
+        for finding in payload["key_findings"]
+    )
 
 
 def test_create_assessment_from_upload(tmp_path: Path) -> None:

@@ -43,6 +43,16 @@ Consumed as source evidence posture for scoring. The current compatibility mappi
 
 Consumed as control coverage and evidence status. The current compatibility mapping lands in `WorkflowControlCoverageInput` and `WorkflowEvidencePostureInput`.
 
+### Document-operations profile
+
+Consumed as a local Readiness projection of Workflow Context snapshot signals for the flagship document-operations fixture. It is not a new shared contract object and it does not store editable workflow truth.
+
+Current implementation:
+
+- `CreateMilaWorkflowAssessmentRequest.document_operations_profile` accepts the document-operations summary profile for `document_ops_regulated_review_v0`.
+- `src/scalescore/core/document_operations.py` derives local `WorkflowEvidenceInput` and `OperationalLearningInputs` when more explicit inputs are not supplied.
+- The profile can represent the normal packet, escalated exception packet, evidence posture, review density, and Governance dependency state needed for suitability scoring.
+
 ## Shared Refs This Repo Should Emit
 
 ### `AssessmentRef`
@@ -66,6 +76,7 @@ Current implementation:
 - `ScaleScoreReport.assessment_ref` emits the V0.1 `AssessmentRef` envelope for workflow reports.
 - `AssessmentRef.workflow_ref` carries the upstream `WorkflowRef` envelope when Workflow Context supplies one.
 - `AssessmentRef.workflow_id` remains as a compatibility field when a caller only supplies `workflow_context`.
+- Document-operations reports use the same `AssessmentRef` projection; downstream consumers should dereference the report for full pillar and Operational Learning details.
 
 ## Current Implementation Seams
 
@@ -77,6 +88,8 @@ Current implementation:
 ## V0.1 Implementation Rule
 
 Preserve `workflow_readiness_score` and the five readiness pillars. Operational Learning remains an optional sibling block. Governance dependency state may block suitability, but Readiness does not approve use.
+
+For document operations, Readiness may say a workflow is a `weak_candidate`, `eval_suitable`, `training_candidate`, `blocked`, or `unsuitable`. These are suitability states only; internal-eval use still requires Governance approval.
 
 ## Consumer Rules
 

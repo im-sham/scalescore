@@ -3,6 +3,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from scalescore.connectors.csv_connector import CSVConnector
+from scalescore.core.document_operations import derive_document_operations_readiness_inputs
 from scalescore.core.exceptions import (
     MultipleOrganizationsError,
     OrganizationRequiredError,
@@ -19,6 +20,7 @@ from scalescore.models.scaling import (
     AssessmentRef,
     AssessmentRefEnvelope,
     CapacityConstraint,
+    DocumentOperationsReadinessProfile,
     FunctionalArea,
     OperationalLearningInputs,
     RiskIndicator,
@@ -163,11 +165,22 @@ def run_workflow_assessment(
     baseline_operational_score: float | None = None,
     workflow_evidence: WorkflowEvidenceInput | None = None,
     operational_learning_inputs: OperationalLearningInputs | None = None,
+    document_operations_profile: DocumentOperationsReadinessProfile | None = None,
     source_findings: list[str] | None = None,
 ) -> ScaleScoreReport:
     """Build a workflow-first report from direct workflow metadata without CSV datasets."""
 
     source_findings = list(source_findings or [])
+    if document_operations_profile is not None:
+        document_projection = derive_document_operations_readiness_inputs(
+            document_operations_profile
+        )
+        if workflow_evidence is None:
+            workflow_evidence = document_projection.workflow_evidence
+        if operational_learning_inputs is None:
+            operational_learning_inputs = document_projection.operational_learning_inputs
+        source_findings.extend(document_projection.source_findings)
+
     operational_baseline = _workflow_operational_baseline_score(
         workflow_context=workflow_context,
         baseline_operational_score=baseline_operational_score,

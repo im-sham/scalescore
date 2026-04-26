@@ -10,6 +10,7 @@ from scalescore.core.assessment import (
 )
 from scalescore.models.core import Facility, Organization, System
 from scalescore.models.scaling import (
+    DocumentOperationsReadinessProfile,
     FunctionalArea,
     OperationalLearningCompletenessState,
     OperationalLearningGovernanceDependencyInput,
@@ -381,3 +382,77 @@ def test_run_workflow_assessment_marks_operational_learning_blocked_when_governa
         "Governance dependency state is missing" in blocker
         for blocker in report.operational_learning_suitability.top_blockers
     )
+
+
+def test_run_workflow_assessment_scores_document_operations_profile() -> None:
+    workflow_context = WorkflowAssessmentContext(
+        workflow_id="document_ops_regulated_review_v0",
+        name="Claims and Benefits Packet Review",
+        business_function="document_operations",
+        owner="Document Operations Lead",
+        ai_role="Classify packets, extract fields, and route exception cases for human review",
+        systems_touched=["intake_queue", "document_store", "review_console"],
+        human_escalation_path=["Document Operations Lead", "Compliance Reviewer"],
+        control_requirements=[
+            "required document checks",
+            "review-required decision logging",
+            "evidence retention",
+        ],
+        blast_radius=WorkflowBlastRadius.HIGH,
+        fallback_mode="Manual packet review with compliance escalation",
+        override_rights=["Document Operations Lead", "Compliance Reviewer"],
+        error_tolerance="Low tolerance for unsupported eligibility or benefit determinations",
+        reversibility="Reviewer decisions can be corrected before downstream packaging.",
+    )
+
+    report = run_workflow_assessment(
+        org_id="tenant_default",
+        org_name="Default Tenant",
+        workflow_context=workflow_context,
+        baseline_operational_score=84.0,
+        document_operations_profile=DocumentOperationsReadinessProfile(
+            fixture_id="document_ops_regulated_review_v0",
+            subject_type="document_packet",
+            subject_key="claims-benefits-sample",
+            normal_case_id="normal-packet",
+            normal_case_state="closed_with_evidence",
+            normal_case_closed_with_evidence=True,
+            exception_case_id="exception-packet",
+            exception_case_state="requires_compliance_signoff",
+            exception_case_escalated=True,
+            exception_requires_compliance_signoff=True,
+            redaction_review_required_before_internal_eval=True,
+            sop_refs_present=True,
+            outcome_refs_present=True,
+            required_document_rules_present=True,
+            evidence_refs_present=True,
+            owner_confirmed=True,
+            systems_verified=True,
+            review_sla_defined=True,
+            weekly_packet_volume=55.0,
+            reviewed_case_count=42,
+            source_evidence_ref_count=12,
+            control_evidence_coverage_percent=96.0,
+            freshest_evidence_age_days=6,
+            governance_dependency_state=OperationalLearningGovernanceDependencyInput(
+                rights_completeness=OperationalLearningCompletenessState.COMPLETE,
+                provenance_completeness=OperationalLearningCompletenessState.COMPLETE,
+                redaction_readiness=OperationalLearningCompletenessState.COMPLETE,
+                residual_risk_band=RiskLevel.LOW,
+            ),
+        ),
+    )
+
+    assert report.workflow_readiness_score is not None
+    assert len(report.workflow_pillar_scores) == 5
+    assert report.overall_score == report.workflow_readiness_score
+    assert report.assessment_ref is not None
+    assert report.assessment_ref.contract_version == "proofhouse-shared-contracts/v0.1"
+    assert report.assessment_ref.ref.assessment_type == "workflow_readiness"
+    assert report.assessment_ref.ref.workflow_id == "document_ops_regulated_review_v0"
+    assert report.operational_learning_suitability is not None
+    assert (
+        report.operational_learning_suitability.status
+        == OperationalLearningSuitabilityStatus.TRAINING_CANDIDATE
+    )
+    assert any("document_ops_regulated_review_v0" in finding for finding in report.key_findings)

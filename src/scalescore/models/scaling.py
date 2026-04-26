@@ -187,6 +187,7 @@ class OperationalLearningSuitabilityStatus(StrEnum):
 
     EVAL_SUITABLE = "eval_suitable"
     TRAINING_CANDIDATE = "training_candidate"
+    WEAK_CANDIDATE = "weak_candidate"
     BLOCKED = "blocked"
     UNSUITABLE = "unsuitable"
 
@@ -287,6 +288,46 @@ class OperationalLearningSuitabilitySummary(BaseModel):
     governance_dependency_state: OperationalLearningGovernanceDependencyState = Field(
         default_factory=OperationalLearningGovernanceDependencyState
     )
+
+
+class DocumentOperationsReadinessProfile(BaseModel):
+    """Document-operations summary signals consumed from Workflow Context snapshots."""
+
+    fixture_id: str = "document_ops_regulated_review_v0"
+    workflow_family: Literal["financial_services_document_review"] = (
+        "financial_services_document_review"
+    )
+    subject_type: str = "document_packet"
+    subject_key: str | None = None
+    normal_case_id: str | None = None
+    normal_case_state: str | None = None
+    normal_case_closed_with_evidence: bool | None = None
+    exception_case_id: str | None = None
+    exception_case_state: str | None = None
+    exception_case_escalated: bool | None = None
+    exception_requires_compliance_signoff: bool | None = None
+    redaction_review_required_before_internal_eval: bool | None = None
+    sop_refs_present: bool | None = None
+    outcome_refs_present: bool | None = None
+    required_document_rules_present: bool | None = None
+    evidence_refs_present: bool | None = None
+    owner_confirmed: bool | None = None
+    systems_verified: bool | None = None
+    review_sla_defined: bool | None = None
+    weekly_packet_volume: float | None = Field(default=None, ge=0.0)
+    reviewed_case_count: int | None = Field(default=None, ge=0)
+    source_evidence_ref_count: int | None = Field(default=None, ge=0)
+    control_evidence_coverage_percent: float | None = Field(default=None, ge=0.0, le=100.0)
+    freshest_evidence_age_days: int | None = Field(default=None, ge=0)
+    governance_dependency_state: OperationalLearningGovernanceDependencyInput | None = None
+
+
+class DocumentOperationsReadinessProjection(BaseModel):
+    """Derived local scoring inputs for the document-operations proof path."""
+
+    workflow_evidence: WorkflowEvidenceInput
+    operational_learning_inputs: OperationalLearningInputs
+    source_findings: list[str] = Field(default_factory=list)
 
 
 class WorkflowPillarScore(BaseModel):
