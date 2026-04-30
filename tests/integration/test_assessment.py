@@ -10,6 +10,9 @@ from scalescore.core.assessment import (
 )
 from scalescore.models.core import Facility, Organization, System
 from scalescore.models.scaling import (
+    ClaimsReadinessState,
+    ClaimsSuitabilityStatus,
+    ClaimsWorkflowReadinessProfile,
     DocumentOperationsReadinessProfile,
     FunctionalArea,
     OperationalLearningCompletenessState,
@@ -455,4 +458,95 @@ def test_run_workflow_assessment_scores_document_operations_profile() -> None:
         report.operational_learning_suitability.status
         == OperationalLearningSuitabilityStatus.TRAINING_CANDIDATE
     )
+    assert report.claims_suitability is None
     assert any("document_ops_regulated_review_v0" in finding for finding in report.key_findings)
+
+
+def test_run_workflow_assessment_adds_claims_suitability_from_document_operations_profile() -> None:
+    workflow_context = WorkflowAssessmentContext(
+        workflow_id="document_ops_regulated_review_v0",
+        name="Claims and Benefits Packet Review",
+        business_function="document_operations",
+        owner="Document Operations Lead",
+        ai_role="Classify packets, extract fields, and route exception cases for human review",
+        systems_touched=["intake_queue", "document_store", "review_console"],
+        human_escalation_path=["Document Operations Lead", "Compliance Reviewer"],
+        control_requirements=[
+            "required document checks",
+            "review-required decision logging",
+            "evidence retention",
+        ],
+        blast_radius=WorkflowBlastRadius.HIGH,
+        fallback_mode="Manual packet review with compliance escalation",
+        override_rights=["Document Operations Lead", "Compliance Reviewer"],
+        error_tolerance="Low tolerance for unsupported eligibility or benefit determinations",
+        reversibility="Reviewer decisions can be corrected before downstream packaging.",
+    )
+
+    report = run_workflow_assessment(
+        org_id="tenant_default",
+        org_name="Default Tenant",
+        workflow_context=workflow_context,
+        baseline_operational_score=84.0,
+        document_operations_profile=DocumentOperationsReadinessProfile(
+            fixture_id="document_ops_regulated_review_v0",
+            subject_type="document_packet",
+            subject_key="claims-benefits-sample",
+            normal_case_closed_with_evidence=True,
+            exception_case_escalated=True,
+            exception_requires_compliance_signoff=True,
+            redaction_review_required_before_internal_eval=True,
+            sop_refs_present=True,
+            outcome_refs_present=True,
+            required_document_rules_present=True,
+            evidence_refs_present=True,
+            owner_confirmed=True,
+            systems_verified=True,
+            review_sla_defined=True,
+            weekly_packet_volume=55.0,
+            reviewed_case_count=42,
+            source_evidence_ref_count=12,
+            control_evidence_coverage_percent=96.0,
+            freshest_evidence_age_days=6,
+            governance_dependency_state=OperationalLearningGovernanceDependencyInput(
+                rights_completeness=OperationalLearningCompletenessState.COMPLETE,
+                provenance_completeness=OperationalLearningCompletenessState.COMPLETE,
+                redaction_readiness=OperationalLearningCompletenessState.COMPLETE,
+                residual_risk_band=RiskLevel.LOW,
+            ),
+            claims_profile=ClaimsWorkflowReadinessProfile(
+                profile_id="claims-hybrid-high-dollar-review-v0",
+                evidence_class_ids_present=[
+                    "claim_packet",
+                    "claim_line",
+                    "invoice_provider_bill",
+                    "eob_remittance_evidence",
+                    "policy_plan_document",
+                    "contract_rate_source",
+                    "specialist_review_note",
+                    "downstream_export_record",
+                    "savings_recognition_record",
+                    "audit_packet",
+                ],
+                phi_boundary_review_state=ClaimsReadinessState.REVIEWED,
+                redaction_review_state=ClaimsReadinessState.REVIEWED,
+                rate_source_review_state=ClaimsReadinessState.REVIEWED,
+                downstream_consistency_state=ClaimsReadinessState.READY,
+                downstream_action_approval_state=ClaimsReadinessState.APPROVED,
+                savings_recognition_state=ClaimsReadinessState.APPROVED,
+                governance_claims_control_state=ClaimsReadinessState.READY,
+                source_readiness_state=ClaimsReadinessState.READY,
+            ),
+        ),
+    )
+
+    assert report.workflow_readiness_score is not None
+    assert len(report.workflow_pillar_scores) == 5
+    assert report.claims_suitability is not None
+    assert report.claims_suitability.status == ClaimsSuitabilityStatus.EVAL_SUITABLE
+    assert report.claims_suitability.top_blockers == []
+    assert report.assessment_ref is not None
+    assert any(
+        "Claims suitability status: eval_suitable." in finding
+        for finding in report.key_findings
+    )

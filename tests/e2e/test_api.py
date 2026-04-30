@@ -244,6 +244,32 @@ def _document_operations_profile_payload() -> dict[str, object]:
     }
 
 
+def _claims_profile_payload() -> dict[str, object]:
+    return {
+        "profile_id": "claims-hybrid-high-dollar-review-v0",
+        "evidence_class_ids_present": [
+            "claim_packet",
+            "claim_line",
+            "invoice_provider_bill",
+            "eob_remittance_evidence",
+            "policy_plan_document",
+            "contract_rate_source",
+            "specialist_review_note",
+            "downstream_export_record",
+            "savings_recognition_record",
+            "audit_packet",
+        ],
+        "phi_boundary_review_state": "reviewed",
+        "redaction_review_state": "reviewed",
+        "rate_source_review_state": "reviewed",
+        "downstream_consistency_state": "ready",
+        "downstream_action_approval_state": "approved",
+        "savings_recognition_state": "approved",
+        "governance_claims_control_state": "ready",
+        "source_readiness_state": "ready",
+    }
+
+
 def _issue_opsorchestra_token(
     *,
     private_key: rsa.RSAPrivateKey,
@@ -484,10 +510,61 @@ def test_create_mila_workflow_assessment_accepts_document_operations_profile() -
         == "document_packet"
     )
     assert payload["operational_learning_suitability"]["status"] == "training_candidate"
+    assert payload["claims_suitability"] is None
     assert any(
         "document_ops_regulated_review_v0" in finding
         for finding in payload["key_findings"]
     )
+
+
+def test_create_mila_workflow_assessment_accepts_claims_profile_through_document_operations_profile() -> None:
+    document_operations_profile = _document_operations_profile_payload()
+    document_operations_profile["claims_profile"] = _claims_profile_payload()
+
+    response = client.post(
+        "/api/v1/assessments/mila/workflow",
+        json={
+            "org_id": "tenant_default",
+            "org_name": "Default Tenant",
+            "workflow_context": {
+                "workflow_id": "document_ops_regulated_review_v0",
+                "name": "Claims and Benefits Packet Review",
+                "business_function": "document_operations",
+                "owner": "Document Operations Lead",
+                "ai_role": "Classify packets, extract fields, and route exception cases",
+                "systems_touched": ["intake_queue", "document_store", "review_console"],
+                "human_escalation_path": [
+                    "Document Operations Lead",
+                    "Compliance Reviewer",
+                ],
+                "control_requirements": [
+                    "required document checks",
+                    "review-required decision logging",
+                    "evidence retention",
+                ],
+                "blast_radius": "high",
+                "fallback_mode": "Manual packet review with compliance escalation",
+                "override_rights": ["Document Operations Lead", "Compliance Reviewer"],
+                "error_tolerance": "Low tolerance for unsupported determinations",
+                "reversibility": "Reviewer decisions can be corrected before packaging.",
+            },
+            "document_operations_profile": document_operations_profile,
+            "baseline_operational_score": 84.0,
+            "source_system": "mila",
+            "source_workflow_type": "document_operations_fixture",
+        },
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["claims_suitability"]["profile_id"] == "claims-hybrid-high-dollar-review-v0"
+    assert payload["claims_suitability"]["status"] == "eval_suitable"
+    assert payload["claims_suitability"]["top_blockers"] == []
+    assert payload["claims_suitability"]["governance_dependency_state"] == "ready"
+    assert payload["claims_suitability"]["evidence_gap_state"] == "ready"
+    assert "training approval" not in json.dumps(payload["claims_suitability"]).lower()
+    assert "export approval" not in json.dumps(payload["claims_suitability"]).lower()
 
 
 def test_create_assessment_from_upload(tmp_path: Path) -> None:

@@ -290,6 +290,58 @@ class OperationalLearningSuitabilitySummary(BaseModel):
     )
 
 
+class ClaimsReadinessState(StrEnum):
+    """Synthetic claims readiness state supplied by upstream workflow systems."""
+
+    READY = "ready"
+    REVIEWED = "reviewed"
+    APPROVED = "approved"
+    REVIEW_REQUIRED = "review_required"
+    UNVERIFIED = "unverified"
+    MISSING = "missing"
+    BLOCKED = "blocked"
+
+
+class ClaimsSuitabilityStatus(StrEnum):
+    """Readiness-owned claims suitability result."""
+
+    EVAL_SUITABLE = "eval_suitable"
+    WEAK_CANDIDATE = "weak_candidate"
+    BLOCKED = "blocked"
+
+
+class ClaimsWorkflowReadinessProfile(BaseModel):
+    """Optional synthetic claims profile inputs on the document-operations path."""
+
+    profile_id: str
+    evidence_class_ids_present: list[str] = Field(default_factory=list)
+    phi_boundary_review_state: ClaimsReadinessState | None = None
+    redaction_review_state: ClaimsReadinessState | None = None
+    rate_source_review_state: ClaimsReadinessState | None = None
+    downstream_consistency_state: ClaimsReadinessState | None = None
+    downstream_action_approval_state: ClaimsReadinessState | None = None
+    savings_recognition_state: ClaimsReadinessState | None = None
+    governance_claims_control_state: ClaimsReadinessState | None = None
+    source_readiness_state: ClaimsReadinessState | None = None
+
+
+class ClaimsSuitabilitySummary(BaseModel):
+    """Additive claims suitability and trust-gap summary for Readiness reports."""
+
+    profile_id: str
+    status: ClaimsSuitabilityStatus
+    score: float = Field(ge=0.0, le=100.0)
+    top_blockers: list[str] = Field(default_factory=list)
+    top_reasons: list[str] = Field(default_factory=list)
+    recommended_next_actions: list[str] = Field(default_factory=list)
+    governance_dependency_state: str
+    evidence_gap_state: str
+    phi_redaction_state: str
+    rate_source_traceability_state: str
+    downstream_consistency_state: str
+    savings_lifecycle_state: str
+
+
 class DocumentOperationsReadinessProfile(BaseModel):
     """Document-operations summary signals consumed from Workflow Context snapshots."""
 
@@ -320,6 +372,7 @@ class DocumentOperationsReadinessProfile(BaseModel):
     control_evidence_coverage_percent: float | None = Field(default=None, ge=0.0, le=100.0)
     freshest_evidence_age_days: int | None = Field(default=None, ge=0)
     governance_dependency_state: OperationalLearningGovernanceDependencyInput | None = None
+    claims_profile: ClaimsWorkflowReadinessProfile | None = None
 
 
 class DocumentOperationsReadinessProjection(BaseModel):
@@ -328,6 +381,7 @@ class DocumentOperationsReadinessProjection(BaseModel):
     workflow_evidence: WorkflowEvidenceInput
     operational_learning_inputs: OperationalLearningInputs
     source_findings: list[str] = Field(default_factory=list)
+    claims_suitability: ClaimsSuitabilitySummary | None = None
 
 
 class WorkflowPillarScore(BaseModel):
@@ -705,6 +759,7 @@ class ScaleScoreReport(BaseModel):
     top_trust_gaps: list[str] = Field(default_factory=list)
     prioritized_remediation_actions: list[str] = Field(default_factory=list)
     operational_learning_suitability: OperationalLearningSuitabilitySummary | None = None
+    claims_suitability: ClaimsSuitabilitySummary | None = None
     org_rollup: OrgWorkflowRollup | None = None
 
     # Findings

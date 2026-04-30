@@ -52,6 +52,7 @@ Current implementation:
 - `CreateMilaWorkflowAssessmentRequest.document_operations_profile` accepts the document-operations summary profile for `document_ops_regulated_review_v0`.
 - `src/scalescore/core/document_operations.py` derives local `WorkflowEvidenceInput` and `OperationalLearningInputs` when more explicit inputs are not supplied.
 - The profile can represent the normal packet, escalated exception packet, evidence posture, review density, and Governance dependency state needed for suitability scoring.
+- The profile can optionally include a synthetic claims `claims_profile` block for `claims-hybrid-high-dollar-review-v0`; Readiness consumes it only to score claims suitability and trust gaps.
 
 ## Shared Refs This Repo Should Emit
 
@@ -90,6 +91,8 @@ Current implementation:
 Preserve `workflow_readiness_score` and the five readiness pillars. Operational Learning remains an optional sibling block. Governance dependency state may block suitability, but Readiness does not approve use.
 
 For document operations, Readiness may say a workflow is a `weak_candidate`, `eval_suitable`, `training_candidate`, `blocked`, or `unsuitable`. These are suitability states only; internal-eval use still requires Governance approval.
+
+For claims suitability, Readiness may say the synthetic claims workflow is `blocked`, `weak_candidate`, or `eval_suitable` based on PHI/redaction posture, rate-source traceability, downstream consistency/action readiness, savings lifecycle, Governance dependency state, source readiness, and evidence-class coverage. These are trust-gap diagnostics only; Governance remains the approval source for use approvals, redaction review, export control, action approval, durable decisions, and audit readback.
 
 ## Consumer Rules
 

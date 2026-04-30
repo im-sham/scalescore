@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from scalescore.models.scaling import (
+    ClaimsReadinessState,
+    ClaimsSuitabilityStatus,
+    ClaimsSuitabilitySummary,
+    ClaimsWorkflowReadinessProfile,
     DocumentOperationsReadinessProfile,
     DocumentOperationsReadinessProjection,
     OperationalLearningCompletenessState,
@@ -12,6 +16,36 @@ from scalescore.models.scaling import (
     WorkflowEvidencePostureInput,
 )
 
+_CLAIMS_REQUIRED_EVIDENCE_CLASSES = {
+    "claim_packet",
+    "claim_line",
+    "invoice_provider_bill",
+    "eob_remittance_evidence",
+    "policy_plan_document",
+    "contract_rate_source",
+    "specialist_review_note",
+    "downstream_export_record",
+    "savings_recognition_record",
+    "audit_packet",
+}
+
+_CLAIMS_CORE_EVIDENCE_CLASSES = {
+    "claim_packet",
+    "claim_line",
+    "specialist_review_note",
+}
+
+_CLAIMS_READY_STATES = {
+    ClaimsReadinessState.READY,
+    ClaimsReadinessState.REVIEWED,
+    ClaimsReadinessState.APPROVED,
+}
+
+_CLAIMS_BLOCKING_STATES = {
+    ClaimsReadinessState.MISSING,
+    ClaimsReadinessState.BLOCKED,
+}
+
 
 def derive_document_operations_readiness_inputs(
     profile: DocumentOperationsReadinessProfile,
@@ -22,6 +56,7 @@ def derive_document_operations_readiness_inputs(
         workflow_evidence=_derive_workflow_evidence(profile),
         operational_learning_inputs=_derive_operational_learning_inputs(profile),
         source_findings=_source_findings(profile),
+        claims_suitability=_score_claims_suitability(profile.claims_profile),
     )
 
 
@@ -75,7 +110,7 @@ def _derive_workflow_evidence(
 def _derive_operational_learning_inputs(
     profile: DocumentOperationsReadinessProfile,
 ) -> OperationalLearningInputs:
-    return OperationalLearningInputs(
+    inputs = OperationalLearningInputs(
         sop_reference_present=_any_true(
             profile.sop_refs_present,
             profile.required_document_rules_present,
@@ -93,6 +128,7 @@ def _derive_operational_learning_inputs(
         redaction_manageability_signal=_redaction_manageability_signal(profile),
         governance_dependency_state=profile.governance_dependency_state,
     )
+    return _apply_claims_operational_learning_adjustments(inputs, profile.claims_profile)
 
 
 def _source_findings(profile: DocumentOperationsReadinessProfile) -> list[str]:
@@ -120,7 +156,190 @@ def _source_findings(profile: DocumentOperationsReadinessProfile) -> list[str]:
         )
     if profile.redaction_review_required_before_internal_eval is True:
         findings.append("Internal-eval use depends on Governance redaction review.")
+    claims_suitability = _score_claims_suitability(profile.claims_profile)
+    if claims_suitability is not None:
+        findings.append(f"Claims suitability status: {claims_suitability.status.value}.")
+        findings.extend(claims_suitability.top_blockers[:2])
     return findings
+
+
+def _score_claims_suitability(
+    claims_profile: ClaimsWorkflowReadinessProfile | None,
+) -> ClaimsSuitabilitySummary | None:
+    if claims_profile is None:
+        return None
+
+    missing_evidence = sorted(
+        _CLAIMS_REQUIRED_EVIDENCE_CLASSES - set(claims_profile.evidence_class_ids_present)
+    )
+    missing_core_evidence = [
+        class_id for class_id in missing_evidence if class_id in _CLAIMS_CORE_EVIDENCE_CLASSES
+    ]
+    blockers: list[str] = []
+    reasons: list[str] = []
+    actions: list[str] = []
+    score = 100.0
+
+    if missing_evidence:
+        penalty = 6.0 * len(missing_evidence)
+        score -= penalty
+        reasons.append(
+            "Claims evidence map is missing "
+            + ", ".join(missing_evidence[:4])
+            + "."
+        )
+        actions.append("Complete the claims evidence map with synthetic ref summaries only.")
+    if missing_core_evidence:
+        blockers.append(
+            "Core claims evidence classes are missing: "
+            + ", ".join(missing_core_evidence)
+            + "."
+        )
+
+    if not _claims_state_ready(claims_profile.source_readiness_state):
+        score -= 20.0
+        blockers.append("Claims source readiness is not ready.")
+        actions.append("Confirm read-only source readiness before scoring claims launch suitability.")
+
+    if not _claims_state_ready(claims_profile.phi_boundary_review_state):
+        score -= 25.0
+        blockers.append("PHI boundary review is not complete.")
+        actions.append("Complete PHI boundary review with the implementation admin and compliance owner.")
+
+    if not _claims_state_ready(claims_profile.redaction_review_state):
+        score -= 25.0
+        blockers.append("Claims redaction review is not complete.")
+        actions.append("Complete redaction review before internal-eval suitability is considered.")
+
+    if not _claims_state_ready(claims_profile.governance_claims_control_state):
+        score -= 25.0
+        blockers.append("Governance claims controls are not ready.")
+        actions.append(
+            "Complete Governance claims-control review for use approval, redaction, and control posture."
+        )
+
+    if not _claims_state_ready(claims_profile.downstream_action_approval_state):
+        score -= 22.0
+        blockers.append("Downstream action approval is missing or not ready.")
+        actions.append("Confirm downstream action approval before launch-readiness claims.")
+
+    if not _claims_state_ready(claims_profile.rate_source_review_state):
+        score -= 18.0
+        reasons.append("Claims rate-source traceability is not reviewed.")
+        actions.append("Confirm rate-source license, version, lookup method, and storage posture.")
+
+    if not _claims_state_ready(claims_profile.downstream_consistency_state):
+        score -= 14.0
+        if _claims_state_blocking(claims_profile.downstream_consistency_state):
+            blockers.append("Downstream consistency evidence is blocked or missing.")
+        else:
+            reasons.append("Downstream consistency is still awaiting review.")
+        actions.append("Map destination, export digest, acknowledgement state, and owner checkpoint.")
+
+    if not _claims_state_ready(claims_profile.savings_recognition_state):
+        score -= 14.0
+        if _claims_state_blocking(claims_profile.savings_recognition_state):
+            reasons.append("Claims savings recognition evidence is missing.")
+        else:
+            reasons.append("Claims savings recognition remains under review.")
+        actions.append("Define baseline, accepted outcome, recognition event, and finance owner.")
+
+    bounded_score = _bounded_score(score)
+    unique_blockers = _unique_items(blockers)
+    if unique_blockers:
+        status = ClaimsSuitabilityStatus.BLOCKED
+    elif bounded_score >= 80.0 and not reasons:
+        status = ClaimsSuitabilityStatus.EVAL_SUITABLE
+    elif bounded_score >= 50.0:
+        status = ClaimsSuitabilityStatus.WEAK_CANDIDATE
+    else:
+        status = ClaimsSuitabilityStatus.BLOCKED
+
+    if status == ClaimsSuitabilityStatus.EVAL_SUITABLE and not reasons:
+        reasons.append(
+            "Synthetic claims profile has reviewed PHI/redaction, rate-source, downstream, "
+            "savings, source, and Governance dependency posture."
+        )
+
+    return ClaimsSuitabilitySummary(
+        profile_id=claims_profile.profile_id,
+        status=status,
+        score=bounded_score,
+        top_blockers=unique_blockers[:5],
+        top_reasons=_unique_items(reasons)[:5],
+        recommended_next_actions=_unique_items(actions)[:5],
+        governance_dependency_state=_state_bucket(
+            claims_profile.governance_claims_control_state
+        ),
+        evidence_gap_state="ready" if not missing_evidence else "missing",
+        phi_redaction_state=_phi_redaction_state(claims_profile),
+        rate_source_traceability_state=_state_bucket(
+            claims_profile.rate_source_review_state
+        ),
+        downstream_consistency_state=_downstream_state(claims_profile),
+        savings_lifecycle_state=_state_bucket(
+            claims_profile.savings_recognition_state
+        ),
+    )
+
+
+def _apply_claims_operational_learning_adjustments(
+    inputs: OperationalLearningInputs,
+    claims_profile: ClaimsWorkflowReadinessProfile | None,
+) -> OperationalLearningInputs:
+    if claims_profile is None:
+        return inputs
+
+    updates: dict[str, object] = {}
+    if not _claims_state_ready(claims_profile.phi_boundary_review_state) or not _claims_state_ready(
+        claims_profile.redaction_review_state
+    ):
+        current_signal = inputs.redaction_manageability_signal
+        updates["redaction_manageability_signal"] = (
+            30.0 if current_signal is None else min(current_signal, 30.0)
+        )
+
+    return inputs.model_copy(update=updates) if updates else inputs
+
+
+def _claims_state_ready(state: ClaimsReadinessState | None) -> bool:
+    return state in _CLAIMS_READY_STATES
+
+
+def _claims_state_blocking(state: ClaimsReadinessState | None) -> bool:
+    return state is None or state in _CLAIMS_BLOCKING_STATES
+
+
+def _state_bucket(state: ClaimsReadinessState | None) -> str:
+    if _claims_state_ready(state):
+        return "ready"
+    if _claims_state_blocking(state):
+        return "blocked"
+    return "review_required"
+
+
+def _phi_redaction_state(claims_profile: ClaimsWorkflowReadinessProfile) -> str:
+    states = [
+        claims_profile.phi_boundary_review_state,
+        claims_profile.redaction_review_state,
+    ]
+    if all(_claims_state_ready(state) for state in states):
+        return "ready"
+    if any(_claims_state_blocking(state) for state in states):
+        return "blocked"
+    return "review_required"
+
+
+def _downstream_state(claims_profile: ClaimsWorkflowReadinessProfile) -> str:
+    states = [
+        claims_profile.downstream_consistency_state,
+        claims_profile.downstream_action_approval_state,
+    ]
+    if all(_claims_state_ready(state) for state in states):
+        return "ready"
+    if any(_claims_state_blocking(state) for state in states):
+        return "blocked"
+    return "review_required"
 
 
 def _verified_when(value: bool | None) -> WorkflowControlStatus | None:
@@ -263,3 +482,7 @@ def _redaction_manageability_signal(
 
 def _bounded_score(score: float) -> float:
     return round(max(0.0, min(100.0, score)), 1)
+
+
+def _unique_items(items: list[str]) -> list[str]:
+    return list(dict.fromkeys(item for item in items if item))

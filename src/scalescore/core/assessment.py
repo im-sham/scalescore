@@ -171,6 +171,7 @@ def run_workflow_assessment(
     """Build a workflow-first report from direct workflow metadata without CSV datasets."""
 
     source_findings = list(source_findings or [])
+    claims_suitability = None
     if document_operations_profile is not None:
         document_projection = derive_document_operations_readiness_inputs(
             document_operations_profile
@@ -180,6 +181,7 @@ def run_workflow_assessment(
         if operational_learning_inputs is None:
             operational_learning_inputs = document_projection.operational_learning_inputs
         source_findings.extend(document_projection.source_findings)
+        claims_suitability = document_projection.claims_suitability
 
     operational_baseline = _workflow_operational_baseline_score(
         workflow_context=workflow_context,
@@ -213,6 +215,8 @@ def run_workflow_assessment(
     report = apply_workflow_readiness_context(report, workflow_context)
     report = apply_workflow_evidence_inputs(report, workflow_evidence)
     report = apply_operational_learning_inputs(report, operational_learning_inputs)
+    if claims_suitability is not None:
+        report = report.model_copy(update={"claims_suitability": claims_suitability})
 
     workflow_score = report.workflow_readiness_score or operational_baseline
     workflow_grade = report.workflow_readiness_grade or _grade_for_score(workflow_score)
@@ -320,6 +324,8 @@ def _assessment_ref_top_blockers(report: ScaleScoreReport) -> list[str]:
     blockers: list[str] = []
     if report.operational_learning_suitability is not None:
         blockers.extend(report.operational_learning_suitability.top_blockers)
+    if report.claims_suitability is not None:
+        blockers.extend(report.claims_suitability.top_blockers)
     blockers.extend(report.top_trust_gaps)
     return list(dict.fromkeys(blocker for blocker in blockers if blocker))[:5]
 
@@ -328,6 +334,8 @@ def _assessment_ref_top_reasons(report: ScaleScoreReport) -> list[str]:
     reasons: list[str] = []
     if report.operational_learning_suitability is not None:
         reasons.extend(report.operational_learning_suitability.top_reasons)
+    if report.claims_suitability is not None:
+        reasons.extend(report.claims_suitability.top_reasons)
     reasons.extend(report.key_findings)
     return list(dict.fromkeys(reason for reason in reasons if reason))[:5]
 

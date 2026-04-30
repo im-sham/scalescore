@@ -215,6 +215,7 @@ Current compatibility rules:
   Optional `workflow_evidence` can be supplied to deepen pillar scoring from source evidence. This now supports explicit `control_coverage` (`approval_gate`, `decision_logging`, `evidence_retention`, `exception_handling`, `periodic_review` with `missing|documented|operating|verified`) and `evidence_posture` (`control_evidence_coverage_percent`, `freshest_evidence_age_days`, `audit_trail_complete`, `linked_artifacts`), with legacy approval/decision counts retained as fallback
   Optional `operational_learning_inputs` can be supplied to add a separate operational-learning suitability block. Supported v1 inputs are `sop_reference_present`, `sop_clarity_signal`, `outcome_spec_present`, `outcome_observability_signal`, `run_frequency_per_week` or `repeatability_signal`, `review_path_present` or `review_density_signal`, `redaction_manageability_signal`, and `governance_dependency_state` (`rights_completeness`, `provenance_completeness`, `redaction_readiness`, `residual_risk_band`)
   Optional `document_operations_profile` can be supplied for the flagship `document_ops_regulated_review_v0` fixture. Readiness projects it into local `workflow_evidence` and `operational_learning_inputs` only when those explicit inputs are absent. This supports the claims/benefits packet workflow, including `normal-packet`, `exception-packet`, review density, evidence refs, and the redaction-review dependency before internal-eval use.
+  Optional `document_operations_profile.claims_profile` can be supplied for the synthetic claims workflow profile. It accepts `profile_id`, `evidence_class_ids_present`, `phi_boundary_review_state`, `redaction_review_state`, `rate_source_review_state`, `downstream_consistency_state`, `downstream_action_approval_state`, `savings_recognition_state`, `governance_claims_control_state`, and `source_readiness_state`. Supported state values are `ready`, `reviewed`, `approved`, `review_required`, `unverified`, `missing`, and `blocked`.
 - `POST /api/v1/assessments/upload` still accepts the six CSV files and now supports optional `workflow_context_json` form data for workflow scoring
 - `POST /api/v1/assessments/async/upload` supports optional `workflow_context_json` and echoes workflow context on job-status payloads
 - `POST /api/v1/assessments/schedules/upload` supports optional `workflow_context_json` and persists workflow context on schedule payloads
@@ -257,6 +258,18 @@ Current compatibility rules:
 | `GET` | `/api/v1/assessments/{assessment_id}` | `assessment:read` | Retrieve saved report |
 | `GET` | `/api/v1/assessments/{assessment_id}/export/pdf` | `report:export` | Download PDF |
 | `POST` | `/api/v1/assessments/{assessment_id}/sync/opsorchestra` | `report:export` | Push report summary and top findings to configured OpsOrchestra outbound URL |
+
+### Claims suitability output
+
+When the optional claims profile is supplied through `document_operations_profile`, workflow reports include `claims_suitability`:
+
+- `profile_id`
+- `status`: `blocked`, `weak_candidate`, or `eval_suitable`
+- `score`
+- `top_blockers`, `top_reasons`, and `recommended_next_actions`
+- `governance_dependency_state`, `evidence_gap_state`, `phi_redaction_state`, `rate_source_traceability_state`, `downstream_consistency_state`, and `savings_lifecycle_state`
+
+This is a Readiness suitability and trust-gap summary only. It does not approve internal eval, training, export, policy learning, source writeback, production automation, or downstream claims actions.
 
 ## Organizations
 
