@@ -7,9 +7,18 @@ import pytest
 
 from scalescore.config import settings
 from scalescore.connectors.opsorchestra_connector import OpsOrchestraConnector
+from scalescore.core.assessment import apply_assessment_ref
 from scalescore.core.exceptions import ErrorCode, ScaleScoreError
 from scalescore.models.core import Team
-from scalescore.models.scaling import Recommendation, RiskIndicator, ScaleScoreReport
+from scalescore.models.scaling import (
+    ClaimsSuitabilityStatus,
+    ClaimsSuitabilitySummary,
+    Recommendation,
+    RiskIndicator,
+    ScaleScoreReport,
+    WorkflowAssessmentContext,
+    WorkflowBlastRadius,
+)
 
 
 def _sample_report() -> ScaleScoreReport:
@@ -55,6 +64,44 @@ def _sample_report() -> ScaleScoreReport:
     )
 
 
+def _claims_workflow_report() -> ScaleScoreReport:
+    report = _sample_report().model_copy(
+        update={
+            "workflow_context": WorkflowAssessmentContext(
+                workflow_id="document_ops_regulated_review_v0",
+                name="Claims and Benefits Packet Review",
+                business_function="document_operations",
+                owner="Document Operations Lead",
+                ai_role="Classify packets and route exception cases",
+                systems_touched=["intake_queue", "review_console"],
+                human_escalation_path=[
+                    "Document Operations Lead",
+                    "Compliance Reviewer",
+                ],
+                control_requirements=["evidence retention"],
+                blast_radius=WorkflowBlastRadius.HIGH,
+            ),
+            "workflow_readiness_score": 72.0,
+            "workflow_readiness_grade": "C",
+            "claims_suitability": ClaimsSuitabilitySummary(
+                profile_id="claims-hybrid-high-dollar-review-v0",
+                status=ClaimsSuitabilityStatus.BLOCKED,
+                score=0.0,
+                top_blockers=["PHI boundary review is not complete."],
+                top_reasons=["Claims rate-source traceability is not reviewed."],
+                recommended_next_actions=["Complete PHI boundary review."],
+                governance_dependency_state="blocked",
+                evidence_gap_state="ready",
+                phi_redaction_state="blocked",
+                rate_source_traceability_state="review_required",
+                downstream_consistency_state="blocked",
+                savings_lifecycle_state="blocked",
+            ),
+        }
+    )
+    return apply_assessment_ref(report)
+
+
 def test_is_configured_false_without_url() -> None:
     connector = OpsOrchestraConnector(outbound_url=None)
     assert connector.is_configured() is False
@@ -63,6 +110,37 @@ def test_is_configured_false_without_url() -> None:
 def test_graph_pull_is_not_configured_without_url() -> None:
     connector = OpsOrchestraConnector(graph_export_url=None)
     assert connector.is_graph_pull_configured() is False
+
+
+def test_event_payload_includes_workflow_assessment_and_claims_suitability_summary() -> None:
+    connector = OpsOrchestraConnector(outbound_url="https://opsorchestra.example/sync")
+
+    payload = connector._event_payload(
+        report=_claims_workflow_report(),
+        tenant_id="tenant_1",
+        actor_id="user_1",
+    )
+
+    report_payload = payload["report"]
+    assert report_payload["assessment_id"] == "report_1"
+    assert report_payload["assessment_ref_id"] == "assessment:org_1:report_1"
+    assert report_payload["workflow_id"] == "document_ops_regulated_review_v0"
+    assert report_payload["workflow_readiness"]["score"] == 72.0
+    assert report_payload["workflow_readiness"]["grade"] == "C"
+    assert report_payload["claims_suitability"] == {
+        "profile_id": "claims-hybrid-high-dollar-review-v0",
+        "status": "blocked",
+        "score": 0.0,
+        "top_blockers": ["PHI boundary review is not complete."],
+        "top_reasons": ["Claims rate-source traceability is not reviewed."],
+        "recommended_next_actions": ["Complete PHI boundary review."],
+        "governance_dependency_state": "blocked",
+        "evidence_gap_state": "ready",
+        "phi_redaction_state": "blocked",
+        "rate_source_traceability_state": "review_required",
+        "downstream_consistency_state": "blocked",
+        "savings_lifecycle_state": "blocked",
+    }
 
 
 @pytest.mark.asyncio
