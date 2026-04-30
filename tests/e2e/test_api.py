@@ -1,5 +1,8 @@
+import base64
 import json
+import re
 import time
+import zlib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -24,6 +27,28 @@ from scalescore.core.rate_limit import get_rate_limiter
 from scalescore.models.core import Organization, Team
 
 client = TestClient(app)
+
+
+def _extract_pdf_text(pdf_bytes: bytes) -> str:
+    text_chunks: list[str] = []
+    for match in re.finditer(rb"stream\r?\n(.*?)endstream", pdf_bytes, re.DOTALL):
+        stream = match.group(1).strip()
+        candidates = [stream]
+        try:
+            ascii85_stream = stream[:-2] if stream.endswith(b"~>") else stream
+            candidates.append(base64.a85decode(ascii85_stream, adobe=False))
+        except ValueError:
+            pass
+        for candidate in candidates:
+            try:
+                decoded = zlib.decompress(candidate)
+            except zlib.error:
+                if candidate is stream and len(candidates) > 1:
+                    continue
+                decoded = candidate
+            text_chunks.append(decoded.decode("latin1", errors="ignore"))
+            break
+    return "\n".join(text_chunks)
 
 
 def _login(email: str = "dev@example.com", password: str = "dev") -> dict:
@@ -244,8 +269,8 @@ def _document_operations_profile_payload() -> dict[str, object]:
     }
 
 
-def _claims_profile_payload() -> dict[str, object]:
-    return {
+def _claims_profile_payload(**overrides: object) -> dict[str, object]:
+    payload = {
         "profile_id": "claims-hybrid-high-dollar-review-v0",
         "evidence_class_ids_present": [
             "claim_packet",
@@ -267,6 +292,33 @@ def _claims_profile_payload() -> dict[str, object]:
         "savings_recognition_state": "approved",
         "governance_claims_control_state": "ready",
         "source_readiness_state": "ready",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _claims_document_operations_workflow_context_payload() -> dict[str, object]:
+    return {
+        "workflow_id": "document_ops_regulated_review_v0",
+        "name": "Claims and Benefits Packet Review",
+        "business_function": "document_operations",
+        "owner": "Document Operations Lead",
+        "ai_role": "Classify packets, extract fields, and route exception cases",
+        "systems_touched": ["intake_queue", "document_store", "review_console"],
+        "human_escalation_path": [
+            "Document Operations Lead",
+            "Compliance Reviewer",
+        ],
+        "control_requirements": [
+            "required document checks",
+            "review-required decision logging",
+            "evidence retention",
+        ],
+        "blast_radius": "high",
+        "fallback_mode": "Manual packet review with compliance escalation",
+        "override_rights": ["Document Operations Lead", "Compliance Reviewer"],
+        "error_tolerance": "Low tolerance for unsupported determinations",
+        "reversibility": "Reviewer decisions can be corrected before packaging.",
     }
 
 
@@ -565,6 +617,111 @@ def test_create_mila_workflow_assessment_accepts_claims_profile_through_document
     assert payload["claims_suitability"]["evidence_gap_state"] == "ready"
     assert "training approval" not in json.dumps(payload["claims_suitability"]).lower()
     assert "export approval" not in json.dumps(payload["claims_suitability"]).lower()
+
+
+def test_blocked_claims_profile_survives_mila_retrieval_and_pdf_export() -> None:
+    headers = _auth_headers()
+    document_operations_profile = _document_operations_profile_payload()
+    document_operations_profile["claims_profile"] = _claims_profile_payload(
+        phi_boundary_review_state="review_required",
+        redaction_review_state="missing",
+        rate_source_review_state="review_required",
+        downstream_consistency_state="blocked",
+        downstream_action_approval_state="missing",
+        savings_recognition_state="missing",
+        governance_claims_control_state="blocked",
+    )
+
+    create_response = client.post(
+        "/api/v1/assessments/mila/workflow",
+        json={
+            "org_id": "tenant_default",
+            "org_name": "Default Tenant",
+            "workflow_context": _claims_document_operations_workflow_context_payload(),
+            "document_operations_profile": document_operations_profile,
+            "baseline_operational_score": 84.0,
+            "source_system": "mila",
+            "source_workflow_type": "document_operations_fixture",
+        },
+        headers=headers,
+    )
+
+    assert create_response.status_code == 200
+    payload = create_response.json()
+    assert payload["claims_suitability"]["status"] == "blocked"
+    assert payload["claims_suitability"]["score"] == 0.0
+    assert payload["claims_suitability"]["governance_dependency_state"] == "blocked"
+    assert payload["claims_suitability"]["phi_redaction_state"] == "blocked"
+    assert payload["claims_suitability"]["downstream_consistency_state"] == "blocked"
+
+    get_response = client.get(
+        f"/api/v1/assessments/{payload['report_id']}",
+        headers=headers,
+    )
+    assert get_response.status_code == 200
+    stored_payload = get_response.json()
+    assert stored_payload["claims_suitability"] == payload["claims_suitability"]
+
+    export_response = client.get(
+        f"/api/v1/assessments/{payload['report_id']}/export/pdf",
+        headers=headers,
+    )
+    assert export_response.status_code == 200
+    assert export_response.content.startswith(b"%PDF")
+    pdf_text = _extract_pdf_text(export_response.content)
+    assert "Claims Suitability" in pdf_text
+    assert "claims-hybrid-high-dollar-review-v0" in pdf_text
+
+
+def test_weak_claims_profile_survives_mila_retrieval_and_pdf_export() -> None:
+    headers = _auth_headers()
+    document_operations_profile = _document_operations_profile_payload()
+    document_operations_profile["claims_profile"] = _claims_profile_payload(
+        rate_source_review_state="review_required",
+        downstream_consistency_state="review_required",
+        savings_recognition_state="review_required",
+    )
+
+    create_response = client.post(
+        "/api/v1/assessments/mila/workflow",
+        json={
+            "org_id": "tenant_default",
+            "org_name": "Default Tenant",
+            "workflow_context": _claims_document_operations_workflow_context_payload(),
+            "document_operations_profile": document_operations_profile,
+            "baseline_operational_score": 84.0,
+            "source_system": "mila",
+            "source_workflow_type": "document_operations_fixture",
+        },
+        headers=headers,
+    )
+
+    assert create_response.status_code == 200
+    payload = create_response.json()
+    assert payload["claims_suitability"]["status"] == "weak_candidate"
+    assert payload["claims_suitability"]["top_blockers"] == []
+    assert payload["claims_suitability"]["rate_source_traceability_state"] == (
+        "review_required"
+    )
+    assert payload["claims_suitability"]["savings_lifecycle_state"] == "review_required"
+
+    get_response = client.get(
+        f"/api/v1/assessments/{payload['report_id']}",
+        headers=headers,
+    )
+    assert get_response.status_code == 200
+    stored_payload = get_response.json()
+    assert stored_payload["claims_suitability"] == payload["claims_suitability"]
+
+    export_response = client.get(
+        f"/api/v1/assessments/{payload['report_id']}/export/pdf",
+        headers=headers,
+    )
+    assert export_response.status_code == 200
+    assert export_response.content.startswith(b"%PDF")
+    pdf_text = _extract_pdf_text(export_response.content)
+    assert "Claims Suitability" in pdf_text
+    assert "weak_candidate" in pdf_text
 
 
 def test_create_assessment_from_upload(tmp_path: Path) -> None:

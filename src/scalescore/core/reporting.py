@@ -6,7 +6,7 @@ from textwrap import wrap
 from reportlab.lib.pagesizes import LETTER
 from reportlab.pdfgen import canvas
 
-from scalescore.models.scaling import ScaleScoreReport
+from scalescore.models.scaling import ClaimsSuitabilitySummary, ScaleScoreReport
 
 
 def generate_executive_summary(report: ScaleScoreReport) -> str:
@@ -54,6 +54,15 @@ def generate_executive_summary(report: ScaleScoreReport) -> str:
                 f"training {operational_learning.internal_training_candidacy.score:.1f}). "
                 f"{operational_learning.governance_dependency_state.summary}"
             )
+        claims_phrase = ""
+        if report.claims_suitability is not None:
+            claims = report.claims_suitability
+            claims_phrase = (
+                " Claims suitability is "
+                f"{claims.status.value.replace('_', ' ')} "
+                f"for {claims.profile_id} with score {claims.score:.1f}; "
+                f"Governance dependency is {claims.governance_dependency_state}."
+            )
 
         return (
             f"{workflow.name} currently shows {readiness} AI operational readiness with a workflow score "
@@ -62,6 +71,7 @@ def generate_executive_summary(report: ScaleScoreReport) -> str:
             f"AI role defined as {workflow.ai_role}. Top trust gap: {top_gap}. "
             f"Recommended immediate action: {top_action}. {rollup_phrase}"
             f"{operational_learning_phrase}"
+            f"{claims_phrase}"
         )
 
     score = report.overall_score
@@ -247,6 +257,19 @@ def render_report_pdf(report: ScaleScoreReport) -> bytes:
             draw_text("Recommended next actions:")
             draw_bullets(operational_learning.recommended_next_actions[:3])
 
+        if report.claims_suitability is not None:
+            draw_heading("Claims Suitability")
+            for line in _claims_suitability_lines(report.claims_suitability):
+                draw_text(line)
+            if report.claims_suitability.top_blockers:
+                draw_text("Top blockers:")
+                draw_bullets(report.claims_suitability.top_blockers[:5])
+            if report.claims_suitability.top_reasons:
+                draw_text("Top reasons:")
+                draw_bullets(report.claims_suitability.top_reasons[:5])
+            draw_text("Recommended next actions:")
+            draw_bullets(report.claims_suitability.recommended_next_actions[:5])
+
     draw_heading("Key Findings")
     draw_bullets(report.key_findings)
 
@@ -280,3 +303,15 @@ def render_report_pdf(report: ScaleScoreReport) -> bytes:
     pdf.save()
     buffer.seek(0)
     return buffer.getvalue()
+
+
+def _claims_suitability_lines(claims: ClaimsSuitabilitySummary) -> list[str]:
+    return [
+        f"Profile ID: {claims.profile_id}",
+        f"Status: {claims.status.value} | Score: {claims.score:.1f}",
+        f"Governance dependency: {claims.governance_dependency_state}",
+        f"PHI/redaction: {claims.phi_redaction_state}",
+        f"Rate-source traceability: {claims.rate_source_traceability_state}",
+        f"Downstream consistency: {claims.downstream_consistency_state}",
+        f"Savings lifecycle: {claims.savings_lifecycle_state}",
+    ]

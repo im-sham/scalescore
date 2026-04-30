@@ -256,8 +256,8 @@ Current compatibility rules:
 | `POST` | `/api/v1/assessments/schedules/{schedule_id}/resume` | `assessment:create` | Resume scheduled assessment |
 | `GET` | `/api/v1/assessments` | `assessment:read` | Pagination via `limit`, `offset` |
 | `GET` | `/api/v1/assessments/{assessment_id}` | `assessment:read` | Retrieve saved report |
-| `GET` | `/api/v1/assessments/{assessment_id}/export/pdf` | `report:export` | Download PDF |
-| `POST` | `/api/v1/assessments/{assessment_id}/sync/opsorchestra` | `report:export` | Push report summary and top findings to configured OpsOrchestra outbound URL |
+| `GET` | `/api/v1/assessments/{assessment_id}/export/pdf` | `report:export` | Download PDF, including claims suitability when present |
+| `POST` | `/api/v1/assessments/{assessment_id}/sync/opsorchestra` | `report:export` | Push report, workflow, AssessmentRef, and suitability summaries to configured OpsOrchestra outbound URL |
 
 ### Claims suitability output
 
@@ -270,6 +270,14 @@ When the optional claims profile is supplied through `document_operations_profil
 - `governance_dependency_state`, `evidence_gap_state`, `phi_redaction_state`, `rate_source_traceability_state`, `downstream_consistency_state`, and `savings_lifecycle_state`
 
 This is a Readiness suitability and trust-gap summary only. It does not approve internal eval, training, export, policy learning, source writeback, production automation, or downstream claims actions.
+
+When present, the same claims summary is included in PDF report exports and in
+the OpsOrchestra outbound sync payload. The sync payload keeps this summary
+narrowly Readiness-owned:
+
+- `report.assessment_id`, `report.assessment_ref_id`, and optional `report.assessment_ref`
+- `report.workflow_id`, `report.workflow_ref_id`, and optional `report.workflow_readiness`
+- `report.claims_suitability.profile_id`, `status`, `score`, `top_blockers`, `top_reasons`, `recommended_next_actions`, `governance_dependency_state`, `phi_redaction_state`, `rate_source_traceability_state`, `downstream_consistency_state`, and `savings_lifecycle_state`
 
 ## Organizations
 

@@ -347,6 +347,9 @@ class OpsOrchestraConnector:
         tenant_id: str,
         actor_id: str,
     ) -> dict[str, Any]:
+        assessment_ref = report.assessment_ref.ref if report.assessment_ref else None
+        workflow_ref = report.workflow_ref.ref if report.workflow_ref else None
+        workflow_context = report.workflow_context
         return {
             "event_type": "scalescore.assessment.completed",
             "occurred_at": datetime.now(UTC).isoformat(),
@@ -354,6 +357,13 @@ class OpsOrchestraConnector:
             "actor_id": actor_id,
             "report": {
                 "report_id": report.report_id,
+                "assessment_id": report.report_id,
+                "assessment_ref_id": assessment_ref.ref_id if assessment_ref else None,
+                "assessment_ref": (
+                    report.assessment_ref.model_dump(mode="json")
+                    if report.assessment_ref
+                    else None
+                ),
                 "org_id": report.org_id,
                 "org_name": report.org_name,
                 "generated_at": report.generated_at.isoformat(),
@@ -365,6 +375,16 @@ class OpsOrchestraConnector:
                 "high_risks": report.high_risks,
                 "total_constraints": report.total_constraints,
                 "total_recommendations": report.total_recommendations,
+                "workflow_id": (
+                    workflow_context.workflow_id
+                    if workflow_context
+                    else workflow_ref.workflow_id
+                    if workflow_ref
+                    else None
+                ),
+                "workflow_ref_id": workflow_ref.ref_id if workflow_ref else None,
+                "workflow_readiness": self._workflow_readiness_summary(report),
+                "claims_suitability": self._claims_suitability_summary(report),
             },
             "top_risks": [
                 {
@@ -386,6 +406,55 @@ class OpsOrchestraConnector:
                 }
                 for recommendation in report.recommendations[:5]
             ],
+        }
+
+    @staticmethod
+    def _workflow_readiness_summary(report: ScaleScoreReport) -> dict[str, Any] | None:
+        if report.workflow_context is None and report.workflow_ref is None:
+            return None
+        workflow_context = report.workflow_context
+        workflow_ref = report.workflow_ref.ref if report.workflow_ref else None
+        return {
+            "workflow_id": (
+                workflow_context.workflow_id
+                if workflow_context
+                else workflow_ref.workflow_id
+                if workflow_ref
+                else None
+            ),
+            "document_operations_profile_id": (
+                workflow_context.workflow_id
+                if workflow_context
+                and workflow_context.workflow_id == "document_ops_regulated_review_v0"
+                else None
+            ),
+            "score": report.workflow_readiness_score,
+            "grade": report.workflow_readiness_grade,
+            "assessment_ref_id": (
+                report.assessment_ref.ref.ref_id if report.assessment_ref else None
+            ),
+            "assessment_id": report.report_id,
+            "top_trust_gaps": report.top_trust_gaps[:5],
+            "prioritized_remediation_actions": report.prioritized_remediation_actions[:5],
+        }
+
+    @staticmethod
+    def _claims_suitability_summary(report: ScaleScoreReport) -> dict[str, Any] | None:
+        claims = report.claims_suitability
+        if claims is None:
+            return None
+        return {
+            "profile_id": claims.profile_id,
+            "status": claims.status.value,
+            "score": claims.score,
+            "top_blockers": claims.top_blockers,
+            "top_reasons": claims.top_reasons,
+            "recommended_next_actions": claims.recommended_next_actions,
+            "governance_dependency_state": claims.governance_dependency_state,
+            "phi_redaction_state": claims.phi_redaction_state,
+            "rate_source_traceability_state": claims.rate_source_traceability_state,
+            "downstream_consistency_state": claims.downstream_consistency_state,
+            "savings_lifecycle_state": claims.savings_lifecycle_state,
         }
 
     async def push_assessment_report(
