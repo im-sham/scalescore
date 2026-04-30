@@ -106,6 +106,7 @@ The Python/report contract now supports:
 - `top_trust_gaps`
 - `prioritized_remediation_actions`
 - `operational_learning_suitability`
+- `claims_suitability`
 - `org_rollup`
 
 Current HTTP API endpoints remain backward compatible and now support workflow submission across sync, async, and scheduled paths:
@@ -211,6 +212,10 @@ It consumes summary/snapshot signals for:
 
 Readiness derives existing `WorkflowEvidenceInput` and `OperationalLearningInputs` from the profile when explicit inputs are not supplied. This preserves the five readiness pillars and keeps Workflow Context as the source of workflow truth.
 
+The profile may also carry an optional synthetic `claims_profile` block for the claims flagship path. That block is limited to claims profile id, evidence class ids, PHI/redaction review state, rate-source review state, downstream consistency/action state, savings-recognition state, Governance claims-control dependency state, and source-readiness state. Readiness uses those fields to emit an additive `claims_suitability` trust-gap summary with `blocked`, `weak_candidate`, or `eval_suitable` status.
+
+Claims suitability does not replace the five workflow-readiness pillars, does not create workflow truth, and does not approve Governance-controlled uses or actions.
+
 ---
 
 ## 5. Report Contract
@@ -236,6 +241,7 @@ When workflow context is present, the report also includes:
 - top trust gaps
 - prioritized remediation actions
 - optional `operational_learning_suitability`
+- optional `claims_suitability`
 - `assessment_ref` as the compact Readiness-owned `proofhouse-shared-contracts/v0.1` projection
 - org rollup metadata
 
