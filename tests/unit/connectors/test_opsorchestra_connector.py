@@ -135,6 +135,7 @@ def test_event_payload_includes_workflow_assessment_and_claims_suitability_summa
         "top_reasons": ["Claims rate-source traceability is not reviewed."],
         "recommended_next_actions": ["Complete PHI boundary review."],
         "governance_dependency_state": "blocked",
+        "evidence_gap_state": "ready",
         "phi_redaction_state": "blocked",
         "rate_source_traceability_state": "review_required",
         "downstream_consistency_state": "blocked",

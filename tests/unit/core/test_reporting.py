@@ -178,6 +178,7 @@ def test_render_report_pdf_draws_claims_suitability_section(monkeypatch) -> None
     assert "Claims Suitability" in pdf_text
     assert "Profile ID: claims-hybrid-high-dollar-review-v0" in pdf_text
     assert "Status: blocked | Score: 0.0" in pdf_text
+    assert "Evidence gap: ready" in pdf_text
     assert "PHI/redaction: blocked" in pdf_text
     assert "Rate-source traceability: review_required" in pdf_text
     assert "Downstream consistency: blocked" in pdf_text

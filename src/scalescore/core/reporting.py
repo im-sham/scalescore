@@ -310,6 +310,7 @@ def _claims_suitability_lines(claims: ClaimsSuitabilitySummary) -> list[str]:
         f"Profile ID: {claims.profile_id}",
         f"Status: {claims.status.value} | Score: {claims.score:.1f}",
         f"Governance dependency: {claims.governance_dependency_state}",
+        f"Evidence gap: {claims.evidence_gap_state}",
         f"PHI/redaction: {claims.phi_redaction_state}",
         f"Rate-source traceability: {claims.rate_source_traceability_state}",
         f"Downstream consistency: {claims.downstream_consistency_state}",

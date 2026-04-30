@@ -277,7 +277,7 @@ narrowly Readiness-owned:
 
 - `report.assessment_id`, `report.assessment_ref_id`, and optional `report.assessment_ref`
 - `report.workflow_id`, `report.workflow_ref_id`, and optional `report.workflow_readiness`
-- `report.claims_suitability.profile_id`, `status`, `score`, `top_blockers`, `top_reasons`, `recommended_next_actions`, `governance_dependency_state`, `phi_redaction_state`, `rate_source_traceability_state`, `downstream_consistency_state`, and `savings_lifecycle_state`
+- `report.claims_suitability.profile_id`, `status`, `score`, `top_blockers`, `top_reasons`, `recommended_next_actions`, `governance_dependency_state`, `evidence_gap_state`, `phi_redaction_state`, `rate_source_traceability_state`, `downstream_consistency_state`, and `savings_lifecycle_state`
 
 ## Organizations
 

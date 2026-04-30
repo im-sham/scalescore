@@ -671,6 +671,7 @@ def test_blocked_claims_profile_survives_mila_retrieval_and_pdf_export() -> None
     pdf_text = _extract_pdf_text(export_response.content)
     assert "Claims Suitability" in pdf_text
     assert "claims-hybrid-high-dollar-review-v0" in pdf_text
+    assert "Evidence gap: ready" in pdf_text
 
 
 def test_weak_claims_profile_survives_mila_retrieval_and_pdf_export() -> None:
@@ -722,6 +723,7 @@ def test_weak_claims_profile_survives_mila_retrieval_and_pdf_export() -> None:
     pdf_text = _extract_pdf_text(export_response.content)
     assert "Claims Suitability" in pdf_text
     assert "weak_candidate" in pdf_text
+    assert "Evidence gap: ready" in pdf_text
 
 
 def test_create_assessment_from_upload(tmp_path: Path) -> None:

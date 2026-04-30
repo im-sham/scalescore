@@ -451,6 +451,7 @@ class OpsOrchestraConnector:
             "top_reasons": claims.top_reasons,
             "recommended_next_actions": claims.recommended_next_actions,
             "governance_dependency_state": claims.governance_dependency_state,
+            "evidence_gap_state": claims.evidence_gap_state,
             "phi_redaction_state": claims.phi_redaction_state,
             "rate_source_traceability_state": claims.rate_source_traceability_state,
             "downstream_consistency_state": claims.downstream_consistency_state,
