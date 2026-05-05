@@ -85,6 +85,8 @@ Current implementation:
 - `src/scalescore/core/assessment.py` assembles workflow reports.
 - `src/scalescore/core/operational_learning.py` scores suitability.
 - `src/scalescore/api/main.py` exposes the current Workflow Context compatibility endpoint at `/api/v1/assessments/mila/workflow`.
+- Direct workflow `source_findings` and `notes` are summary/ref-only fields. The compatibility endpoint rejects obvious raw payload-shaped JSON or sensitive/raw payload keys before creating or storing a report.
+- OpsOrchestra outbound sync sends compact workflow readiness, claims suitability, and Operational Learning suitability summaries only. It does not send direct workflow `source_findings`, direct `notes`, source documents, or full report exports.
 
 ## V0.1 Implementation Rule
 

@@ -52,6 +52,7 @@ from scalescore.core.scheduled_assessment import (
     ScheduledAssessmentDispatcher,
     async_assessment_dataset_directory,
 )
+from scalescore.core.sensitive_summary import summary_only_text_violations
 from scalescore.models.core import (
     BaseEntity,
     EntityType,
@@ -669,6 +670,7 @@ async def create_mila_workflow_assessment(
     current_user: CanCreateAssessments,
     repository: AssessmentRepositoryDep,
 ) -> ScaleScoreReport:
+    _validate_mila_workflow_summary_text(payload)
     source_findings = list(payload.source_findings)
     if payload.source_workflow_type:
         source_findings.append(f"Workflow source type: {payload.source_workflow_type}.")
@@ -698,6 +700,28 @@ async def create_mila_workflow_assessment(
         organization_id=report.org_id,
     )
     return report
+
+
+def _validate_mila_workflow_summary_text(payload: CreateMilaWorkflowAssessmentRequest) -> None:
+    violations = summary_only_text_violations(
+        {
+            "source_findings": payload.source_findings,
+            "notes": payload.notes,
+        }
+    )
+    if not violations:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        detail={
+            "code": "SUMMARY_ONLY_INPUT_REQUIRED",
+            "message": (
+                "Direct workflow assessment source_findings and notes must be compact "
+                "summaries or refs, not raw payload text or sensitive field dumps."
+            ),
+            "fields": sorted(violations),
+        },
+    )
 
 
 @app.post("/api/v1/assessments/upload", response_model=ScaleScoreReport)

@@ -359,11 +359,7 @@ class OpsOrchestraConnector:
                 "report_id": report.report_id,
                 "assessment_id": report.report_id,
                 "assessment_ref_id": assessment_ref.ref_id if assessment_ref else None,
-                "assessment_ref": (
-                    report.assessment_ref.model_dump(mode="json")
-                    if report.assessment_ref
-                    else None
-                ),
+                "assessment_ref": self._assessment_ref_summary(report),
                 "org_id": report.org_id,
                 "org_name": report.org_name,
                 "generated_at": report.generated_at.isoformat(),
@@ -384,6 +380,9 @@ class OpsOrchestraConnector:
                 ),
                 "workflow_ref_id": workflow_ref.ref_id if workflow_ref else None,
                 "workflow_readiness": self._workflow_readiness_summary(report),
+                "operational_learning_suitability": (
+                    self._operational_learning_suitability_summary(report)
+                ),
                 "claims_suitability": self._claims_suitability_summary(report),
             },
             "top_risks": [
@@ -407,6 +406,16 @@ class OpsOrchestraConnector:
                 for recommendation in report.recommendations[:5]
             ],
         }
+
+    @staticmethod
+    def _assessment_ref_summary(report: ScaleScoreReport) -> dict[str, Any] | None:
+        if report.assessment_ref is None:
+            return None
+        payload = report.assessment_ref.model_dump(mode="json")
+        ref_payload = payload.get("ref")
+        if isinstance(ref_payload, dict):
+            ref_payload["top_reasons"] = []
+        return payload
 
     @staticmethod
     def _workflow_readiness_summary(report: ScaleScoreReport) -> dict[str, Any] | None:
@@ -436,6 +445,49 @@ class OpsOrchestraConnector:
             "assessment_id": report.report_id,
             "top_trust_gaps": report.top_trust_gaps[:5],
             "prioritized_remediation_actions": report.prioritized_remediation_actions[:5],
+        }
+
+    @staticmethod
+    def _operational_learning_suitability_summary(
+        report: ScaleScoreReport,
+    ) -> dict[str, Any] | None:
+        operational_learning = report.operational_learning_suitability
+        if operational_learning is None:
+            return None
+        governance = operational_learning.governance_dependency_state
+        return {
+            "status": operational_learning.status.value,
+            "eval_suitability_status": operational_learning.eval_suitability.status.value,
+            "internal_training_candidacy_status": (
+                operational_learning.internal_training_candidacy.status.value
+            ),
+            "top_blockers": operational_learning.top_blockers[:5],
+            "top_reasons": operational_learning.top_reasons[:5],
+            "recommended_next_actions": operational_learning.recommended_next_actions[:5],
+            "governance_dependency_state": {
+                "status": governance.status.value,
+                "rights_completeness": (
+                    governance.rights_completeness.value
+                    if governance.rights_completeness
+                    else None
+                ),
+                "provenance_completeness": (
+                    governance.provenance_completeness.value
+                    if governance.provenance_completeness
+                    else None
+                ),
+                "redaction_readiness": (
+                    governance.redaction_readiness.value
+                    if governance.redaction_readiness
+                    else None
+                ),
+                "residual_risk_band": (
+                    governance.residual_risk_band.value
+                    if governance.residual_risk_band
+                    else None
+                ),
+                "summary": governance.summary,
+            },
         }
 
     @staticmethod

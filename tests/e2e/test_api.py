@@ -322,6 +322,29 @@ def _claims_document_operations_workflow_context_payload() -> dict[str, object]:
     }
 
 
+def _mila_workflow_assessment_payload(**overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "org_id": "tenant_default",
+        "org_name": "Default Tenant",
+        "workflow_context": _workflow_context_payload(),
+        "workflow_ref": _workflow_ref_payload(),
+        "workflow_evidence": _workflow_evidence_payload(),
+        "operational_learning_inputs": _operational_learning_payload(),
+        "baseline_operational_score": 82.0,
+        "source_system": "mila",
+        "source_workflow_type": "runbook_playbook",
+        "source_runbook_id": "runbook-123",
+        "source_playbook_id": "playbook-456",
+        "source_findings": [
+            "Runbook readiness is 90% (at_risk).",
+            "Playbook definition coverage is 87.5%.",
+        ],
+        "notes": "Submitted from Mila direct workflow context.",
+    }
+    payload.update(overrides)
+    return payload
+
+
 def _issue_opsorchestra_token(
     *,
     private_key: rsa.RSAPrivateKey,
@@ -431,24 +454,7 @@ def test_create_workflow_assessment(tmp_path: Path) -> None:
 def test_create_mila_workflow_assessment_direct() -> None:
     response = client.post(
         "/api/v1/assessments/mila/workflow",
-        json={
-            "org_id": "tenant_default",
-            "org_name": "Default Tenant",
-            "workflow_context": _workflow_context_payload(),
-            "workflow_ref": _workflow_ref_payload(),
-            "workflow_evidence": _workflow_evidence_payload(),
-            "operational_learning_inputs": _operational_learning_payload(),
-            "baseline_operational_score": 82.0,
-            "source_system": "mila",
-            "source_workflow_type": "runbook_playbook",
-            "source_runbook_id": "runbook-123",
-            "source_playbook_id": "playbook-456",
-            "source_findings": [
-                "Runbook readiness is 90% (at_risk).",
-                "Playbook definition coverage is 87.5%.",
-            ],
-            "notes": "Submitted from Mila direct workflow context.",
-        },
+        json=_mila_workflow_assessment_payload(),
         headers=_auth_headers(),
     )
 
@@ -499,6 +505,93 @@ def test_create_mila_workflow_assessment_direct() -> None:
     assert stored_payload["report_id"] == payload["report_id"]
     assert stored_payload["workflow_ref"]["ref"]["snapshot_id"] == "snapshot-support-triage-1"
     assert stored_payload["assessment_ref"]["ref"]["assessment_id"] == payload["report_id"]
+
+
+def test_create_mila_workflow_assessment_rejects_source_findings_raw_payload_before_persistence() -> None:
+    headers = _signup_and_auth_headers()
+    before_response = client.get("/api/v1/assessments", headers=headers)
+    assert before_response.status_code == 200
+    before_count = len(before_response.json())
+
+    response = client.post(
+        "/api/v1/assessments/mila/workflow",
+        json=_mila_workflow_assessment_payload(
+            source_findings=[
+                'raw_payload: {"document_text": "REJECTED_RAW_SOURCE_SENTINEL"}'
+            ],
+        ),
+        headers=headers,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "SUMMARY_ONLY_INPUT_REQUIRED"
+    after_response = client.get("/api/v1/assessments", headers=headers)
+    assert after_response.status_code == 200
+    assert len(after_response.json()) == before_count
+
+
+def test_create_mila_workflow_assessment_rejects_notes_raw_payload_before_persistence() -> None:
+    headers = _signup_and_auth_headers()
+    before_response = client.get("/api/v1/assessments", headers=headers)
+    assert before_response.status_code == 200
+    before_count = len(before_response.json())
+
+    response = client.post(
+        "/api/v1/assessments/mila/workflow",
+        json=_mila_workflow_assessment_payload(
+            notes='{"claim_payload": {"ssn": "REJECTED_RAW_NOTE_SENTINEL"}}',
+        ),
+        headers=headers,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "SUMMARY_ONLY_INPUT_REQUIRED"
+    after_response = client.get("/api/v1/assessments", headers=headers)
+    assert after_response.status_code == 200
+    assert len(after_response.json()) == before_count
+
+
+def test_mila_workflow_pdf_export_remains_summary_only_after_guarded_rejection() -> None:
+    headers = _signup_and_auth_headers()
+    rejected_source_text = "REJECTED_RAW_SOURCE_SENTINEL"
+    rejected_note_text = "REJECTED_RAW_NOTE_SENTINEL"
+
+    rejected_response = client.post(
+        "/api/v1/assessments/mila/workflow",
+        json=_mila_workflow_assessment_payload(
+            source_findings=[
+                f'payment_payload: {{"document_text": "{rejected_source_text}"}}'
+            ],
+            notes=f"member_id: {rejected_note_text}",
+        ),
+        headers=headers,
+    )
+    assert rejected_response.status_code == 422
+
+    accepted_response = client.post(
+        "/api/v1/assessments/mila/workflow",
+        json=_mila_workflow_assessment_payload(
+            source_findings=[
+                "Workflow evidence coverage is summarized from 4 approval refs.",
+                "Synthetic fixture packet count: 12.",
+            ],
+            notes="Summary-only review note: escalation path and owner refs confirmed.",
+        ),
+        headers=headers,
+    )
+    assert accepted_response.status_code == 200
+    payload = accepted_response.json()
+
+    export_response = client.get(
+        f"/api/v1/assessments/{payload['report_id']}/export/pdf",
+        headers=headers,
+    )
+    assert export_response.status_code == 200
+    assert export_response.content.startswith(b"%PDF")
+    pdf_text = _extract_pdf_text(export_response.content)
+    assert "Workflow evidence coverage is summarized" in pdf_text
+    assert rejected_source_text not in pdf_text
+    assert rejected_note_text not in pdf_text
 
 
 def test_create_mila_workflow_assessment_accepts_document_operations_profile() -> None:
