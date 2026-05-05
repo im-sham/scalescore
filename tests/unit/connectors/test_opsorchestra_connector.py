@@ -13,6 +13,12 @@ from scalescore.models.core import Team
 from scalescore.models.scaling import (
     ClaimsSuitabilityStatus,
     ClaimsSuitabilitySummary,
+    OperationalLearningAssessmentResult,
+    OperationalLearningCompletenessState,
+    OperationalLearningGovernanceDependencyState,
+    OperationalLearningGovernanceStateStatus,
+    OperationalLearningSuitabilityStatus,
+    OperationalLearningSuitabilitySummary,
     Recommendation,
     RiskIndicator,
     ScaleScoreReport,
@@ -102,6 +108,60 @@ def _claims_workflow_report() -> ScaleScoreReport:
     return apply_assessment_ref(report)
 
 
+def _operational_learning_workflow_report() -> ScaleScoreReport:
+    report = _sample_report().model_copy(
+        update={
+            "workflow_context": WorkflowAssessmentContext(
+                workflow_id="document_ops_regulated_review_v0",
+                name="Claims and Benefits Packet Review",
+                business_function="document_operations",
+                owner="Document Operations Lead",
+                ai_role="Classify packets and route exception cases",
+                systems_touched=["intake_queue", "review_console"],
+                human_escalation_path=[
+                    "Document Operations Lead",
+                    "Compliance Reviewer",
+                ],
+                control_requirements=["evidence retention"],
+                blast_radius=WorkflowBlastRadius.HIGH,
+            ),
+            "workflow_readiness_score": 78.0,
+            "workflow_readiness_grade": "C",
+            "key_findings": [
+                "Runbook readiness is summary-only.",
+                "raw_payload: SHOULD_NOT_LEAK",
+            ],
+            "operational_learning_suitability": OperationalLearningSuitabilitySummary(
+                status=OperationalLearningSuitabilityStatus.TRAINING_CANDIDATE,
+                eval_suitability=OperationalLearningAssessmentResult(
+                    score=82.0,
+                    status=OperationalLearningSuitabilityStatus.EVAL_SUITABLE,
+                    threshold=75.0,
+                    threshold_met=True,
+                ),
+                internal_training_candidacy=OperationalLearningAssessmentResult(
+                    score=81.0,
+                    status=OperationalLearningSuitabilityStatus.TRAINING_CANDIDATE,
+                    threshold=80.0,
+                    threshold_met=True,
+                ),
+                top_blockers=[],
+                top_reasons=["Review density and SOP references are strong."],
+                recommended_next_actions=["Keep Governance dependency review current."],
+                governance_dependency_state=OperationalLearningGovernanceDependencyState(
+                    rights_completeness=OperationalLearningCompletenessState.COMPLETE,
+                    provenance_completeness=OperationalLearningCompletenessState.COMPLETE,
+                    redaction_readiness=OperationalLearningCompletenessState.COMPLETE,
+                    residual_risk_band="low",
+                    status=OperationalLearningGovernanceStateStatus.READY,
+                    summary="Governance dependency summary is ready.",
+                ),
+            ),
+        }
+    )
+    return apply_assessment_ref(report)
+
+
 def test_is_configured_false_without_url() -> None:
     connector = OpsOrchestraConnector(outbound_url=None)
     assert connector.is_configured() is False
@@ -141,6 +201,39 @@ def test_event_payload_includes_workflow_assessment_and_claims_suitability_summa
         "downstream_consistency_state": "blocked",
         "savings_lifecycle_state": "blocked",
     }
+
+
+def test_event_payload_includes_compact_operational_learning_suitability_summary_only() -> None:
+    connector = OpsOrchestraConnector(outbound_url="https://opsorchestra.example/sync")
+
+    payload = connector._event_payload(
+        report=_operational_learning_workflow_report(),
+        tenant_id="tenant_1",
+        actor_id="user_1",
+    )
+
+    report_payload = payload["report"]
+    assert report_payload["operational_learning_suitability"] == {
+        "status": "training_candidate",
+        "eval_suitability_status": "eval_suitable",
+        "internal_training_candidacy_status": "training_candidate",
+        "top_blockers": [],
+        "top_reasons": ["Review density and SOP references are strong."],
+        "recommended_next_actions": ["Keep Governance dependency review current."],
+        "governance_dependency_state": {
+            "status": "ready",
+            "rights_completeness": "complete",
+            "provenance_completeness": "complete",
+            "redaction_readiness": "complete",
+            "residual_risk_band": "low",
+            "summary": "Governance dependency summary is ready.",
+        },
+    }
+
+    serialized_payload = str(payload)
+    assert "source_findings" not in serialized_payload
+    assert "notes" not in serialized_payload
+    assert "SHOULD_NOT_LEAK" not in serialized_payload
 
 
 @pytest.mark.asyncio

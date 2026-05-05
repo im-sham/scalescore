@@ -114,6 +114,8 @@ Current HTTP API endpoints remain backward compatible and now support workflow s
 - `POST /api/v1/assessments/workflow` accepts `dataset_path` plus `workflow_context`
 - `POST /api/v1/assessments/mila/workflow` is the current Workflow Context compatibility endpoint. The route name remains technical compatibility debt for now; it accepts direct workflow metadata (`org_id`, `org_name`, `workflow_context`, optional `workflow_ref` from Workflow Context, optional `workflow_evidence` including explicit control coverage and evidence posture, optional `operational_learning_inputs`, optional baseline findings)
 - The same Workflow Context compatibility endpoint also accepts optional `document_operations_profile` for the flagship `document_ops_regulated_review_v0` fixture. This profile is a Readiness-local projection of Workflow Context snapshot signals, not canonical workflow truth.
+- Direct workflow `source_findings` and `notes` are summary/ref-only inputs. The API rejects obvious raw payload-shaped JSON or sensitive/raw payload keys before report creation; this is a bounded contract guard, not DLP or PHI classification.
+- OpsOrchestra outbound sync includes compact Operational Learning suitability when present: suitability status, eval/internal-training status, top blockers/reasons/actions, and Governance dependency state. It does not include direct workflow findings, notes, source documents, or full report exports.
 - `POST /api/v1/assessments/upload` accepts optional `workflow_context_json`
 - `POST /api/v1/assessments/async/upload` accepts optional `workflow_context_json`
 - `POST /api/v1/assessments/schedules/upload` accepts optional `workflow_context_json`
