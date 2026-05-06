@@ -19,6 +19,7 @@ class TokenPayload(BaseModel):
     roles: list[str]
     exp: datetime
     iat: datetime
+    auth_method: str = "jwt"
 
 
 class JWTService:

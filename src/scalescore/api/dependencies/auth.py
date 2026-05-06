@@ -33,6 +33,7 @@ def _get_dev_user() -> TokenPayload:
         roles=["admin"],
         exp=datetime(2099, 12, 31, tzinfo=UTC),
         iat=datetime.now(UTC),
+        auth_method="dev",
     )
 
 
@@ -113,6 +114,7 @@ async def get_current_user(
                 roles=principal.roles,
                 exp=principal.expires_at or datetime(2099, 12, 31, tzinfo=UTC),
                 iat=datetime.now(UTC),
+                auth_method="api_key",
             )
         except AuthenticationError as err:
             raise HTTPException(

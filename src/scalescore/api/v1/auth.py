@@ -229,6 +229,29 @@ def _api_key_roles(
     return normalized
 
 
+def _enforce_api_key_creation_allowed(
+    *,
+    payload: CreateAPIKeyRequest,
+    current_user: TokenPayload,
+) -> None:
+    if current_user.auth_method == "api_key":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "API_KEY_DELEGATION_NOT_ALLOWED",
+                "message": "API keys cannot create child API keys",
+            },
+        )
+    if payload.expires_in_days is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "NON_EXPIRING_API_KEYS_NOT_ALLOWED",
+                "message": "API keys must have an explicit expiry",
+            },
+        )
+
+
 @router.post("/login", response_model=TokenResponse)
 async def login(
     payload: LoginRequest,
@@ -410,6 +433,7 @@ async def create_api_key(
     current_user: CurrentUserDep,
     auth_repository: AuthRepositoryDep,
 ) -> APIKeyCreateResponse:
+    _enforce_api_key_creation_allowed(payload=payload, current_user=current_user)
     key_roles = _api_key_roles(payload.roles, current_user.roles)
     api_key_record, raw_api_key = auth_repository.create_api_key(
         user_id=current_user.sub,

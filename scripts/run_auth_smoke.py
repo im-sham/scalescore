@@ -74,7 +74,7 @@ def _run_internal_jwt_smoke(
                     "password": password,
                     "tenant_id": "tenant-ci",
                     "org_id": "org-ci",
-                    "roles": ["admin"],
+                    "roles": ["analyst"],
                 },
             )
             result["signup_status_code"] = signup_response.status_code

@@ -129,6 +129,7 @@ class ExternalOIDCAuthService:
         # email claim is optional and missing. Re-map to the configured provider.
         if payload.email.endswith("@opsorchestra.local"):
             payload.email = f"{payload.sub}@{self._default_email_domain}"
+        payload.auth_method = "external_oidc"
         return payload
 
 
