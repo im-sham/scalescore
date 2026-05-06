@@ -703,12 +703,29 @@ async def create_mila_workflow_assessment(
 
 
 def _validate_mila_workflow_summary_text(payload: CreateMilaWorkflowAssessmentRequest) -> None:
-    violations = summary_only_text_violations(
-        {
-            "source_findings": payload.source_findings,
-            "notes": payload.notes,
-        }
-    )
+    summary_fields: dict[str, str | list[str] | None] = {
+        "source_findings": payload.source_findings,
+        "notes": payload.notes,
+    }
+    if payload.document_operations_profile is not None:
+        profile = payload.document_operations_profile
+        summary_fields.update(
+            {
+                "document_operations_profile.fixture_id": profile.fixture_id,
+                "document_operations_profile.subject_type": profile.subject_type,
+                "document_operations_profile.subject_key": profile.subject_key,
+                "document_operations_profile.normal_case_id": profile.normal_case_id,
+                "document_operations_profile.normal_case_state": profile.normal_case_state,
+                "document_operations_profile.exception_case_id": profile.exception_case_id,
+                "document_operations_profile.exception_case_state": profile.exception_case_state,
+            }
+        )
+        if profile.claims_profile is not None:
+            summary_fields["document_operations_profile.claims_profile.profile_id"] = (
+                profile.claims_profile.profile_id
+            )
+
+    violations = summary_only_text_violations(summary_fields)
     if not violations:
         return
     raise HTTPException(
@@ -716,8 +733,8 @@ def _validate_mila_workflow_summary_text(payload: CreateMilaWorkflowAssessmentRe
         detail={
             "code": "SUMMARY_ONLY_INPUT_REQUIRED",
             "message": (
-                "Direct workflow assessment source_findings and notes must be compact "
-                "summaries or refs, not raw payload text or sensitive field dumps."
+                "Direct workflow assessment summary fields must be compact summaries "
+                "or refs, not raw payload text or sensitive field dumps."
             ),
             "fields": sorted(violations),
         },

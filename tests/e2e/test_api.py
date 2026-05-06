@@ -551,6 +551,56 @@ def test_create_mila_workflow_assessment_rejects_notes_raw_payload_before_persis
     assert len(after_response.json()) == before_count
 
 
+def test_create_mila_workflow_assessment_rejects_document_operations_profile_raw_fields_before_persistence() -> None:
+    headers = _signup_and_auth_headers()
+    before_response = client.get("/api/v1/assessments", headers=headers)
+    assert before_response.status_code == 200
+    before_count = len(before_response.json())
+    raw_profile_value = '{"claim_payload": {"member_id": "REJECTED_PROFILE_SENTINEL"}}'
+
+    profile_cases = [
+        (("fixture_id",), "document_operations_profile.fixture_id"),
+        (("subject_type",), "document_operations_profile.subject_type"),
+        (("subject_key",), "document_operations_profile.subject_key"),
+        (("normal_case_id",), "document_operations_profile.normal_case_id"),
+        (("normal_case_state",), "document_operations_profile.normal_case_state"),
+        (("exception_case_id",), "document_operations_profile.exception_case_id"),
+        (("exception_case_state",), "document_operations_profile.exception_case_state"),
+        (
+            ("claims_profile", "profile_id"),
+            "document_operations_profile.claims_profile.profile_id",
+        ),
+    ]
+
+    for path, expected_field in profile_cases:
+        document_operations_profile = _document_operations_profile_payload()
+        document_operations_profile["claims_profile"] = _claims_profile_payload()
+        if path == ("claims_profile", "profile_id"):
+            claims_profile = document_operations_profile["claims_profile"]
+            assert isinstance(claims_profile, dict)
+            claims_profile["profile_id"] = raw_profile_value
+        else:
+            document_operations_profile[path[0]] = raw_profile_value
+
+        response = client.post(
+            "/api/v1/assessments/mila/workflow",
+            json=_mila_workflow_assessment_payload(
+                workflow_context=_claims_document_operations_workflow_context_payload(),
+                document_operations_profile=document_operations_profile,
+            ),
+            headers=headers,
+        )
+
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert detail["code"] == "SUMMARY_ONLY_INPUT_REQUIRED"
+        assert expected_field in detail["fields"]
+
+    after_response = client.get("/api/v1/assessments", headers=headers)
+    assert after_response.status_code == 200
+    assert len(after_response.json()) == before_count
+
+
 def test_mila_workflow_pdf_export_remains_summary_only_after_guarded_rejection() -> None:
     headers = _signup_and_auth_headers()
     rejected_source_text = "REJECTED_RAW_SOURCE_SENTINEL"

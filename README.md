@@ -161,7 +161,7 @@ Workflow reports now support:
 - `top_trust_gaps`
 - `prioritized_remediation_actions`
 - `operational_learning_suitability`
-- optional `document_operations_profile` input on the current Workflow Context compatibility route
+- optional summary/ref-only `document_operations_profile` input on the current Workflow Context compatibility route
 - `org_rollup`
 
 ---
