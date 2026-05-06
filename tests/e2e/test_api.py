@@ -1741,6 +1741,39 @@ def test_api_key_roles_must_be_subset_of_current_principal() -> None:
     assert response.json()["detail"]["code"] == "API_KEY_ROLE_ESCALATION_NOT_ALLOWED"
 
 
+def test_api_key_creation_rejects_non_expiring_keys() -> None:
+    headers = _signup_and_auth_headers()
+
+    response = client.post(
+        "/api/v1/auth/api-keys",
+        headers=headers,
+        json={"name": "non expiring e2e key", "expires_in_days": None},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "NON_EXPIRING_API_KEYS_NOT_ALLOWED"
+
+
+def test_api_key_principal_cannot_create_child_api_key() -> None:
+    headers = _signup_and_auth_headers()
+    create_response = client.post(
+        "/api/v1/auth/api-keys",
+        headers=headers,
+        json={"name": "parent e2e key", "expires_in_days": 30},
+    )
+    assert create_response.status_code == 201
+    parent_api_key = create_response.json()["api_key"]
+
+    child_response = client.post(
+        "/api/v1/auth/api-keys",
+        headers={"X-API-Key": parent_api_key},
+        json={"name": "child e2e key", "expires_in_days": 30, "roles": ["analyst"]},
+    )
+
+    assert child_response.status_code == 403
+    assert child_response.json()["detail"]["code"] == "API_KEY_DELEGATION_NOT_ALLOWED"
+
+
 def test_opsorchestra_webhook_secret_enforced_when_configured(monkeypatch) -> None:
     monkeypatch.setattr(
         settings.integration,

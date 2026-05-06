@@ -401,6 +401,7 @@ class OpsOrchestraAuthService:
                 roles=roles,
                 exp=self._as_datetime(claims.get("exp"), "exp"),
                 iat=self._as_datetime(claims.get("iat"), "iat"),
+                auth_method="opsorchestra",
             )
         except ValidationError as err:
             raise AuthenticationError(
