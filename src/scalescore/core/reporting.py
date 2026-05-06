@@ -50,8 +50,11 @@ def generate_executive_summary(report: ScaleScoreReport) -> str:
             operational_learning_phrase = (
                 " Operational Learning suitability is "
                 f"{operational_learning.status.value.replace('_', ' ')} "
-                f"(eval {operational_learning.eval_suitability.score:.1f}, "
-                f"training {operational_learning.internal_training_candidacy.score:.1f}). "
+                f"(eval suitability score {operational_learning.eval_suitability.score:.1f}, "
+                "training suitability score "
+                f"{operational_learning.internal_training_candidacy.score:.1f}). "
+                "This is not training approval; Governance approval is required before "
+                "any internal training use. "
                 f"{operational_learning.governance_dependency_state.summary}"
             )
         claims_phrase = ""
@@ -244,8 +247,13 @@ def render_report_pdf(report: ScaleScoreReport) -> bytes:
             draw_text(
                 "Status: "
                 f"{operational_learning.status.value} | "
-                f"Eval score: {operational_learning.eval_suitability.score:.1f} | "
-                f"Training score: {operational_learning.internal_training_candidacy.score:.1f}"
+                f"Eval suitability score: {operational_learning.eval_suitability.score:.1f} | "
+                "Training suitability score: "
+                f"{operational_learning.internal_training_candidacy.score:.1f}"
+            )
+            draw_text(
+                "This is not training approval; Governance approval is required before "
+                "any internal training use."
             )
             draw_text(operational_learning.governance_dependency_state.summary)
             if operational_learning.top_blockers:

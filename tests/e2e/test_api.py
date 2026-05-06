@@ -1628,6 +1628,49 @@ def test_signup_then_login() -> None:
     assert "access_token" in login_response.json()
 
 
+def test_signup_rejects_elevated_roles() -> None:
+    rate_limiter = get_rate_limiter()
+    rate_limiter.clear()
+
+    for role in ("admin", "super_admin"):
+        response = client.post(
+            "/api/v1/auth/signup",
+            json={
+                "email": f"user-{uuid4().hex[:8]}@example.com",
+                "password": "strong-password",
+                "tenant_id": f"tenant-{uuid4().hex[:8]}",
+                "org_id": "org-signup",
+                "roles": [role],
+            },
+        )
+
+        assert response.status_code == 403
+        assert response.json()["detail"]["code"] == "ELEVATED_SIGNUP_ROLE_NOT_ALLOWED"
+
+    rate_limiter.clear()
+
+
+def test_production_signup_disabled_by_default(monkeypatch) -> None:
+    rate_limiter = get_rate_limiter()
+    rate_limiter.clear()
+    monkeypatch.setattr(settings, "environment", "production")
+
+    response = client.post(
+        "/api/v1/auth/signup",
+        json={
+            "email": f"user-{uuid4().hex[:8]}@example.com",
+            "password": "strong-password",
+            "tenant_id": f"tenant-{uuid4().hex[:8]}",
+            "org_id": "org-signup",
+            "roles": ["analyst"],
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "PUBLIC_SIGNUP_DISABLED"
+    rate_limiter.clear()
+
+
 def test_login_rate_limit_enforced(monkeypatch) -> None:
     rate_limiter = get_rate_limiter()
     rate_limiter.clear()
@@ -1683,6 +1726,19 @@ def test_api_key_authentication_flow() -> None:
         headers={"X-API-Key": api_key},
     )
     assert revoked_key_response.status_code == 401
+
+
+def test_api_key_roles_must_be_subset_of_current_principal() -> None:
+    headers = _signup_and_auth_headers()
+
+    response = client.post(
+        "/api/v1/auth/api-keys",
+        headers=headers,
+        json={"name": "escalating e2e key", "roles": ["admin"]},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "API_KEY_ROLE_ESCALATION_NOT_ALLOWED"
 
 
 def test_opsorchestra_webhook_secret_enforced_when_configured(monkeypatch) -> None:
