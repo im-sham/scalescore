@@ -16,6 +16,7 @@ from scalescore.core.audit import (
 )
 from scalescore.core.auth.jwt import JWTService, TokenPayload
 from scalescore.core.auth.refresh import RefreshTokenService, get_sqlite_refresh_token_repository
+from scalescore.core.auth.roles import Role
 from scalescore.core.exceptions import AuthenticationError, ErrorCode
 from scalescore.core.rate_limit import SlidingWindowRateLimiter, get_rate_limiter
 from scalescore.storage.auth_repository import (
@@ -26,6 +27,9 @@ from scalescore.storage.auth_repository import (
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+VALID_ROLE_VALUES = {role.value for role in Role}
+PUBLIC_SIGNUP_ROLE_VALUES = {Role.VIEWER.value, Role.ANALYST.value}
 
 
 def get_refresh_service(
@@ -160,6 +164,71 @@ def _enforce_rate_limit(
     )
 
 
+def _normalize_roles(roles: list[str], *, empty_code: str) -> list[str]:
+    normalized: list[str] = []
+    invalid_roles: list[str] = []
+    for role in roles:
+        role_value = role.strip()
+        if role_value not in VALID_ROLE_VALUES:
+            invalid_roles.append(role)
+            continue
+        if role_value not in normalized:
+            normalized.append(role_value)
+
+    if invalid_roles:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "INVALID_ROLE",
+                "message": "One or more roles are not recognized",
+                "roles": invalid_roles,
+            },
+        )
+    if not normalized:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": empty_code, "message": "At least one role is required"},
+        )
+    return normalized
+
+
+def _signup_roles(roles: list[str]) -> list[str]:
+    normalized = _normalize_roles(roles, empty_code="SIGNUP_ROLE_REQUIRED")
+    elevated_roles = sorted(set(normalized) - PUBLIC_SIGNUP_ROLE_VALUES)
+    if elevated_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "ELEVATED_SIGNUP_ROLE_NOT_ALLOWED",
+                "message": "Public signup cannot grant elevated roles",
+                "roles": elevated_roles,
+            },
+        )
+    return normalized
+
+
+def _api_key_roles(
+    requested_roles: list[str] | None,
+    current_roles: list[str],
+) -> list[str]:
+    if requested_roles is None:
+        return _normalize_roles(current_roles, empty_code="API_KEY_ROLE_REQUIRED")
+
+    normalized = _normalize_roles(requested_roles, empty_code="API_KEY_ROLE_REQUIRED")
+    current_role_set = set(_normalize_roles(current_roles, empty_code="CURRENT_ROLE_REQUIRED"))
+    requested_role_set = set(normalized)
+    if not requested_role_set.issubset(current_role_set):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "API_KEY_ROLE_ESCALATION_NOT_ALLOWED",
+                "message": "API key roles must be a subset of the current principal roles",
+                "roles": sorted(requested_role_set - current_role_set),
+            },
+        )
+    return normalized
+
+
 @router.post("/login", response_model=TokenResponse)
 async def login(
     payload: LoginRequest,
@@ -229,13 +298,23 @@ async def signup(
         window_seconds=settings.auth.signup_rate_limit_window_seconds,
     )
 
+    if settings.is_production() and not settings.auth.public_signup_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "PUBLIC_SIGNUP_DISABLED",
+                "message": "Public signup is disabled in production",
+            },
+        )
+    signup_roles = _signup_roles(payload.roles)
+
     try:
         user = auth_repository.create_user(
             email=payload.email,
             password=payload.password,
             tenant_id=payload.tenant_id,
             org_id=payload.org_id,
-            roles=payload.roles,
+            roles=signup_roles,
         )
     except AuthenticationError as err:
         status_code = (
@@ -331,7 +410,7 @@ async def create_api_key(
     current_user: CurrentUserDep,
     auth_repository: AuthRepositoryDep,
 ) -> APIKeyCreateResponse:
-    key_roles = payload.roles or current_user.roles
+    key_roles = _api_key_roles(payload.roles, current_user.roles)
     api_key_record, raw_api_key = auth_repository.create_api_key(
         user_id=current_user.sub,
         tenant_id=current_user.tenant_id,

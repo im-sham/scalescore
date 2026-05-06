@@ -90,6 +90,10 @@ class AuthSettings(BaseSettings):
         default=False,
         description="Skip authentication in development (NEVER enable in production)",
     )
+    public_signup_enabled: bool = Field(
+        default=False,
+        description="Allow public signup in production. Keep disabled unless enrollment is gated.",
+    )
     login_rate_limit_requests: int = Field(default=120, ge=1, le=5000)
     login_rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
     signup_rate_limit_requests: int = Field(default=30, ge=1, le=1000)

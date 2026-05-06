@@ -119,6 +119,71 @@ def test_generate_executive_summary_mentions_operational_learning_when_present()
 
     assert "Operational Learning suitability" in summary
     assert "training candidate" in summary
+    assert "not training approval" in summary
+
+
+def test_render_report_pdf_labels_operational_learning_as_suitability_only(monkeypatch) -> None:
+    drawn_strings: list[str] = []
+
+    class FakeCanvas:
+        def __init__(self, buffer, pagesize) -> None:
+            self._buffer = buffer
+            self._pagesize = pagesize
+
+        def setFont(self, font: str, size: int) -> None:
+            return None
+
+        def drawString(self, x: int, y: int, text: str) -> None:
+            drawn_strings.append(text)
+
+        def drawRightString(self, x: int, y: int, text: str) -> None:
+            drawn_strings.append(text)
+
+        def showPage(self) -> None:
+            return None
+
+        def save(self) -> None:
+            self._buffer.write(b"%PDF fake")
+
+    monkeypatch.setattr("scalescore.core.reporting.canvas.Canvas", FakeCanvas)
+    report = _sample_report()
+    report.workflow_context = WorkflowAssessmentContext(
+        workflow_id="wf_support",
+        name="Support Triage",
+        business_function="operations",
+        owner="COO",
+        ai_role="Classify and route inbound tickets",
+        systems_touched=["sys_support"],
+        human_escalation_path=["Support Manager", "COO"],
+        control_requirements=["decision logging"],
+        blast_radius=WorkflowBlastRadius.MEDIUM,
+    )
+    report.operational_learning_suitability = score_operational_learning_suitability(
+        OperationalLearningInputs(
+            sop_reference_present=True,
+            sop_clarity_signal=84.0,
+            outcome_spec_present=True,
+            outcome_observability_signal=86.0,
+            repeatability_signal=88.0,
+            review_path_present=True,
+            review_density_signal=78.0,
+            redaction_manageability_signal=82.0,
+            governance_dependency_state=OperationalLearningGovernanceDependencyInput(
+                rights_completeness=OperationalLearningCompletenessState.COMPLETE,
+                provenance_completeness=OperationalLearningCompletenessState.COMPLETE,
+                redaction_readiness=OperationalLearningCompletenessState.COMPLETE,
+                residual_risk_band=RiskLevel.LOW,
+            ),
+        )
+    )
+
+    render_report_pdf(report)
+
+    pdf_text = "\n".join(drawn_strings)
+    assert "Operational Learning Suitability" in pdf_text
+    assert "Eval suitability score" in pdf_text
+    assert "Training suitability score" in pdf_text
+    assert "not training approval" in pdf_text
 
 
 def test_render_report_pdf_draws_claims_suitability_section(monkeypatch) -> None:
