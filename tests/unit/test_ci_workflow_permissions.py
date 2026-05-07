@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+TAGGED_ACTION_REF = re.compile(r"uses:\s+[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@v\d+")
 
 
 def _workflow(name: str) -> str:
@@ -19,3 +21,15 @@ def test_staging_validation_gate_uses_least_privilege_permissions() -> None:
     workflow = _workflow("staging-validation-gate.yml")
 
     assert "\npermissions:\n  contents: read\n" in workflow
+
+
+def test_github_actions_are_pinned_to_commit_shas() -> None:
+    offenders: list[str] = []
+    for name in ("ci.yml", "staging-validation-gate.yml"):
+        offenders.extend(
+            f"{name}: {line.strip()}"
+            for line in _workflow(name).splitlines()
+            if TAGGED_ACTION_REF.search(line)
+        )
+
+    assert offenders == []
