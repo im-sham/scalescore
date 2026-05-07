@@ -21,6 +21,9 @@ on:
   schedule:
     - cron: "0 9 * * 1"
 
+permissions:
+  contents: read
+
 concurrency:
   group: staging-validation-gate
   cancel-in-progress: false
