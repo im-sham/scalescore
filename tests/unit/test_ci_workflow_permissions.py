@@ -33,3 +33,12 @@ def test_github_actions_are_pinned_to_commit_shas() -> None:
         )
 
     assert offenders == []
+
+
+def test_dependabot_tracks_ci_and_python_updates() -> None:
+    config = ROOT / ".github" / "dependabot.yml"
+
+    assert config.exists()
+    content = config.read_text()
+    assert 'package-ecosystem: "github-actions"' in content
+    assert 'package-ecosystem: "pip"' in content
