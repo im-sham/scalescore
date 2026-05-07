@@ -58,10 +58,10 @@ dev = [
     "mypy>=1.0.0",
 ]
 
-# Keep the current technical package name for the Workflow Context integration extra
-# until a dedicated package/integration rename wave is approved.
+# The Workflow Context integration is HTTP/JWT based. Keep this extra empty so
+# `scalescore[opsorchestra]` cannot resolve the private Workflow Context package
+# name from a public package index.
 opsorchestra = [
-    "opsorchestra>=0.1.0",
 ]
 
 worker = [
