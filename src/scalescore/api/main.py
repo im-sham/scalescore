@@ -1,6 +1,6 @@
 import hmac
 import shutil
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -117,6 +117,7 @@ def _build_scheduled_assessment_dispatcher() -> ScheduledAssessmentDispatcher:
         enqueue_job=enqueue_job,
         dispatch_interval_seconds=settings.async_assessment.scheduled_dispatch_poll_interval_seconds,
         dispatch_batch_size=settings.async_assessment.scheduled_dispatch_batch_size,
+        dispatch_lease_seconds=settings.async_assessment.scheduled_dispatch_lease_seconds,
     )
 
 
@@ -134,7 +135,7 @@ scheduled_assessment_runtime_dispatcher: ScheduledAssessmentDispatcher | None = 
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     global async_assessment_runtime_worker, scheduled_assessment_runtime_dispatcher
     logger.info(
         "application_started",
