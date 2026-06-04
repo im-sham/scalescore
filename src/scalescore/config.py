@@ -188,7 +188,7 @@ class ServerSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="SERVER_")
 
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = Field(default=8000, ge=1, le=65535)
     workers: int = Field(default=1, ge=1, le=32)
     reload: bool = False  # Auto-reload on code changes (dev only)

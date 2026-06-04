@@ -17,6 +17,15 @@ def test_ci_workflow_uses_least_privilege_permissions() -> None:
     assert "\npermissions:\n  contents: read\n" in workflow
 
 
+def test_ci_security_job_runs_dependency_and_source_scans() -> None:
+    workflow = _workflow("ci.yml")
+
+    assert "pip install pip-audit" in workflow
+    assert "pip-audit --progress-spinner off" in workflow
+    assert "pip install bandit[toml]" in workflow
+    assert "python -m bandit -r src -q --severity-level medium" in workflow
+
+
 def test_staging_validation_gate_uses_least_privilege_permissions() -> None:
     workflow = _workflow("staging-validation-gate.yml")
 
