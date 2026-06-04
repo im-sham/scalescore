@@ -164,6 +164,7 @@ class AsyncAssessmentSettings(BaseSettings):
         max_length=256,
     )
     broker_dequeue_timeout_seconds: int = Field(default=5, ge=1, le=60)
+    broker_reservation_timeout_seconds: int = Field(default=300, ge=10, le=86_400)
     scheduled_dispatch_poll_interval_seconds: float = Field(default=30.0, ge=1.0, le=3600.0)
     scheduled_dispatch_batch_size: int = Field(default=10, ge=1, le=500)
     submit_rate_limit_requests: int = Field(default=60, ge=1, le=5000)
