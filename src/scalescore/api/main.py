@@ -1,3 +1,4 @@
+import asyncio
 import hmac
 import shutil
 from collections.abc import Callable
@@ -127,6 +128,30 @@ async def _process_async_assessment_queue_once() -> None:
     # across environments where long-lived background tasks may not persist between requests.
     worker = _build_async_assessment_worker()
     await worker.process_next_job()
+
+
+async def _run_assessment_from_csv_off_request_loop(
+    directory: str | Path,
+    workflow_context: WorkflowAssessmentContext | None = None,
+) -> ScaleScoreReport:
+    return await asyncio.to_thread(
+        run_assessment_from_csv,
+        directory,
+        workflow_context,
+    )
+
+
+async def _run_workflow_assessment_off_request_loop(**kwargs: Any) -> ScaleScoreReport:
+    return await asyncio.to_thread(run_workflow_assessment, **kwargs)
+
+
+async def _save_report_off_request_loop(
+    repository: AssessmentRepository,
+    report: ScaleScoreReport,
+    *,
+    tenant_id: str,
+) -> None:
+    await asyncio.to_thread(repository.save_report, report, tenant_id=tenant_id)
 
 
 async_assessment_runtime_worker: AsyncAssessmentWorker | None = None
@@ -633,8 +658,14 @@ async def create_assessment(
     current_user: CanCreateAssessments,
     repository: AssessmentRepositoryDep,
 ) -> ScaleScoreReport:
-    report = run_assessment_from_csv(_dataset_path_for_development(dataset_path))
-    repository.save_report(report, tenant_id=current_user.tenant_id)
+    report = await _run_assessment_from_csv_off_request_loop(
+        _dataset_path_for_development(dataset_path)
+    )
+    await _save_report_off_request_loop(
+        repository,
+        report,
+        tenant_id=current_user.tenant_id,
+    )
     audit_assessment_created(
         user_id=current_user.sub,
         tenant_id=current_user.tenant_id,
@@ -650,11 +681,15 @@ async def create_workflow_assessment(
     current_user: CanCreateAssessments,
     repository: AssessmentRepositoryDep,
 ) -> ScaleScoreReport:
-    report = run_assessment_from_csv(
+    report = await _run_assessment_from_csv_off_request_loop(
         _dataset_path_for_development(payload.dataset_path),
         workflow_context=payload.workflow_context,
     )
-    repository.save_report(report, tenant_id=current_user.tenant_id)
+    await _save_report_off_request_loop(
+        repository,
+        report,
+        tenant_id=current_user.tenant_id,
+    )
     audit_assessment_created(
         user_id=current_user.sub,
         tenant_id=current_user.tenant_id,
@@ -681,7 +716,7 @@ async def create_mila_workflow_assessment(
     if payload.notes:
         source_findings.append(payload.notes)
 
-    report = run_workflow_assessment(
+    report = await _run_workflow_assessment_off_request_loop(
         org_id=payload.org_id,
         org_name=payload.org_name,
         workflow_context=payload.workflow_context,
@@ -692,7 +727,11 @@ async def create_mila_workflow_assessment(
         document_operations_profile=payload.document_operations_profile,
         source_findings=source_findings,
     )
-    repository.save_report(report, tenant_id=current_user.tenant_id)
+    await _save_report_off_request_loop(
+        repository,
+        report,
+        tenant_id=current_user.tenant_id,
+    )
     audit_assessment_created(
         user_id=current_user.sub,
         tenant_id=current_user.tenant_id,
@@ -768,9 +807,16 @@ async def create_assessment_from_upload(
         for filename, upload in files.items():
             content = await upload.read()
             (temp_path / filename).write_bytes(content)
-        report = run_assessment_from_csv(temp_path, workflow_context=workflow_context)
+        report = await _run_assessment_from_csv_off_request_loop(
+            temp_path,
+            workflow_context=workflow_context,
+        )
 
-    repository.save_report(report, tenant_id=current_user.tenant_id)
+    await _save_report_off_request_loop(
+        repository,
+        report,
+        tenant_id=current_user.tenant_id,
+    )
     audit_assessment_created(
         user_id=current_user.sub,
         tenant_id=current_user.tenant_id,
