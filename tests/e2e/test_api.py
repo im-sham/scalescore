@@ -430,6 +430,29 @@ def test_create_assessment(tmp_path: Path) -> None:
     assert get_response.json()["report_id"] == payload["report_id"]
 
 
+def test_create_assessment_runs_sync_work_off_request_loop(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _write_dataset(tmp_path)
+    offloaded_calls: list[str] = []
+
+    async def fake_to_thread(fn, /, *args, **kwargs):
+        offloaded_calls.append(fn.__name__)
+        return fn(*args, **kwargs)
+
+    monkeypatch.setattr(api_main.asyncio, "to_thread", fake_to_thread)
+
+    response = client.post(
+        "/api/v1/assessments",
+        params={"dataset_path": str(tmp_path)},
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 200
+    assert "run_assessment_from_csv" in offloaded_calls
+    assert "save_report" in offloaded_calls
+
+
 def test_create_workflow_assessment(tmp_path: Path) -> None:
     _write_dataset(tmp_path)
 
@@ -449,6 +472,28 @@ def test_create_workflow_assessment(tmp_path: Path) -> None:
     assert payload["workflow_readiness_score"] is not None
     assert payload["workflow_pillar_scores"]
     assert payload["top_trust_gaps"]
+
+
+def test_create_mila_workflow_assessment_runs_sync_work_off_request_loop(
+    monkeypatch,
+) -> None:
+    offloaded_calls: list[str] = []
+
+    async def fake_to_thread(fn, /, *args, **kwargs):
+        offloaded_calls.append(fn.__name__)
+        return fn(*args, **kwargs)
+
+    monkeypatch.setattr(api_main.asyncio, "to_thread", fake_to_thread)
+
+    response = client.post(
+        "/api/v1/assessments/mila/workflow",
+        json=_mila_workflow_assessment_payload(),
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 200
+    assert "run_workflow_assessment" in offloaded_calls
+    assert "save_report" in offloaded_calls
 
 
 def test_create_mila_workflow_assessment_direct() -> None:
@@ -888,6 +933,29 @@ def test_create_assessment_from_upload(tmp_path: Path) -> None:
     payload = authorized_response.json()
     assert payload["org_id"] == "org_1"
     assert payload["overall_score"] >= 0
+
+
+def test_create_assessment_upload_runs_sync_work_off_request_loop(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _write_dataset(tmp_path)
+    offloaded_calls: list[str] = []
+
+    async def fake_to_thread(fn, /, *args, **kwargs):
+        offloaded_calls.append(fn.__name__)
+        return fn(*args, **kwargs)
+
+    monkeypatch.setattr(api_main.asyncio, "to_thread", fake_to_thread)
+
+    response = client.post(
+        "/api/v1/assessments/upload",
+        files=_upload_files(tmp_path),
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 200
+    assert "run_assessment_from_csv" in offloaded_calls
+    assert "save_report" in offloaded_calls
 
 
 def test_create_assessment_from_upload_with_workflow_context(tmp_path: Path) -> None:
