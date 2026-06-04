@@ -67,6 +67,18 @@ class SQLiteAssessmentRepository:
                         ON assessment_reports (tenant_id, created_at DESC)
                         """
                     )
+                    connection.execute(
+                        """
+                        CREATE INDEX IF NOT EXISTS idx_assessment_reports_tenant_generated_at
+                        ON assessment_reports (tenant_id, generated_at DESC)
+                        """
+                    )
+                    connection.execute(
+                        """
+                        CREATE INDEX IF NOT EXISTS idx_assessment_reports_tenant_org_generated_at
+                        ON assessment_reports (tenant_id, org_id, generated_at DESC)
+                        """
+                    )
         except sqlite3.Error as err:
             raise DatabaseError("Failed to initialize assessment storage", cause=err) from err
 
