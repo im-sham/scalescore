@@ -20,6 +20,7 @@ from scalescore.models.scaling import (
     AssessmentRef,
     AssessmentRefEnvelope,
     CapacityConstraint,
+    ControlRefEnvelope,
     DocumentOperationsReadinessProfile,
     FunctionalArea,
     OperationalLearningInputs,
@@ -29,6 +30,7 @@ from scalescore.models.scaling import (
     WorkflowAssessmentContext,
     WorkflowBlastRadius,
     WorkflowControlCoverageInput,
+    WorkflowControlStatus,
     WorkflowEvidenceInput,
     WorkflowEvidencePostureInput,
     WorkflowRefEnvelope,
@@ -162,6 +164,7 @@ def run_workflow_assessment(
     org_name: str,
     workflow_context: WorkflowAssessmentContext,
     workflow_ref: WorkflowRefEnvelope | None = None,
+    control_refs: list[ControlRefEnvelope] | None = None,
     baseline_operational_score: float | None = None,
     workflow_evidence: WorkflowEvidenceInput | None = None,
     operational_learning_inputs: OperationalLearningInputs | None = None,
@@ -171,6 +174,7 @@ def run_workflow_assessment(
     """Build a workflow-first report from direct workflow metadata without CSV datasets."""
 
     source_findings = list(source_findings or [])
+    control_refs = list(control_refs or [])
     claims_suitability = None
     if document_operations_profile is not None:
         document_projection = derive_document_operations_readiness_inputs(
@@ -182,6 +186,8 @@ def run_workflow_assessment(
             operational_learning_inputs = document_projection.operational_learning_inputs
         source_findings.extend(document_projection.source_findings)
         claims_suitability = document_projection.claims_suitability
+    if workflow_evidence is None and control_refs:
+        workflow_evidence = _workflow_evidence_from_control_refs(control_refs)
 
     operational_baseline = _workflow_operational_baseline_score(
         workflow_context=workflow_context,
@@ -199,6 +205,7 @@ def run_workflow_assessment(
         overall_trend="stable",
         area_scores=[],
         workflow_ref=workflow_ref,
+        control_refs=control_refs,
         top_risks=[],
         constraints=[],
         recommendations=[],
@@ -242,6 +249,70 @@ def run_workflow_assessment(
     report.executive_summary = generate_executive_summary(report)
     report = apply_assessment_ref(report, workflow_ref=workflow_ref)
     return report
+
+
+def _workflow_evidence_from_control_refs(
+    control_refs: list[ControlRefEnvelope],
+) -> WorkflowEvidenceInput:
+    coverage_values: dict[str, WorkflowControlStatus] = {}
+    complete_evidence_count = 0
+    for envelope in control_refs:
+        ref = envelope.ref
+        field_name = _control_coverage_field(ref.control_key)
+        if field_name is not None and field_name not in coverage_values:
+            coverage_values[field_name] = _control_status_from_ref(envelope)
+        if _control_ref_has_complete_evidence(envelope):
+            complete_evidence_count += 1
+
+    coverage_percent = round((complete_evidence_count / len(control_refs)) * 100.0, 1)
+    return WorkflowEvidenceInput(
+        control_coverage=WorkflowControlCoverageInput(**coverage_values),
+        evidence_posture=WorkflowEvidencePostureInput(
+            control_evidence_coverage_percent=coverage_percent,
+            audit_trail_complete=complete_evidence_count == len(control_refs),
+            linked_artifacts=True,
+        ),
+        owner_confirmed=any(envelope.ref.owner for envelope in control_refs),
+        approval_evidence_count=complete_evidence_count,
+        decision_log_count=complete_evidence_count,
+    )
+
+
+def _control_coverage_field(control_key: str) -> str | None:
+    normalized = control_key.lower().replace("-", "_")
+    if "approval" in normalized or "gate" in normalized:
+        return "approval_gate"
+    if "decision" in normalized or "log" in normalized:
+        return "decision_logging"
+    if "retention" in normalized or "evidence" in normalized:
+        return "evidence_retention"
+    if "exception" in normalized or "escalation" in normalized:
+        return "exception_handling"
+    if "periodic" in normalized or "review" in normalized:
+        return "periodic_review"
+    return None
+
+
+def _control_status_from_ref(envelope: ControlRefEnvelope) -> WorkflowControlStatus:
+    implementation = envelope.ref.implementation_status.lower().replace("-", "_")
+    if _control_ref_has_complete_evidence(envelope):
+        return WorkflowControlStatus.VERIFIED
+    if implementation in {"implemented", "operating", "active"}:
+        return WorkflowControlStatus.OPERATING
+    if implementation in {"documented", "planned"}:
+        return WorkflowControlStatus.DOCUMENTED
+    return WorkflowControlStatus.MISSING
+
+
+def _control_ref_has_complete_evidence(envelope: ControlRefEnvelope) -> bool:
+    evidence = envelope.ref.evidence_status.lower().replace("-", "_")
+    implementation = envelope.ref.implementation_status.lower().replace("-", "_")
+    return evidence in {"complete", "verified", "reviewed", "current"} and implementation in {
+        "implemented",
+        "operating",
+        "active",
+        "verified",
+    }
 
 
 def apply_assessment_ref(

@@ -43,6 +43,12 @@ Consumed as source evidence posture for scoring. The current compatibility mappi
 
 Consumed as control coverage and evidence status. The current compatibility mapping lands in `WorkflowControlCoverageInput` and `WorkflowEvidencePostureInput`.
 
+Current implementation:
+
+- `CreateMilaWorkflowAssessmentRequest.control_refs` accepts V0.1 `ControlRef` envelopes from Workflow Context.
+- `ScaleScoreReport.control_refs` preserves and echoes the upstream control refs.
+- When explicit `workflow_evidence` is absent, Readiness derives local control coverage and evidence posture from `control_refs`; it does not own or mutate workflow-control truth.
+
 ### Document-operations profile
 
 Consumed as a local Readiness projection of Workflow Context snapshot signals for the flagship document-operations fixture. It is not a new shared contract object and it does not store editable workflow truth.
