@@ -190,6 +190,45 @@ def _workflow_ref_payload() -> dict[str, object]:
     }
 
 
+def _control_ref_payload(
+    *,
+    control_key: str = "approval_gate",
+    evidence_status: str = "complete",
+) -> dict[str, object]:
+    return {
+        "contract_version": "proofhouse-shared-contracts/v0.1",
+        "contract_name": "ControlRef",
+        "producer_capability": "workflow_context",
+        "producer_system": "proofhouse-workflow-context",
+        "canonical_owner": "workflow_context",
+        "issued_at": "2026-04-25T12:00:30Z",
+        "cache_policy": "summary_snapshot",
+        "ref": {
+            "ref_id": f"control:tenant_default:wf_support_triage:{control_key}",
+            "ref_type": "control",
+            "source_capability": "workflow_context",
+            "organization_id": "tenant_default",
+            "environment_id": "production",
+            "external_uri": f"/api/workflows/wf_support_triage/controls/{control_key}",
+            "snapshot_id": f"snapshot-support-triage-{control_key}",
+            "version": "proofhouse-shared-contracts/v0.1",
+            "created_at": "2026-04-25T11:58:00Z",
+            "updated_at": "2026-04-25T12:00:00Z",
+            "summary": f"{control_key} control for Support Triage",
+            "control_assignment_id": f"assignment-{control_key}",
+            "control_id": f"control-{control_key}",
+            "control_key": control_key,
+            "control_family": "support_triage",
+            "control_statement": "Workflow control must be implemented and evidenced.",
+            "implementation_status": "implemented",
+            "evidence_status": evidence_status,
+            "owner": "Head of Support",
+            "workflow_id": "wf_support_triage",
+            "required_evidence_types": ["audit_log", "decision_record"],
+        },
+    }
+
+
 def _workflow_evidence_payload() -> dict[str, object]:
     return {
         "control_coverage": {
@@ -505,6 +544,45 @@ def test_create_mila_workflow_assessment_direct() -> None:
     assert stored_payload["report_id"] == payload["report_id"]
     assert stored_payload["workflow_ref"]["ref"]["snapshot_id"] == "snapshot-support-triage-1"
     assert stored_payload["assessment_ref"]["ref"]["assessment_id"] == payload["report_id"]
+
+
+def test_create_mila_workflow_assessment_accepts_control_refs_as_fallback_evidence() -> None:
+    response = client.post(
+        "/api/v1/assessments/mila/workflow",
+        json=_mila_workflow_assessment_payload(
+            workflow_evidence=None,
+            control_refs=[
+                _control_ref_payload(control_key="approval_gate"),
+                _control_ref_payload(control_key="decision_logging"),
+                _control_ref_payload(control_key="evidence_retention"),
+                _control_ref_payload(control_key="exception_handling"),
+                _control_ref_payload(control_key="periodic_review"),
+            ],
+        ),
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["control_refs"][0]["contract_name"] == "ControlRef"
+    assert payload["control_refs"][0]["ref"]["control_key"] == "approval_gate"
+    control_pillar = next(
+        pillar
+        for pillar in payload["workflow_pillar_scores"]
+        if pillar["pillar"] == "control_and_evidence_readiness"
+    )
+    assert any("verified by source evidence" in strength for strength in control_pillar["strengths"])
+    assert "Source evidence coverage for mapped workflow controls is high." in control_pillar[
+        "rationale"
+    ]
+
+    get_response = client.get(
+        f"/api/v1/assessments/{payload['report_id']}",
+        headers=_auth_headers(),
+    )
+    assert get_response.status_code == 200
+    stored_payload = get_response.json()
+    assert stored_payload["control_refs"][0]["ref"]["control_key"] == "approval_gate"
 
 
 def test_create_mila_workflow_assessment_rejects_source_findings_raw_payload_before_persistence() -> None:

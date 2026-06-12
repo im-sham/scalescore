@@ -63,6 +63,7 @@ from scalescore.models.core import (
     Vendor,
 )
 from scalescore.models.scaling import (
+    ControlRefEnvelope,
     DocumentOperationsReadinessProfile,
     OperationalLearningInputs,
     ScaleScoreReport,
@@ -290,6 +291,7 @@ class CreateMilaWorkflowAssessmentRequest(BaseModel):
     org_name: str = Field(min_length=1)
     workflow_context: WorkflowAssessmentContext
     workflow_ref: WorkflowRefEnvelope | None = None
+    control_refs: list[ControlRefEnvelope] = Field(default_factory=list)
     workflow_evidence: WorkflowEvidenceInput | None = None
     operational_learning_inputs: OperationalLearningInputs | None = None
     document_operations_profile: DocumentOperationsReadinessProfile | None = None
@@ -686,6 +688,7 @@ async def create_mila_workflow_assessment(
         org_name=payload.org_name,
         workflow_context=payload.workflow_context,
         workflow_ref=payload.workflow_ref,
+        control_refs=payload.control_refs,
         baseline_operational_score=payload.baseline_operational_score,
         workflow_evidence=payload.workflow_evidence,
         operational_learning_inputs=payload.operational_learning_inputs,
