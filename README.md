@@ -93,8 +93,6 @@ source .venv/bin/activate
 
 # Install dependencies
 pip install -e ".[dev]"
-# Optional for Redis broker worker mode:
-# pip install -e ".[dev,worker]"
 
 # Use development defaults (AUTH_SKIP_AUTH=true for local UI/API flow)
 cp .env.example .env
@@ -111,6 +109,29 @@ uvicorn scalescore.api.main:app --reload
 # Launch the dashboard
 streamlit run ui/streamlit_app.py
 ```
+
+## Shared Request Limiter
+
+Readiness uses one async limiter contract for login, signup, token refresh, API-key
+creation, async-assessment submission, and scheduled-assessment creation. Development
+and testing default to the bounded process-local backend. Staging and production must set
+`RATE_LIMIT_BACKEND=redis` and a TLS `RATE_LIMIT_URL=rediss://...`; invalid or missing
+hosted configuration prevents startup. A Redis outage fails closed with a redacted `503`
+response and never falls back to process-local state. `RATE_LIMIT_NAMESPACE`,
+`RATE_LIMIT_CONNECT_TIMEOUT_SECONDS`, `RATE_LIMIT_SOCKET_TIMEOUT_SECONDS`, and
+`RATE_LIMIT_LOCAL_MAX_KEYS` configure isolation, network bounds, and the local-only key cap.
+
+Run the real shared-quota, contention, expiry, and outage proof against a disposable Redis:
+
+```bash
+TEST_REDIS_RATE_LIMIT_URL=redis://127.0.0.1:6379/15 \
+  python -m pytest -q tests/integration/test_redis_rate_limit.py
+```
+
+Before downstream reliance, rollback is an isolated revert to
+`cb9a84a6dddab2cadd0e178320399752942c3a64`. For any future hosted rollback, disable
+traffic or keep an equivalent edge limiter in force; process-local fallback is not an
+acceptable hosted rollback.
 
 ---
 

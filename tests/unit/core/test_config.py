@@ -92,7 +92,15 @@ class TestSettings:
         """Verify environment variables override defaults."""
         from scalescore.config import Settings
 
-        with patch.dict(os.environ, {"ENVIRONMENT": "staging", "LOG_LEVEL": "WARNING"}):
+        with patch.dict(
+            os.environ,
+            {
+                "ENVIRONMENT": "staging",
+                "LOG_LEVEL": "WARNING",
+                "RATE_LIMIT_BACKEND": "redis",
+                "RATE_LIMIT_URL": "rediss://redis.internal:6379/0",
+            },
+        ):
             settings = Settings()
 
             assert settings.environment == "staging"
@@ -110,7 +118,7 @@ class TestSettings:
 
     def test_staging_rejects_non_https_opsorchestra_urls(self) -> None:
         """Verify staging requires HTTPS for remote OpsOrchestra endpoints."""
-        from scalescore.config import IntegrationSettings, Settings
+        from scalescore.config import IntegrationSettings, RateLimitSettings, Settings
 
         with pytest.raises(ValueError, match="must use https"):
             Settings(
@@ -118,17 +126,23 @@ class TestSettings:
                 integration=IntegrationSettings(
                     opsorchestra_jwks_url="http://opsorchestra.example/jwks"
                 ),
+                rate_limit=RateLimitSettings(
+                    backend="redis",
+                    url="rediss://redis.internal:6379/0",
+                ),
             )
 
     def test_staging_rejects_non_https_external_oidc_jwks_url(self) -> None:
         """Verify staging requires HTTPS for external OIDC JWKS URLs."""
-        from scalescore.config import IntegrationSettings, Settings
+        from scalescore.config import IntegrationSettings, RateLimitSettings, Settings
 
         with pytest.raises(ValueError, match="must use https"):
             Settings(
                 environment="staging",
-                integration=IntegrationSettings(
-                    external_oidc_jwks_url="http://idp.example/jwks"
+                integration=IntegrationSettings(external_oidc_jwks_url="http://idp.example/jwks"),
+                rate_limit=RateLimitSettings(
+                    backend="redis",
+                    url="rediss://redis.internal:6379/0",
                 ),
             )
 
@@ -161,7 +175,7 @@ class TestSettings:
         """Verify environment helper methods work correctly."""
         from pydantic import SecretStr
 
-        from scalescore.config import AuthSettings, Settings
+        from scalescore.config import AuthSettings, RateLimitSettings, Settings
 
         dev = Settings(environment="development")
         assert dev.is_development() is True
@@ -171,6 +185,10 @@ class TestSettings:
         prod = Settings(
             environment="production",
             auth=AuthSettings(jwt_secret=SecretStr("real-secret")),
+            rate_limit=RateLimitSettings(
+                backend="redis",
+                url="rediss://redis.internal:6379/0",
+            ),
         )
         assert prod.is_production() is True
         assert prod.is_development() is False
@@ -188,7 +206,12 @@ class TestSettings:
             )
 
     def test_staging_broker_mode_requires_tls_redis(self) -> None:
-        from scalescore.config import AsyncAssessmentSettings, FeatureFlags, Settings
+        from scalescore.config import (
+            AsyncAssessmentSettings,
+            FeatureFlags,
+            RateLimitSettings,
+            Settings,
+        )
 
         with pytest.raises(ValueError, match="must use rediss://"):
             Settings(
@@ -198,7 +221,103 @@ class TestSettings:
                     mode="broker",
                     broker_url="redis://redis.internal:6379/0",
                 ),
+                rate_limit=RateLimitSettings(
+                    backend="redis",
+                    url="rediss://redis.internal:6379/0",
+                ),
             )
+
+    def test_rate_limit_defaults_to_bounded_local_backend(self) -> None:
+        from scalescore.config import Settings
+
+        settings = Settings()
+
+        assert settings.rate_limit.backend == "local"
+        assert settings.rate_limit.url is None
+        assert settings.rate_limit.namespace == "scalescore:rate-limit"
+        assert settings.rate_limit.local_max_keys == 10_000
+        assert settings.rate_limit.connect_timeout_seconds == 1.0
+        assert settings.rate_limit.socket_timeout_seconds == 1.0
+
+    def test_rate_limit_environment_overrides_are_nested_and_url_is_secret(self) -> None:
+        from pydantic import SecretStr
+
+        from scalescore.config import Settings
+
+        with patch.dict(
+            os.environ,
+            {
+                "RATE_LIMIT_BACKEND": "redis",
+                "RATE_LIMIT_URL": "redis://localhost:6379/15",
+                "RATE_LIMIT_NAMESPACE": "tests:global-limit",
+                "RATE_LIMIT_LOCAL_MAX_KEYS": "321",
+            },
+        ):
+            settings = Settings()
+
+        assert settings.rate_limit.backend == "redis"
+        assert isinstance(settings.rate_limit.url, SecretStr)
+        assert settings.rate_limit.url.get_secret_value() == "redis://localhost:6379/15"
+        assert "localhost" not in repr(settings.rate_limit.url)
+        assert settings.rate_limit.namespace == "tests:global-limit"
+        assert settings.rate_limit.local_max_keys == 321
+
+    def test_rate_limit_dotenv_overrides_are_loaded(self, tmp_path, monkeypatch) -> None:
+        from scalescore.config import Settings
+
+        (tmp_path / ".env").write_text(
+            "RATE_LIMIT_BACKEND=redis\n"
+            "RATE_LIMIT_URL=redis://127.0.0.1:6379/15\n"
+            "RATE_LIMIT_NAMESPACE=tests:dotenv-limit\n",
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+
+        settings = Settings()
+
+        assert settings.rate_limit.backend == "redis"
+        assert settings.rate_limit.url is not None
+        assert settings.rate_limit.url.get_secret_value() == "redis://127.0.0.1:6379/15"
+        assert settings.rate_limit.namespace == "tests:dotenv-limit"
+
+    def test_staging_requires_redis_rate_limit_backend(self) -> None:
+        from scalescore.config import Settings
+
+        with pytest.raises(ValueError, match="RATE_LIMIT_BACKEND must be redis"):
+            Settings(environment="staging")
+
+    def test_hosted_redis_rate_limit_requires_url(self) -> None:
+        from scalescore.config import RateLimitSettings, Settings
+
+        with pytest.raises(ValueError, match="RATE_LIMIT_URL is required"):
+            Settings(
+                environment="staging",
+                rate_limit=RateLimitSettings(backend="redis"),
+            )
+
+    def test_staging_rate_limit_redis_requires_tls(self) -> None:
+        from scalescore.config import RateLimitSettings, Settings
+
+        with pytest.raises(ValueError, match="RATE_LIMIT_URL must use rediss://"):
+            Settings(
+                environment="staging",
+                rate_limit=RateLimitSettings(
+                    backend="redis",
+                    url="redis://redis.internal:6379/0",
+                ),
+            )
+
+    def test_rate_limit_rejects_malformed_redis_url(self) -> None:
+        from scalescore.config import RateLimitSettings
+
+        with pytest.raises(ValueError, match="must start with redis:// or rediss://"):
+            RateLimitSettings(backend="redis", url="https://redis.example.com")
+
+    def test_multi_worker_server_rejects_process_local_limiter(self) -> None:
+        from scalescore.config import ServerSettings, Settings
+
+        with pytest.raises(ValueError, match="multiple server workers require Redis"):
+            Settings(server=ServerSettings(workers=2))
 
 
 class TestScoringConfig:

@@ -1,6 +1,6 @@
 import hmac
 import shutil
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -46,7 +46,7 @@ from scalescore.core.auth.jwt import TokenPayload
 from scalescore.core.auth.roles import Permission
 from scalescore.core.exceptions import AssessmentNotFoundError
 from scalescore.core.logging import get_logger, setup_logging
-from scalescore.core.rate_limit import SlidingWindowRateLimiter, get_rate_limiter
+from scalescore.core.rate_limit import RateLimiter, RateLimiterUnavailable, get_rate_limiter
 from scalescore.core.reporting import render_report_pdf
 from scalescore.core.scheduled_assessment import (
     ScheduledAssessmentDispatcher,
@@ -111,7 +111,9 @@ def _build_async_assessment_worker() -> AsyncAssessmentWorker:
 
 
 def _build_scheduled_assessment_dispatcher() -> ScheduledAssessmentDispatcher:
-    enqueue_job = _enqueue_async_assessment_job if settings.async_assessment.mode == "broker" else None
+    enqueue_job = (
+        _enqueue_async_assessment_job if settings.async_assessment.mode == "broker" else None
+    )
     return ScheduledAssessmentDispatcher(
         schedule_repository=get_scheduled_assessment_repository(),
         job_repository=get_async_assessment_job_repository(),
@@ -135,21 +137,25 @@ scheduled_assessment_runtime_dispatcher: ScheduledAssessmentDispatcher | None = 
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     global async_assessment_runtime_worker, scheduled_assessment_runtime_dispatcher
     logger.info(
         "application_started",
         host=settings.server.host,
         port=settings.server.port,
     )
-    if settings.features.enable_async_assessments and settings.async_assessment.mode == "background":
-        async_assessment_runtime_worker = _build_async_assessment_worker()
-        await async_assessment_runtime_worker.start()
-        if settings.features.enable_scheduled_assessments:
-            scheduled_assessment_runtime_dispatcher = _build_scheduled_assessment_dispatcher()
-            await scheduled_assessment_runtime_dispatcher.start()
-
+    get_rate_limiter()
     try:
+        if (
+            settings.features.enable_async_assessments
+            and settings.async_assessment.mode == "background"
+        ):
+            async_assessment_runtime_worker = _build_async_assessment_worker()
+            await async_assessment_runtime_worker.start()
+            if settings.features.enable_scheduled_assessments:
+                scheduled_assessment_runtime_dispatcher = _build_scheduled_assessment_dispatcher()
+                await scheduled_assessment_runtime_dispatcher.start()
+
         yield
     finally:
         if scheduled_assessment_runtime_dispatcher is not None:
@@ -158,6 +164,9 @@ async def lifespan(_: FastAPI):
         if async_assessment_runtime_worker is not None:
             await async_assessment_runtime_worker.stop()
             async_assessment_runtime_worker = None
+        if get_rate_limiter.cache_info().currsize:
+            await get_rate_limiter().close()
+            get_rate_limiter.cache_clear()
         logger.info("application_shutdown")
 
 
@@ -187,12 +196,8 @@ GROWTH_SIGNALS_FILE = File(...)  # noqa: B008
 CanCreateAssessments = Annotated[
     TokenPayload, Depends(RequirePermission(Permission.ASSESSMENT_CREATE))
 ]
-CanReadAssessments = Annotated[
-    TokenPayload, Depends(RequirePermission(Permission.ASSESSMENT_READ))
-]
-CanExportReports = Annotated[
-    TokenPayload, Depends(RequirePermission(Permission.REPORT_EXPORT))
-]
+CanReadAssessments = Annotated[TokenPayload, Depends(RequirePermission(Permission.ASSESSMENT_READ))]
+CanExportReports = Annotated[TokenPayload, Depends(RequirePermission(Permission.REPORT_EXPORT))]
 CanManageOrganizations = Annotated[
     TokenPayload, Depends(RequirePermission(Permission.ORGANIZATION_MANAGE))
 ]
@@ -203,7 +208,7 @@ AsyncAssessmentJobRepositoryDep = Annotated[
 ScheduledAssessmentRepositoryDep = Annotated[
     ScheduledAssessmentRepository, Depends(get_scheduled_assessment_repository)
 ]
-RateLimiterDep = Annotated[SlidingWindowRateLimiter, Depends(get_rate_limiter)]
+RateLimiterDep = Annotated[RateLimiter, Depends(get_rate_limiter)]
 EntityRepositoryDep = Annotated[EntityRepository, Depends(get_entity_repository)]
 OpsOrchestraConnectorDep = Annotated[OpsOrchestraConnector, Depends(get_opsorchestra_connector)]
 
@@ -347,7 +352,9 @@ def _validate_opsorchestra_webhook_secret(provided_secret: str | None) -> None:
         )
 
 
-def _parse_workflow_context_json(workflow_context_json: str | None) -> WorkflowAssessmentContext | None:
+def _parse_workflow_context_json(
+    workflow_context_json: str | None,
+) -> WorkflowAssessmentContext | None:
     if workflow_context_json is None:
         return None
 
@@ -546,18 +553,28 @@ def _request_ip(request: Request) -> str:
     return "unknown"
 
 
-def _enforce_rate_limit(
+async def _enforce_rate_limit(
     *,
-    rate_limiter: SlidingWindowRateLimiter,
+    rate_limiter: RateLimiter,
     key: str,
     limit: int,
     window_seconds: int,
 ) -> None:
-    decision = rate_limiter.allow(
-        key,
-        limit=limit,
-        window_seconds=window_seconds,
-    )
+    try:
+        decision = await rate_limiter.allow(
+            key,
+            limit=limit,
+            window_seconds=window_seconds,
+        )
+    except RateLimiterUnavailable:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "RATE_LIMITER_UNAVAILABLE",
+                "message": "Rate limiting service unavailable",
+            },
+        ) from None
+
     if decision.allowed:
         return
     raise HTTPException(
@@ -810,7 +827,7 @@ async def create_async_assessment_from_upload(
             },
         )
 
-    _enforce_rate_limit(
+    await _enforce_rate_limit(
         rate_limiter=rate_limiter,
         key=f"async_assessment:submit:{current_user.tenant_id}:{_request_ip(request)}",
         limit=settings.async_assessment.submit_rate_limit_requests,
@@ -965,7 +982,7 @@ async def create_scheduled_assessment_from_upload(
             },
         )
 
-    _enforce_rate_limit(
+    await _enforce_rate_limit(
         rate_limiter=rate_limiter,
         key=f"scheduled_assessment:create:{current_user.tenant_id}:{_request_ip(request)}",
         limit=settings.async_assessment.submit_rate_limit_requests,
@@ -1025,7 +1042,9 @@ async def create_scheduled_assessment_from_upload(
             cadence=parsed_cadence,
             run_hour_utc=run_hour_utc,
             run_minute_utc=run_minute_utc,
-            run_day_of_week=run_day_of_week if parsed_cadence == ScheduledAssessmentCadence.WEEKLY else None,
+            run_day_of_week=run_day_of_week
+            if parsed_cadence == ScheduledAssessmentCadence.WEEKLY
+            else None,
             dataset_path=str(dataset_directory),
             workflow_context=workflow_context,
         )
