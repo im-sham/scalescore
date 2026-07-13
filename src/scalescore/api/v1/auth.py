@@ -18,7 +18,7 @@ from scalescore.core.auth.jwt import JWTService, TokenPayload
 from scalescore.core.auth.refresh import RefreshTokenService, get_sqlite_refresh_token_repository
 from scalescore.core.auth.roles import Role
 from scalescore.core.exceptions import AuthenticationError, ErrorCode
-from scalescore.core.rate_limit import SlidingWindowRateLimiter, get_rate_limiter
+from scalescore.core.rate_limit import RateLimiter, RateLimiterUnavailable, get_rate_limiter
 from scalescore.storage.auth_repository import (
     APIKeyRecord,
     SQLiteAuthRepository,
@@ -129,7 +129,7 @@ JWTServiceDep = Annotated[JWTService, Depends(get_jwt_service)]
 RefreshServiceDep = Annotated[RefreshTokenService, Depends(get_refresh_service)]
 CurrentUserDep = Annotated[TokenPayload, Depends(get_current_user)]
 AuthRepositoryDep = Annotated[SQLiteAuthRepository, Depends(get_auth_repository)]
-RateLimiterDep = Annotated[SlidingWindowRateLimiter, Depends(get_rate_limiter)]
+RateLimiterDep = Annotated[RateLimiter, Depends(get_rate_limiter)]
 
 
 def _request_ip(request: Request) -> str | None:
@@ -138,18 +138,28 @@ def _request_ip(request: Request) -> str | None:
     return None
 
 
-def _enforce_rate_limit(
+async def _enforce_rate_limit(
     *,
-    rate_limiter: SlidingWindowRateLimiter,
+    rate_limiter: RateLimiter,
     key: str,
     limit: int,
     window_seconds: int,
 ) -> None:
-    decision = rate_limiter.allow(
-        key,
-        limit=limit,
-        window_seconds=window_seconds,
-    )
+    try:
+        decision = await rate_limiter.allow(
+            key,
+            limit=limit,
+            window_seconds=window_seconds,
+        )
+    except RateLimiterUnavailable:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "RATE_LIMITER_UNAVAILABLE",
+                "message": "Rate limiting service unavailable",
+            },
+        ) from None
+
     if decision.allowed:
         return
 
@@ -262,7 +272,7 @@ async def login(
     rate_limiter: RateLimiterDep,
 ) -> TokenResponse:
     ip_address = _request_ip(request) or "unknown"
-    _enforce_rate_limit(
+    await _enforce_rate_limit(
         rate_limiter=rate_limiter,
         key=f"auth:login:{payload.email.lower()}:{ip_address}",
         limit=settings.auth.login_rate_limit_requests,
@@ -314,7 +324,7 @@ async def signup(
     rate_limiter: RateLimiterDep,
 ) -> UserResponse:
     ip_address = _request_ip(request) or "unknown"
-    _enforce_rate_limit(
+    await _enforce_rate_limit(
         rate_limiter=rate_limiter,
         key=f"auth:signup:{ip_address}",
         limit=settings.auth.signup_rate_limit_requests,
@@ -380,7 +390,7 @@ async def refresh_tokens(
     rate_limiter: RateLimiterDep,
 ) -> TokenResponse:
     ip_address = _request_ip(request) or "unknown"
-    _enforce_rate_limit(
+    await _enforce_rate_limit(
         rate_limiter=rate_limiter,
         key=f"auth:refresh:{ip_address}",
         limit=settings.auth.refresh_rate_limit_requests,
@@ -430,11 +440,22 @@ async def logout(
 @router.post("/api-keys", response_model=APIKeyCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_api_key(
     payload: CreateAPIKeyRequest,
+    request: Request,
     current_user: CurrentUserDep,
     auth_repository: AuthRepositoryDep,
+    rate_limiter: RateLimiterDep,
 ) -> APIKeyCreateResponse:
     _enforce_api_key_creation_allowed(payload=payload, current_user=current_user)
     key_roles = _api_key_roles(payload.roles, current_user.roles)
+    await _enforce_rate_limit(
+        rate_limiter=rate_limiter,
+        key=(
+            f"auth:api_key_create:{current_user.tenant_id}:"
+            f"{current_user.sub}:{_request_ip(request) or 'unknown'}"
+        ),
+        limit=settings.auth.api_key_create_rate_limit_requests,
+        window_seconds=settings.auth.api_key_create_rate_limit_window_seconds,
+    )
     api_key_record, raw_api_key = auth_repository.create_api_key(
         user_id=current_user.sub,
         tenant_id=current_user.tenant_id,

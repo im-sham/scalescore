@@ -23,10 +23,26 @@ from scalescore.core.auth.opsorchestra import (
     get_opsorchestra_auth_service,
 )
 from scalescore.core.exceptions import ErrorCode, ScaleScoreError
-from scalescore.core.rate_limit import get_rate_limiter
+from scalescore.core.rate_limit import RateLimitResult, get_rate_limiter
 from scalescore.models.core import Organization, Team
 
 client = TestClient(app)
+
+
+class DenyAllRateLimiter:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def allow(
+        self,
+        key: str,
+        *,
+        limit: int,
+        window_seconds: int,
+    ) -> RateLimitResult:
+        del key, limit, window_seconds
+        self.calls += 1
+        return RateLimitResult(allowed=False, retry_after_seconds=17)
 
 
 def _extract_pdf_text(pdf_bytes: bytes) -> str:
@@ -521,7 +537,9 @@ def test_create_mila_workflow_assessment_direct() -> None:
     assert payload["overall_score"] == payload["workflow_readiness_score"]
     assert payload["operational_learning_suitability"] is not None
     assert payload["operational_learning_suitability"]["status"] == "training_candidate"
-    assert payload["operational_learning_suitability"]["eval_suitability"]["status"] == "eval_suitable"
+    assert (
+        payload["operational_learning_suitability"]["eval_suitability"]["status"] == "eval_suitable"
+    )
     assert (
         payload["operational_learning_suitability"]["internal_training_candidacy"]["status"]
         == "training_candidate"
@@ -532,8 +550,13 @@ def test_create_mila_workflow_assessment_direct() -> None:
         for pillar in payload["workflow_pillar_scores"]
         if pillar["pillar"] == "control_and_evidence_readiness"
     )
-    assert any("verified by source evidence" in strength for strength in control_pillar["strengths"])
-    assert "Source evidence coverage for mapped workflow controls is high." in control_pillar["rationale"]
+    assert any(
+        "verified by source evidence" in strength for strength in control_pillar["strengths"]
+    )
+    assert (
+        "Source evidence coverage for mapped workflow controls is high."
+        in control_pillar["rationale"]
+    )
 
     get_response = client.get(
         f"/api/v1/assessments/{payload['report_id']}",
@@ -571,10 +594,13 @@ def test_create_mila_workflow_assessment_accepts_control_refs_as_fallback_eviden
         for pillar in payload["workflow_pillar_scores"]
         if pillar["pillar"] == "control_and_evidence_readiness"
     )
-    assert any("verified by source evidence" in strength for strength in control_pillar["strengths"])
-    assert "Source evidence coverage for mapped workflow controls is high." in control_pillar[
-        "rationale"
-    ]
+    assert any(
+        "verified by source evidence" in strength for strength in control_pillar["strengths"]
+    )
+    assert (
+        "Source evidence coverage for mapped workflow controls is high."
+        in control_pillar["rationale"]
+    )
 
     get_response = client.get(
         f"/api/v1/assessments/{payload['report_id']}",
@@ -585,7 +611,9 @@ def test_create_mila_workflow_assessment_accepts_control_refs_as_fallback_eviden
     assert stored_payload["control_refs"][0]["ref"]["control_key"] == "approval_gate"
 
 
-def test_create_mila_workflow_assessment_rejects_source_findings_raw_payload_before_persistence() -> None:
+def test_create_mila_workflow_assessment_rejects_source_findings_raw_payload_before_persistence() -> (
+    None
+):
     headers = _signup_and_auth_headers()
     before_response = client.get("/api/v1/assessments", headers=headers)
     assert before_response.status_code == 200
@@ -594,9 +622,7 @@ def test_create_mila_workflow_assessment_rejects_source_findings_raw_payload_bef
     response = client.post(
         "/api/v1/assessments/mila/workflow",
         json=_mila_workflow_assessment_payload(
-            source_findings=[
-                'raw_payload: {"document_text": "REJECTED_RAW_SOURCE_SENTINEL"}'
-            ],
+            source_findings=['raw_payload: {"document_text": "REJECTED_RAW_SOURCE_SENTINEL"}'],
         ),
         headers=headers,
     )
@@ -629,7 +655,9 @@ def test_create_mila_workflow_assessment_rejects_notes_raw_payload_before_persis
     assert len(after_response.json()) == before_count
 
 
-def test_create_mila_workflow_assessment_rejects_document_operations_profile_raw_fields_before_persistence() -> None:
+def test_create_mila_workflow_assessment_rejects_document_operations_profile_raw_fields_before_persistence() -> (
+    None
+):
     headers = _signup_and_auth_headers()
     before_response = client.get("/api/v1/assessments", headers=headers)
     assert before_response.status_code == 200
@@ -687,9 +715,7 @@ def test_mila_workflow_pdf_export_remains_summary_only_after_guarded_rejection()
     rejected_response = client.post(
         "/api/v1/assessments/mila/workflow",
         json=_mila_workflow_assessment_payload(
-            source_findings=[
-                f'payment_payload: {{"document_text": "{rejected_source_text}"}}'
-            ],
+            source_findings=[f'payment_payload: {{"document_text": "{rejected_source_text}"}}'],
             notes=f"member_id: {rejected_note_text}",
         ),
         headers=headers,
@@ -779,18 +805,16 @@ def test_create_mila_workflow_assessment_accepts_document_operations_profile() -
     assert payload["assessment_ref"]["contract_version"] == "proofhouse-shared-contracts/v0.1"
     assert payload["assessment_ref"]["ref"]["workflow_id"] == "document_ops_regulated_review_v0"
     assert (
-        payload["assessment_ref"]["ref"]["workflow_ref"]["ref"]["subject_type"]
-        == "document_packet"
+        payload["assessment_ref"]["ref"]["workflow_ref"]["ref"]["subject_type"] == "document_packet"
     )
     assert payload["operational_learning_suitability"]["status"] == "training_candidate"
     assert payload["claims_suitability"] is None
-    assert any(
-        "document_ops_regulated_review_v0" in finding
-        for finding in payload["key_findings"]
-    )
+    assert any("document_ops_regulated_review_v0" in finding for finding in payload["key_findings"])
 
 
-def test_create_mila_workflow_assessment_accepts_claims_profile_through_document_operations_profile() -> None:
+def test_create_mila_workflow_assessment_accepts_claims_profile_through_document_operations_profile() -> (
+    None
+):
     document_operations_profile = _document_operations_profile_payload()
     document_operations_profile["claims_profile"] = _claims_profile_payload()
 
@@ -922,9 +946,7 @@ def test_weak_claims_profile_survives_mila_retrieval_and_pdf_export() -> None:
     payload = create_response.json()
     assert payload["claims_suitability"]["status"] == "weak_candidate"
     assert payload["claims_suitability"]["top_blockers"] == []
-    assert payload["claims_suitability"]["rate_source_traceability_state"] == (
-        "review_required"
-    )
+    assert payload["claims_suitability"]["rate_source_traceability_state"] == ("review_required")
     assert payload["claims_suitability"]["savings_lifecycle_state"] == "review_required"
 
     get_response = client.get(
@@ -992,7 +1014,7 @@ def test_create_assessment_from_upload_rejects_invalid_workflow_context(tmp_path
 
     response = client.post(
         "/api/v1/assessments/upload",
-        data={"workflow_context_json": "{\"workflow_id\":\"wf_missing_fields\"}"},
+        data={"workflow_context_json": '{"workflow_id":"wf_missing_fields"}'},
         files=files,
         headers=_auth_headers(),
     )
@@ -1768,6 +1790,70 @@ def test_login_rate_limit_enforced(monkeypatch) -> None:
     assert second.status_code == 429
     assert second.json()["detail"]["code"] == "RATE_LIMITED"
     rate_limiter.clear()
+
+
+def test_all_required_routes_use_async_shared_limiter(tmp_path: Path, monkeypatch) -> None:
+    _write_dataset(tmp_path)
+    tokens = _login()
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+    monkeypatch.setattr(settings.features, "enable_async_assessments", True)
+    monkeypatch.setattr(settings.features, "enable_scheduled_assessments", True)
+    limiter = DenyAllRateLimiter()
+    app.dependency_overrides[get_rate_limiter] = lambda: limiter
+
+    try:
+        responses = [
+            client.post(
+                "/api/v1/auth/login",
+                json={"email": "dev@example.com", "password": "dev"},
+            ),
+            client.post(
+                "/api/v1/auth/signup",
+                json={
+                    "email": f"limited-{uuid4().hex[:8]}@example.com",
+                    "password": "strong-password",
+                    "tenant_id": "limited-tenant",
+                    "roles": ["analyst"],
+                },
+            ),
+            client.post(
+                "/api/v1/auth/refresh",
+                json={"refresh_token": tokens["refresh_token"]},
+            ),
+            client.post(
+                "/api/v1/auth/api-keys",
+                headers=headers,
+                json={"name": "limited key", "expires_in_days": 30},
+            ),
+            client.post(
+                "/api/v1/assessments/async/upload",
+                headers=headers,
+                files=_upload_files(tmp_path),
+            ),
+            client.post(
+                "/api/v1/assessments/schedules/upload",
+                headers=headers,
+                data={
+                    "name": "limited schedule",
+                    "cadence": "daily",
+                    "run_hour_utc": 2,
+                    "run_minute_utc": 30,
+                },
+                files=_upload_files(tmp_path),
+            ),
+        ]
+    finally:
+        app.dependency_overrides.pop(get_rate_limiter, None)
+
+    assert limiter.calls == 6
+    for response in responses:
+        assert response.status_code == 429
+        assert response.headers["Retry-After"] == "17"
+        assert response.json()["detail"] == {
+            "code": "RATE_LIMITED",
+            "message": "Rate limit exceeded, retry later",
+            "retry_after_seconds": 17,
+        }
 
 
 def test_auth_me_requires_authentication() -> None:

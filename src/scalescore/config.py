@@ -66,7 +66,9 @@ class DatabaseSettings(BaseSettings):
         """Construct full async database URL with password."""
         password = self.password.get_secret_value()
         if password:
-            return f"postgresql+asyncpg://{self.user}:{password}@{self.host}:{self.port}/{self.name}"
+            return (
+                f"postgresql+asyncpg://{self.user}:{password}@{self.host}:{self.port}/{self.name}"
+            )
         return f"postgresql+asyncpg://{self.user}@{self.host}:{self.port}/{self.name}"
 
 
@@ -100,6 +102,41 @@ class AuthSettings(BaseSettings):
     signup_rate_limit_window_seconds: int = Field(default=3600, ge=1, le=86_400)
     refresh_rate_limit_requests: int = Field(default=120, ge=1, le=5000)
     refresh_rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
+    api_key_create_rate_limit_requests: int = Field(default=30, ge=1, le=1000)
+    api_key_create_rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
+
+
+class RateLimitSettings(BaseSettings):
+    """Shared request limiter configuration."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="RATE_LIMIT_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    backend: Literal["local", "redis"] = "local"
+    url: SecretStr | None = None
+    namespace: str = Field(
+        default="scalescore:rate-limit",
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9:_-]*$",
+    )
+    connect_timeout_seconds: float = Field(default=1.0, ge=0.05, le=30.0)
+    socket_timeout_seconds: float = Field(default=1.0, ge=0.05, le=30.0)
+    local_max_keys: int = Field(default=10_000, ge=1, le=1_000_000)
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is None:
+            return None
+        raw_url = value.get_secret_value()
+        if not raw_url.startswith(("redis://", "rediss://")):
+            raise ValueError("RATE_LIMIT_URL must start with redis:// or rediss://")
+        return value
 
 
 class ScoringSettings(BaseSettings):
@@ -177,9 +214,7 @@ class AsyncAssessmentSettings(BaseSettings):
         if value is None:
             return value
         if not value.startswith(("redis://", "rediss://")):
-            raise ValueError(
-                "ASYNC_ASSESSMENT_BROKER_URL must start with redis:// or rediss://"
-            )
+            raise ValueError("ASYNC_ASSESSMENT_BROKER_URL must start with redis:// or rediss://")
         return value
 
 
@@ -318,6 +353,7 @@ class Settings(BaseSettings):
     storage: StorageSettings = Field(default_factory=StorageSettings)
     integration: IntegrationSettings = Field(default_factory=IntegrationSettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
+    rate_limit: RateLimitSettings = Field(default_factory=RateLimitSettings)
     scoring: ScoringSettings = Field(default_factory=ScoringSettings)
     features: FeatureFlags = Field(default_factory=FeatureFlags)
     async_assessment: AsyncAssessmentSettings = Field(default_factory=AsyncAssessmentSettings)
@@ -347,9 +383,23 @@ class Settings(BaseSettings):
 
             # JWT secret must be changed
             if self.auth.jwt_secret.get_secret_value() == "CHANGE_ME_IN_PRODUCTION":
-                raise ValueError(
-                    "JWT secret must be set in production (AUTH_JWT_SECRET)"
-                )
+                raise ValueError("JWT secret must be set in production (AUTH_JWT_SECRET)")
+
+        rate_limit_url = (
+            self.rate_limit.url.get_secret_value() if self.rate_limit.url is not None else None
+        )
+        if self.rate_limit.backend == "redis" and rate_limit_url is None:
+            raise ValueError("RATE_LIMIT_URL is required when RATE_LIMIT_BACKEND=redis")
+        if self.rate_limit.backend == "local" and rate_limit_url is not None:
+            raise ValueError("RATE_LIMIT_URL is only valid when RATE_LIMIT_BACKEND=redis")
+        if self.server.workers > 1 and self.rate_limit.backend != "redis":
+            raise ValueError("multiple server workers require Redis rate limiting")
+
+        if self.environment in {"staging", "production"}:
+            if self.rate_limit.backend != "redis":
+                raise ValueError("RATE_LIMIT_BACKEND must be redis in staging/production")
+            if rate_limit_url is not None and not rate_limit_url.startswith("rediss://"):
+                raise ValueError("RATE_LIMIT_URL must use rediss:// in staging/production")
 
         if self.environment in {"staging", "production"}:
             ops_allow_private_network = self.integration.opsorchestra_allow_private_network
