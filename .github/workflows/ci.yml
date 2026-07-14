@@ -95,6 +95,10 @@ jobs:
           python -m pip install --upgrade "pip>=26.0.1"
           pip install -e ".[dev]"
           pip install pip-audit
+          pip install bandit[toml]
 
       - name: Run pip-audit
         run: pip-audit --progress-spinner off
+
+      - name: Run Bandit
+        run: python -m bandit -r src -q --severity-level medium

@@ -27,6 +27,7 @@ class TestSettings:
         assert settings.integration.external_oidc_jwks_url is None
         assert settings.integration.external_oidc_require_email_claim is True
         assert settings.integration.external_oidc_require_roles_claim is True
+        assert settings.server.host == "127.0.0.1"
         assert settings.auth.login_rate_limit_requests == 120
         assert settings.integration.opsorchestra_http_max_retries == 2
         assert settings.async_assessment.mode == "poll"

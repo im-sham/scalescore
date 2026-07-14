@@ -196,24 +196,24 @@ class SQLiteEntityRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> list[BaseEntity]:
-        clauses = ["tenant_id = ?"]
-        params: list[str | int] = [tenant_id]
-        if entity_type:
-            clauses.append("entity_type = ?")
-            params.append(entity_type)
-        if org_id:
-            clauses.append("org_id = ?")
-            params.append(org_id)
-        params.extend([limit, offset])
-
-        where_clause = " AND ".join(clauses)
+        params: tuple[str | int | None, ...] = (
+            tenant_id,
+            entity_type,
+            entity_type,
+            org_id,
+            org_id,
+            limit,
+            offset,
+        )
         try:
             with closing(self._connect()) as connection:
                 rows = connection.execute(
-                    f"""
+                    """
                     SELECT entity_type, entity_data
                     FROM entities
-                    WHERE {where_clause}
+                    WHERE tenant_id = ?
+                      AND (? IS NULL OR entity_type = ?)
+                      AND (? IS NULL OR org_id = ?)
                     ORDER BY updated_at DESC
                     LIMIT ? OFFSET ?
                     """,
