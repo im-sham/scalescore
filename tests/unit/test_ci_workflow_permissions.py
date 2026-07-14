@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+PYTHON_CONSTRAINTS = ROOT / "constraints.txt"
 TAGGED_ACTION_REF = re.compile(r"uses:\s+[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@v\d+")
 
 
@@ -42,3 +43,38 @@ def test_dependabot_tracks_ci_and_python_updates() -> None:
     content = config.read_text()
     assert 'package-ecosystem: "github-actions"' in content
     assert 'package-ecosystem: "pip"' in content
+
+
+def test_ci_installs_project_dependencies_with_python_constraints() -> None:
+    workflow = _workflow("ci.yml")
+
+    assert 'pip install -c constraints.txt -e ".[dev]"' in workflow
+
+
+def test_dependency_security_audits_pinned_python_constraints() -> None:
+    workflow = _workflow("ci.yml")
+
+    assert "pip-audit --progress-spinner off -r constraints.txt" in workflow
+
+
+def test_python_constraints_pin_ci_dependency_set() -> None:
+    assert PYTHON_CONSTRAINTS.exists()
+    content = PYTHON_CONSTRAINTS.read_text()
+
+    for package in (
+        "cryptography",
+        "fastapi",
+        "pandas",
+        "pydantic",
+        "pytest",
+        "ruff",
+        "streamlit",
+    ):
+        assert f"{package}==" in content.lower()
+
+    unconstrained_lines = [
+        line
+        for line in content.splitlines()
+        if line.strip() and not line.startswith("#") and "==" not in line
+    ]
+    assert unconstrained_lines == []
