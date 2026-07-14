@@ -30,13 +30,21 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      - name: Install dependencies
+      - name: Verify Linux x86_64 constraint target
         run: |
-          python -m pip install --upgrade "pip>=26.0.1"
-          pip install -e ".[dev]"
+          test "$(uname -s)" = "Linux"
+          test "$(uname -m)" = "x86_64"
+
+      - name: Install constrained dependencies
+        run: |
+          python -m pip install --constraint "constraints/linux-x86_64-python${{ matrix.python-version }}-dev.txt" -e ".[dev]"
+          python -m pip check
+
+      - name: Verify Linux x86_64 dependency constraint drift
+        run: python scripts/compile_dependency_constraints.py --check
 
       - name: Run Ruff
-        run: ruff check src tests scripts/run_tests.py
+        run: ruff check src tests scripts/run_tests.py scripts/compile_dependency_constraints.py
 
       - name: Run pytest
         run: python scripts/run_tests.py -q --ignore=tests/integration/test_redis_rate_limit.py
@@ -65,10 +73,10 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install dependencies
+      - name: Install constrained dependencies
         run: |
-          python -m pip install --upgrade "pip>=26.0.1"
-          pip install -e ".[dev]"
+          python -m pip install --constraint constraints/linux-x86_64-python3.12-dev.txt -e ".[dev]"
+          python -m pip check
 
       - name: Run real Redis rate-limit integration proof
         env:
@@ -89,11 +97,18 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install dependencies
+      - name: Install constrained audit dependencies
         run: |
-          python -m pip install --upgrade "pip>=26.0.1"
-          pip install -e ".[dev]"
-          pip install pip-audit
+          python -m pip install --constraint constraints/linux-x86_64-python3.12-dev.txt -e ".[dev]"
+          python -m pip check
 
-      - name: Run pip-audit
-        run: pip-audit --progress-spinner off
+      - name: Run pip-audit against exact constraint sets
+        run: |
+          python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/darwin-arm64-python3.11-runtime.txt
+          python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/darwin-arm64-python3.11-dev.txt
+          python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/darwin-arm64-python3.12-runtime.txt
+          python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/darwin-arm64-python3.12-dev.txt
+          python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/linux-x86_64-python3.11-runtime.txt
+          python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/linux-x86_64-python3.11-dev.txt
+          python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/linux-x86_64-python3.12-runtime.txt
+          python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/linux-x86_64-python3.12-dev.txt

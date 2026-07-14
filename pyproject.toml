@@ -57,6 +57,8 @@ dev = [
     "pytest-cov>=4.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
+    "pip-tools>=7.5.3",
+    "pip-audit>=2.10.1",
 ]
 
 # The Workflow Context integration is HTTP/JWT based. Keep this extra empty so

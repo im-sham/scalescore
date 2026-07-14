@@ -88,13 +88,16 @@ git clone https://github.com/im-sham/scalescore.git
 cd scalescore
 
 # Create and activate a virtual environment owned by this checkout.
-# Use Python 3.11 or newer; CI covers Python 3.11 and 3.12.
+# Use Python 3.11 or 3.12; CI covers both supported minors.
+# This example selects Python 3.12 to match its Python 3.12 constraint file.
 # Every Git worktree must create its own .venv; never reuse another checkout's.
-python -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 
-# Install this checkout, including development dependencies.
-python -m pip install -e ".[dev]"
+# This example is for Darwin arm64 with Python 3.12.
+# On Linux x86_64, use the matching linux-x86_64 file instead.
+# Python 3.11 users must select python3.11 and the matching Python 3.11 target file.
+python -m pip install --constraint constraints/darwin-arm64-python3.12-dev.txt -e ".[dev]"
 
 # Confirm "Editable project location" is this checkout, then run tests.
 python -m pip show scalescore
@@ -120,6 +123,12 @@ streamlit run ui/streamlit_app.py
 another checkout. It reports the interpreter, expected source, imported package path, and
 commands for rebuilding only this checkout's `.venv`; pytest is not imported or collected
 until that provenance check succeeds.
+
+For a runtime-only environment, install `-e .` with the file matching the
+target environment (`darwin-arm64` or `linux-x86_64`) and Python minor. These
+eight target-specific application constraint sets reproduce accepted Readiness
+development and CI dependency graphs. They are not cross-platform lock files
+and do not describe a production image.
 
 ## Shared Request Limiter
 

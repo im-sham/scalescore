@@ -27,7 +27,7 @@ See [../NAMING.md](../NAMING.md) for the current product-vs-technical naming rul
 
 ### Prerequisites
 
-- Python 3.11 or higher
+- Python 3.11 or 3.12
 - Git
 - (Optional) Docker for PostgreSQL
 
@@ -40,13 +40,16 @@ git clone https://github.com/im-sham/scalescore.git
 cd scalescore
 
 # Create a virtual environment owned by this checkout.
-# Use Python 3.11 or newer; CI covers Python 3.11 and 3.12.
+# Use Python 3.11 or 3.12; CI covers both supported minors.
+# This example selects Python 3.12 to match its Python 3.12 constraint file.
 # Every Git worktree must create its own .venv; never reuse another checkout's.
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+python3.12 -m venv .venv
+source .venv/bin/activate
 
-# Install this checkout, including development dependencies.
-python -m pip install -e ".[dev]"
+# This example is for Darwin arm64 with Python 3.12.
+# On Linux x86_64, use the matching linux-x86_64 file instead.
+# Python 3.11 users must select python3.11 and the matching Python 3.11 target file.
+python -m pip install --constraint constraints/darwin-arm64-python3.12-dev.txt -e ".[dev]"
 
 # Verify "Editable project location" is this checkout, then run tests.
 python -m pip show scalescore
@@ -398,6 +401,47 @@ New dependencies require justification:
 2. Does it have known vulnerabilities?
 3. Is it necessary (or can stdlib work)?
 4. Is the license compatible (MIT, Apache 2.0, BSD)?
+
+Keep reusable dependency declarations as lower bounds in `pyproject.toml`.
+The files under `constraints/` capture target-specific Readiness development
+and CI dependency graphs for Darwin arm64 and Linux x86_64 on Python 3.11 and
+3.12. They are not cross-platform lock files and do not describe a production
+image.
+
+After changing dependency metadata or accepting dependency updates, generate
+and check each supported graph inside a matching Darwin arm64 or Linux x86_64
+Python environment with the corresponding supported minor. Each invocation
+handles only that target and minor's runtime/development pair:
+
+```bash
+# Run these on Darwin arm64.
+python3.11 scripts/compile_dependency_constraints.py
+python3.12 scripts/compile_dependency_constraints.py
+
+# Run these separately in a Linux x86_64 environment. An emulated x86_64 Linux
+# container is acceptable when the guest reports Linux/x86_64 and Python matches
+# the selected supported minor.
+python3.11 scripts/compile_dependency_constraints.py
+python3.12 scripts/compile_dependency_constraints.py
+```
+
+Generation upgrades accepted pins. Check mode seeds temporary copies of the
+tracked active-target pair and byte-compares regenerated output without
+creating checkout paths or mutating tracked files:
+
+```bash
+python3.11 scripts/compile_dependency_constraints.py --check
+python3.12 scripts/compile_dependency_constraints.py --check
+```
+
+The compiler rejects unsupported platform/architecture combinations and Python
+minors. Do not generate one target's files from another target environment or
+hand-edit a partial transitive graph.
+
+Dependabot dependency PRs must include all eight regenerated target/minor
+runtime/development constraints, pass target-specific drift checks and
+`pip check`, and audit all eight exact files. Do not add an advisory ignore or
+exception to make CI pass.
 
 ---
 

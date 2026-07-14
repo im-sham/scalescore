@@ -458,20 +458,30 @@ VOLUME ["/tmp"]
 
 ### Dependency Security
 
-```bash
-# Regular dependency audits
-pip-audit                    # Python dependencies
-safety check                 # Alternative scanner
+Install through the runtime or development constraint matching both the target
+environment and Python minor. These files capture Readiness development and CI
+dependency graphs, not a production image. CI installs `pip-audit` through the
+Linux x86_64 Python 3.12 development constraints, disables its dependency
+installer, and audits every exact set:
 
-# Lock dependencies
-pip freeze > requirements.lock
+```bash
+python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/darwin-arm64-python3.11-runtime.txt
+python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/darwin-arm64-python3.11-dev.txt
+python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/darwin-arm64-python3.12-runtime.txt
+python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/darwin-arm64-python3.12-dev.txt
+python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/linux-x86_64-python3.11-runtime.txt
+python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/linux-x86_64-python3.11-dev.txt
+python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/linux-x86_64-python3.12-runtime.txt
+python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/linux-x86_64-python3.12-dev.txt
 ```
 
 **Dependency Policy:**
-- Review all new dependencies for security
-- Pin major versions in production
-- Automated weekly dependency scans
-- Critical vulnerabilities patched within 24 hours
+- Review all new dependencies for security and license compatibility.
+- Keep library-style lower bounds in `pyproject.toml`; reproduce accepted
+  target-specific application graphs with all eight exact constraint files.
+- Run automated dependency scans on every CI run and weekly dependency updates.
+- Critical vulnerabilities must be patched within 24 hours.
+- Any advisory fails the dependency scan; do not add ignores or exceptions.
 
 ---
 
