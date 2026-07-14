@@ -59,11 +59,11 @@ Readiness produces:
 | **Governance** | Rights, policy, redaction review, use approvals, export control, manifests, audit-grade use control |
 | **Forge** | Incident memory, failure-pattern learning, scoring-model refinement |
 
-Readiness is primarily a Proofhouse suite capability. Any standalone product surface requires an explicit product decision and independent product rationale; consulting, partnership, discovery, and GTM packaging belongs to a separate business lane and cannot control Readiness product strategy, status, roadmap, priority, acceptance, or gates.
+Readiness is primarily a Proofhouse suite capability. Any standalone product surface requires an explicit product decision and independent product rationale. Partnership, pilot, live-client, and GTM status remains in a separate non-product lane; its status cannot change Readiness product status or readiness, and partner/customer activation remains separately frozen.
 
 Operational Learning suitability remains a Readiness scoring lens only. Readiness does not become the source of workflow truth, rights profiles, export eligibility, promotion approvals, or asset derivation.
 
-Discovery evidence is non-authoritative input only. Promotion into product canon requires product-owner acceptance of a sanitized, generalized problem with independent rationale. Partner interest, answers, validation, acceptance, approval, pilot or live-client status, consulting motion, and GTM state cannot create, prioritize, block, complete, waive, release, or authorize product work or any security, data, hosted, operational, or external-claim gate.
+Design-partner, advisor, consulting, customer-discovery, partnership, pilot, and live-client evidence is informative and non-authoritative. It cannot create, prioritize, block, complete, waive, accept, release, or authorize product roadmap work or any safety, security, privacy, legal, data, hosted, operational, release, or external-claim gate. Only an explicitly promoted sanitized, generalized problem with independent product rationale may enter product strategy, and that promotion requires product-owner acceptance.
 
 ---
 

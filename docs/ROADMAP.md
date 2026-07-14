@@ -28,12 +28,12 @@ The product is no longer optimized around a broad "scaling companies" category. 
 ## Strategic Guardrails
 
 - Keep Readiness primarily a Proofhouse suite capability
-- Require an explicit product decision and independent product rationale for any standalone product surface; consulting, partnership, discovery, and GTM packaging belongs to a separate business lane and cannot control this roadmap
+- Require an explicit product decision and independent product rationale for any standalone product surface. Keep partnership, pilot, live-client, and GTM status in a separate non-product lane whose status cannot change Readiness product status or readiness; partner/customer activation remains separately frozen
 - Preserve current org-level API and CSV compatibility while the workflow-first contract is introduced
 - Do **not** expand into generic financial, customer, or marketing benchmarking unless it directly improves AI workflow readiness scoring
 - Keep legacy `OpsOrchestra`, `Mila`, and `ScaleScore` naming only where required for technical backward compatibility
 - Treat Operational Learning as a suitability lens; Governance remains the approval plane for rights, redaction, promotion, and export decisions
-- Treat discovery evidence as non-authoritative input only. Product promotion requires product-owner acceptance of a sanitized, generalized problem with independent rationale; partner interest, answers, validation, acceptance, approval, pilot or live-client status, consulting motion, and GTM state cannot create, prioritize, block, complete, waive, release, or authorize product work or any security, data, hosted, operational, or external-claim gate
+- Treat design-partner, advisor, consulting, customer-discovery, partnership, pilot, and live-client evidence as informative and non-authoritative. It cannot create, prioritize, block, complete, waive, accept, release, or authorize product roadmap work or any safety, security, privacy, legal, data, hosted, operational, release, or external-claim gate. Only an explicitly promoted sanitized, generalized problem with independent product rationale may enter product strategy, and that promotion requires product-owner acceptance
 
 ---
 
