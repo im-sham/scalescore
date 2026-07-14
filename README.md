@@ -20,7 +20,7 @@ In this migration phase, the technical repo root, Python package, CLI commands, 
 
 Readiness is the scoring and diagnostic layer for **AI-enabled operational readiness**.
 
-It helps a COO or operations leader answer a more specific question than generic company scalability:
+It helps Proofhouse operators and operations leaders answer a more specific question than generic company scalability:
 
 **Is this workflow ready to scale with AI without creating fragility, trust failures, or governance gaps?**
 
@@ -59,9 +59,11 @@ Readiness produces:
 | **Governance** | Rights, policy, redaction review, use approvals, export control, manifests, audit-grade use control |
 | **Forge** | Incident memory, failure-pattern learning, scoring-model refinement |
 
-Readiness is primarily a Proofhouse capability layer, with a secondary standalone diagnostic motion for consulting, design partners, and discovery.
+Readiness is primarily a Proofhouse suite capability. Any standalone product surface requires an explicit product decision and independent product rationale; consulting, partnership, discovery, and GTM packaging belongs to a separate business lane and cannot control Readiness product strategy, status, roadmap, priority, acceptance, or gates.
 
 Operational Learning suitability remains a Readiness scoring lens only. Readiness does not become the source of workflow truth, rights profiles, export eligibility, promotion approvals, or asset derivation.
+
+Discovery evidence is non-authoritative input only. Promotion into product canon requires product-owner acceptance of a sanitized, generalized problem with independent rationale. Partner interest, answers, validation, acceptance, approval, pilot or live-client status, consulting motion, and GTM state cannot create, prioritize, block, complete, waive, release, or authorize product work or any security, data, hosted, operational, or external-claim gate.
 
 ---
 
@@ -221,7 +223,7 @@ Workflow reports now support:
 | Workflow-first report contract | ✅ Initial additive slice implemented |
 | HTTP workflow submission contract | ✅ Implemented (sync, async, scheduled) |
 | Workflow Context integration | ✅ Initial direct integration implemented |
-| Standalone COO diagnostic packaging | 🔄 Planned |
+| Operator-facing diagnostic/report surface | 🔄 Planned |
 
 ### Next Focus
 
@@ -259,15 +261,11 @@ Workflow reports now support:
 - Feed workflow-level readiness signals from Forge learnings
 - Score the regulated document-operations fixture from Workflow Context refs/snapshots while emitting a Readiness-owned `AssessmentRef`
 
-### For COO Diagnostics
+### For Operators
 
 - Run readiness diagnostics for specific AI-enabled workflows
-- Deliver trust-gap and remediation reports for design partners
+- Review trust-gap and remediation reports
 - Use workflow rollups to prioritize where automation should expand next
-
-### For Standalone Discovery
-
-- Offer a focused diagnostic/report product without claiming a broad generic operations platform category
 
 ---
 
