@@ -36,10 +36,10 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run Ruff
-        run: ruff check src tests
+        run: ruff check src tests scripts/run_tests.py
 
       - name: Run pytest
-        run: pytest -q --ignore=tests/integration/test_redis_rate_limit.py
+        run: python scripts/run_tests.py -q --ignore=tests/integration/test_redis_rate_limit.py
 
   redis-rate-limit-integration:
     name: Redis Rate Limit Integration
@@ -73,9 +73,8 @@ jobs:
       - name: Run real Redis rate-limit integration proof
         env:
           PYTHONDONTWRITEBYTECODE: "1"
-          PYTHONPATH: ${{ github.workspace }}/src
           TEST_REDIS_RATE_LIMIT_URL: redis://127.0.0.1:6379/15
-        run: pytest -q tests/integration/test_redis_rate_limit.py
+        run: python scripts/run_tests.py -q tests/integration/test_redis_rate_limit.py
 
   security:
     name: Dependency Security Scan
