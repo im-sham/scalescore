@@ -87,12 +87,18 @@ git clone https://github.com/im-sham/scalescore.git
 # The checkout folder can remain "scalescore" until the repo-root rename wave.
 cd scalescore
 
-# Create and activate virtual environment
+# Create and activate a virtual environment owned by this checkout.
+# Use Python 3.11 or newer; CI covers Python 3.11 and 3.12.
+# Every Git worktree must create its own .venv; never reuse another checkout's.
 python -m venv .venv
 source .venv/bin/activate
 
-# Install dependencies
-pip install -e ".[dev]"
+# Install this checkout, including development dependencies.
+python -m pip install -e ".[dev]"
+
+# Confirm "Editable project location" is this checkout, then run tests.
+python -m pip show scalescore
+python scripts/run_tests.py -q --ignore=tests/integration/test_redis_rate_limit.py
 
 # Use development defaults (AUTH_SKIP_AUTH=true for local UI/API flow)
 cp .env.example .env
@@ -110,6 +116,11 @@ uvicorn scalescore.api.main:app --reload
 streamlit run ui/streamlit_app.py
 ```
 
+`scripts/run_tests.py` fails closed if the active interpreter imports `scalescore` from
+another checkout. It reports the interpreter, expected source, imported package path, and
+commands for rebuilding only this checkout's `.venv`; pytest is not imported or collected
+until that provenance check succeeds.
+
 ## Shared Request Limiter
 
 Readiness uses one async limiter contract for login, signup, token refresh, API-key
@@ -125,7 +136,7 @@ Run the real shared-quota, contention, expiry, and outage proof against a dispos
 
 ```bash
 TEST_REDIS_RATE_LIMIT_URL=redis://127.0.0.1:6379/15 \
-  python -m pytest -q tests/integration/test_redis_rate_limit.py
+  python scripts/run_tests.py -q tests/integration/test_redis_rate_limit.py
 ```
 
 Before downstream reliance, rollback is an isolated revert to

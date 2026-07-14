@@ -39,15 +39,18 @@ git clone https://github.com/im-sham/scalescore.git
 # The checkout folder can remain "scalescore" until the repo-root rename wave.
 cd scalescore
 
-# Create virtual environment
+# Create a virtual environment owned by this checkout.
+# Use Python 3.11 or newer; CI covers Python 3.11 and 3.12.
+# Every Git worktree must create its own .venv; never reuse another checkout's.
 python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-# Install dependencies (including dev)
-pip install -e ".[dev]"
+# Install this checkout, including development dependencies.
+python -m pip install -e ".[dev]"
 
-# Verify installation
-python -m pytest tests/ -v
+# Verify "Editable project location" is this checkout, then run tests.
+python -m pip show scalescore
+python scripts/run_tests.py -q --ignore=tests/integration/test_redis_rate_limit.py
 
 # Run the demo
 python -m scalescore.demo
@@ -58,6 +61,11 @@ uvicorn scalescore.api.main:app --reload
 # Launch the dashboard
 streamlit run ui/streamlit_app.py
 ```
+
+The standard test entrypoint is `python scripts/run_tests.py`. It imports `scalescore`
+with the active interpreter and fails before importing or collecting pytest if the package
+comes from another checkout. The diagnostic reports the interpreter, expected source,
+imported path, and safe commands for rebuilding only the current checkout's `.venv`.
 
 Use current technical identifiers in code, tooling, and tests until the repo-root rename wave is explicitly started.
 
@@ -249,16 +257,16 @@ def calculate_area_score(
 
 ```bash
 # Run all tests
-pytest tests/
+python scripts/run_tests.py
 
 # Run with coverage
-pytest tests/ --cov=src/scalescore --cov-report=html
+python scripts/run_tests.py --cov=src/scalescore --cov-report=html
 
-# Run specific test file
-pytest tests/test_scoring_engine.py
+# Run a specific test file
+python scripts/run_tests.py tests/unit/scoring/test_scoring_engine.py
 
-# Run tests matching pattern
-pytest tests/ -k "test_score"
+# Run tests matching a pattern
+python scripts/run_tests.py -k "test_score"
 ```
 
 ### Test Structure
