@@ -21,18 +21,19 @@ The product is no longer optimized around a broad "scaling companies" category. 
 - Workflow assessment completion in `< 30 seconds` for compatibility-mode runs
 - Actionable remediation output in every workflow report
 - Clear workflow-to-org rollup for AI operational readiness
-- Design-partner and suite users can distinguish Readiness from Workflow Context, Governance, and Forge in one pass
+- Proofhouse operators and suite users can identify which workflows are ready to scale with AI and act on the highest-priority trust gaps
 
 ---
 
 ## Strategic Guardrails
 
-- Build `module-first` for the USMI suite
-- Keep a `secondary standalone diagnostic` motion for consulting, design partners, and discovery
+- Keep Readiness primarily a Proofhouse suite capability
+- Require an explicit product decision and independent product rationale for any standalone product surface. Keep partnership, pilot, live-client, and GTM status in a separate non-product lane whose status cannot change Readiness product status or readiness; partner/customer activation remains separately frozen
 - Preserve current org-level API and CSV compatibility while the workflow-first contract is introduced
 - Do **not** expand into generic financial, customer, or marketing benchmarking unless it directly improves AI workflow readiness scoring
 - Keep legacy `OpsOrchestra`, `Mila`, and `ScaleScore` naming only where required for technical backward compatibility
 - Treat Operational Learning as a suitability lens; Governance remains the approval plane for rights, redaction, promotion, and export decisions
+- Treat design-partner, advisor, consulting, customer-discovery, partnership, pilot, and live-client evidence as informative and non-authoritative. It cannot create, prioritize, block, complete, waive, accept, release, or authorize product roadmap work or any safety, security, privacy, legal, data, hosted, operational, release, or external-claim gate. Only an explicitly promoted sanitized, generalized problem with independent product rationale may enter product strategy, and that promotion requires product-owner acceptance
 
 ---
 
@@ -88,7 +89,7 @@ The product is no longer optimized around a broad "scaling companies" category. 
 
 ### Days 46-90: Implementation Preparation
 
-**Goal:** Connect Readiness to real Workflow Context data and package the first diagnostic motion.
+**Goal:** Connect Readiness to real Workflow Context data and package operator-facing diagnostics.
 
 | Item | Status |
 |------|--------|
@@ -96,7 +97,7 @@ The product is no longer optimized around a broad "scaling companies" category. 
 | Workflow Context-native submission contract | ✅ Initial direct contract implemented |
 | Operational Learning suitability lens | ✅ Initial additive slice implemented |
 | Regulated document-operations suitability profile | ✅ Initial additive slice implemented |
-| Standalone COO diagnostic/report packaging | 🔄 Planned |
+| Operator-facing diagnostic/report surface | 🔄 Planned |
 | Compatibility guardrails for org-level flows | ✅ Preserved in current additive rollout |
 
 ---
@@ -162,7 +163,7 @@ Organization-level readiness remains important, but becomes a rollup derived fro
   - optional Operational Learning suitability status
   - compact `AssessmentRef` for downstream Proofhouse consumers
 - Multiple workflow assessments can be rolled up into an organization-level readiness view
-- Standalone diagnostic packaging exists as a secondary motion, not the primary category claim
+- Operator-facing diagnostic and report capabilities support suite workflows; any standalone product surface follows the strategic guardrails above
 
 ---
 
