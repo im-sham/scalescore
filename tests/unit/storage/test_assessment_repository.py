@@ -1,4 +1,6 @@
+import sqlite3
 from datetime import UTC, datetime
+from pathlib import Path
 
 from scalescore.models.scaling import ScaleScoreReport
 from scalescore.storage.assessment_repository import SQLiteAssessmentRepository
@@ -20,6 +22,16 @@ def _report(
     )
 
 
+def _index_columns(db_path: Path, index_name: str) -> list[tuple[str, bool]]:
+    with sqlite3.connect(db_path) as connection:
+        connection.row_factory = sqlite3.Row
+        return [
+            (row["name"], bool(row["desc"]))
+            for row in connection.execute(f"PRAGMA index_xinfo({index_name})")
+            if row["key"]
+        ]
+
+
 def test_save_and_get_report(tmp_path) -> None:
     repository = SQLiteAssessmentRepository(tmp_path / "reports.sqlite3")
     report = _report("report_1")
@@ -31,6 +43,31 @@ def test_save_and_get_report(tmp_path) -> None:
     assert loaded.report_id == report.report_id
     assert loaded.org_id == report.org_id
     assert loaded.overall_score == report.overall_score
+
+
+def test_report_list_query_has_generated_at_index(tmp_path: Path) -> None:
+    db_path = tmp_path / "reports.sqlite3"
+    SQLiteAssessmentRepository(db_path)
+
+    assert _index_columns(
+        db_path, "idx_assessment_reports_tenant_generated_at"
+    ) == [
+        ("tenant_id", False),
+        ("generated_at", True),
+    ]
+
+
+def test_report_history_query_has_org_generated_at_index(tmp_path: Path) -> None:
+    db_path = tmp_path / "reports.sqlite3"
+    SQLiteAssessmentRepository(db_path)
+
+    assert _index_columns(
+        db_path, "idx_assessment_reports_tenant_org_generated_at"
+    ) == [
+        ("tenant_id", False),
+        ("org_id", False),
+        ("generated_at", True),
+    ]
 
 
 def test_get_report_is_tenant_scoped(tmp_path) -> None:
