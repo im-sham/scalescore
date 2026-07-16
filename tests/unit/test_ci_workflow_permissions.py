@@ -42,3 +42,12 @@ def test_dependabot_tracks_ci_and_python_updates() -> None:
     content = config.read_text()
     assert 'package-ecosystem: "github-actions"' in content
     assert 'package-ecosystem: "pip"' in content
+
+
+def test_ci_matrix_blocks_new_mypy_diagnostics() -> None:
+    workflow = _workflow("ci.yml")
+    matrix_job = workflow.split("\n  redis-rate-limit-integration:", maxsplit=1)[0]
+
+    assert matrix_job.count("name: Lint and Test (Python ${{ matrix.python-version }})") == 1
+    assert matrix_job.count("run: python scripts/check_mypy_baseline.py") == 1
+    assert workflow.count("run: python scripts/check_mypy_baseline.py") == 1

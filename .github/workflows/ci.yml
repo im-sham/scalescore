@@ -44,7 +44,10 @@ jobs:
         run: python scripts/compile_dependency_constraints.py --check
 
       - name: Run Ruff
-        run: ruff check src tests scripts/run_tests.py scripts/compile_dependency_constraints.py
+        run: ruff check src tests scripts/run_tests.py scripts/compile_dependency_constraints.py scripts/check_mypy_baseline.py
+
+      - name: Run mypy no-growth gate
+        run: python scripts/check_mypy_baseline.py
 
       - name: Run pytest
         run: python scripts/run_tests.py -q --ignore=tests/integration/test_redis_rate_limit.py

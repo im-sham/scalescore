@@ -1,0 +1,120 @@
+{
+  "version": 1,
+  "diagnostics": [
+    {
+      "file": "src/scalescore/api/exception_handlers.py",
+      "code": "arg-type",
+      "message": "Argument 1 to \"_validation_error_response\" has incompatible type \"Sequence[Any]\"; expected \"list[dict[Any, Any]]\""
+    },
+    {
+      "file": "src/scalescore/api/exception_handlers.py",
+      "code": "arg-type",
+      "message": "Argument 1 to \"_validation_error_response\" has incompatible type \"list[ErrorDetails]\"; expected \"list[dict[Any, Any]]\""
+    },
+    {
+      "file": "src/scalescore/api/exception_handlers.py",
+      "code": "no-untyped-def",
+      "message": "Function is missing a type annotation for one or more parameters"
+    },
+    {
+      "file": "src/scalescore/api/middleware.py",
+      "code": "no-any-return",
+      "message": "Returning Any from function declared to return \"Response\""
+    },
+    {
+      "file": "src/scalescore/api/middleware.py",
+      "code": "no-any-return",
+      "message": "Returning Any from function declared to return \"Response\""
+    },
+    {
+      "file": "src/scalescore/connectors/csv_connector.py",
+      "code": "import-untyped",
+      "message": "Library stubs not installed for \"pandas\""
+    },
+    {
+      "file": "src/scalescore/connectors/opsorchestra_connector.py",
+      "code": "arg-type",
+      "message": "Argument 1 to \"get\" of \"AsyncClient\" has incompatible type \"str | None\"; expected \"URL | str\""
+    },
+    {
+      "file": "src/scalescore/connectors/opsorchestra_connector.py",
+      "code": "arg-type",
+      "message": "Argument 1 to \"post\" of \"AsyncClient\" has incompatible type \"str | None\"; expected \"URL | str\""
+    },
+    {
+      "file": "src/scalescore/core/auth/opsorchestra.py",
+      "code": "arg-type",
+      "message": "Argument 1 to \"Path\" has incompatible type \"str | None\"; expected \"str | PathLike[str]\""
+    },
+    {
+      "file": "src/scalescore/core/logging.py",
+      "code": "list-item",
+      "message": "List item 5 has incompatible type \"Callable[[Any, str, dict[str, Any]], dict[str, Any]]\"; expected \"Callable[[Any, str, MutableMapping[str, Any]], Mapping[str, Any] | str | bytes | bytearray | tuple[Any, ...]]\""
+    },
+    {
+      "file": "src/scalescore/core/logging.py",
+      "code": "list-item",
+      "message": "List item 6 has incompatible type \"Callable[[Any, str, dict[str, Any]], dict[str, Any]]\"; expected \"Callable[[Any, str, MutableMapping[str, Any]], Mapping[str, Any] | str | bytes | bytearray | tuple[Any, ...]]\""
+    },
+    {
+      "file": "src/scalescore/core/logging.py",
+      "code": "no-any-return",
+      "message": "Returning Any from function declared to return \"BoundLogger\""
+    },
+    {
+      "file": "src/scalescore/core/logging.py",
+      "code": "no-any-return",
+      "message": "Returning Any from function declared to return \"dict[str, Any]\""
+    },
+    {
+      "file": "src/scalescore/core/operational_learning.py",
+      "code": "arg-type",
+      "message": "Argument 1 to \"get\" of \"dict\" has incompatible type \"OperationalLearningCompletenessState | None\"; expected \"OperationalLearningCompletenessState\""
+    },
+    {
+      "file": "src/scalescore/core/operational_learning.py",
+      "code": "arg-type",
+      "message": "Argument 1 to \"get\" of \"dict\" has incompatible type \"OperationalLearningCompletenessState | None\"; expected \"OperationalLearningCompletenessState\""
+    },
+    {
+      "file": "src/scalescore/core/operational_learning.py",
+      "code": "arg-type",
+      "message": "Argument 1 to \"get\" of \"dict\" has incompatible type \"OperationalLearningCompletenessState | None\"; expected \"OperationalLearningCompletenessState\""
+    },
+    {
+      "file": "src/scalescore/core/operational_learning.py",
+      "code": "arg-type",
+      "message": "Argument 1 to \"get\" of \"dict\" has incompatible type \"RiskLevel | None\"; expected \"RiskLevel\""
+    },
+    {
+      "file": "src/scalescore/core/operational_learning.py",
+      "code": "union-attr",
+      "message": "Item \"None\" of \"Literal[RiskLevel.LOW, RiskLevel.MEDIUM] | None\" has no attribute \"value\""
+    },
+    {
+      "file": "src/scalescore/core/reporting.py",
+      "code": "import-untyped",
+      "message": "Library stubs not installed for \"reportlab.lib.pagesizes\""
+    },
+    {
+      "file": "src/scalescore/core/reporting.py",
+      "code": "import-untyped",
+      "message": "Library stubs not installed for \"reportlab.pdfgen\""
+    },
+    {
+      "file": "src/scalescore/core/reporting.py",
+      "code": "no-any-return",
+      "message": "Returning Any from function declared to return \"float\""
+    },
+    {
+      "file": "src/scalescore/core/workflow_readiness.py",
+      "code": "no-untyped-def",
+      "message": "Function is missing a type annotation for one or more parameters"
+    },
+    {
+      "file": "src/scalescore/core/workflow_readiness.py",
+      "code": "no-untyped-def",
+      "message": "Function is missing a type annotation for one or more parameters"
+    }
+  ]
+}
