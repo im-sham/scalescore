@@ -49,5 +49,10 @@ def test_ci_matrix_blocks_new_mypy_diagnostics() -> None:
     matrix_job = workflow.split("\n  redis-rate-limit-integration:", maxsplit=1)[0]
 
     assert matrix_job.count("name: Lint and Test (Python ${{ matrix.python-version }})") == 1
-    assert matrix_job.count("run: python scripts/check_mypy_baseline.py") == 1
-    assert workflow.count("run: python scripts/check_mypy_baseline.py") == 1
+    assert matrix_job.count("fetch-depth: 0") == 1
+    assert matrix_job.count("TRUSTED_BASE_REF:") == 1
+    assert "github.event.pull_request.base.sha" in matrix_job
+    assert "github.event.before" in matrix_job
+    expected_command = 'python scripts/check_mypy_baseline.py --base-ref "$TRUSTED_BASE_REF"'
+    assert matrix_job.count(expected_command) == 1
+    assert workflow.count(expected_command) == 1

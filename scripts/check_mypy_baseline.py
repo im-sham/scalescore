@@ -3,12 +3,13 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
 from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import TypeAlias
+from typing import TypeAlias, cast
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = ROOT / "typecheck-baseline.json"
@@ -22,12 +23,20 @@ def diagnostic_counts(diagnostics: Iterable[object]) -> DiagnosticCounts:
     for diagnostic in diagnostics:
         if not isinstance(diagnostic, Mapping):
             raise ValueError("each mypy diagnostic must be a JSON object")
-        path = diagnostic.get("file")
-        code = diagnostic.get("code")
-        message = diagnostic.get("message")
-        if not all(isinstance(value, str) and value for value in (path, code, message)):
+        diagnostic_map = cast(Mapping[str, object], diagnostic)
+        path = diagnostic_map.get("file")
+        code = diagnostic_map.get("code")
+        message = diagnostic_map.get("message")
+        if (
+            not isinstance(path, str)
+            or not path
+            or not isinstance(code, str)
+            or not code
+            or not isinstance(message, str)
+            or not message
+        ):
             raise ValueError("each mypy diagnostic requires non-empty file, code, and message")
-        key = (path, code, message)
+        key: DiagnosticKey = (path, code, message)
         counts[key] = counts.get(key, 0) + 1
     return counts
 
@@ -44,27 +53,69 @@ def unexpected_diagnostics(
     }
 
 
-def _load_baseline(path: Path = BASELINE) -> DiagnosticCounts:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict) or payload.get("version") != 1:
+def _baseline_from_text(text: str) -> DiagnosticCounts:
+    payload = cast(object, json.loads(text))
+    if not isinstance(payload, dict):
         raise ValueError("typecheck baseline must be a version 1 JSON object")
-    diagnostics = payload.get("diagnostics")
+    payload_map = cast(dict[str, object], payload)
+    if payload_map.get("version") != 1:
+        raise ValueError("typecheck baseline must be a version 1 JSON object")
+    diagnostics = payload_map.get("diagnostics")
     if not isinstance(diagnostics, list):
         raise ValueError("typecheck baseline diagnostics must be a JSON list")
-    return diagnostic_counts(diagnostics)
+    return diagnostic_counts(cast(list[object], diagnostics))
+
+
+def _load_baseline(path: Path | None = None) -> DiagnosticCounts:
+    return _baseline_from_text((path or BASELINE).read_text(encoding="utf-8"))
+
+
+def _load_trusted_baseline(base_ref: str) -> DiagnosticCounts | None:
+    verified = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", f"{base_ref}^{{commit}}"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if verified.returncode != 0:
+        raise ValueError(f"invalid trusted base ref: {base_ref}")
+
+    baseline_at_base = subprocess.run(
+        ["git", "show", f"{base_ref}:{BASELINE.name}"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if baseline_at_base.returncode != 0:
+        return None
+    return _baseline_from_text(baseline_at_base.stdout)
 
 
 def _parse_mypy_output(output: str) -> DiagnosticCounts:
     diagnostics: list[object] = []
     for line in output.splitlines():
         if line.strip():
-            diagnostics.append(json.loads(line))
+            diagnostics.append(cast(object, json.loads(line)))
     return diagnostic_counts(diagnostics)
 
 
-def main() -> int:
+def _print_diagnostics(title: str, diagnostics: DiagnosticCounts) -> None:
+    print(title, file=sys.stderr)
+    for (path, code, message), count in diagnostics.items():
+        print(f"  {path}: [{code}] {message} (+{count})", file=sys.stderr)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    _ = parser.add_argument("--base-ref", required=True)
+    args = parser.parse_args(argv)
+    base_ref = cast(str, args.base_ref)
+
     try:
-        baseline = _load_baseline()
+        candidate = _load_baseline()
+        trusted = _load_trusted_baseline(base_ref)
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"invalid mypy baseline: {error}", file=sys.stderr)
         return 2
@@ -100,18 +151,25 @@ def main() -> int:
         print("mypy failed without emitting JSON diagnostics", file=sys.stderr)
         return 2
 
-    unexpected = unexpected_diagnostics(current, baseline)
-    if unexpected:
-        print("new mypy diagnostics exceed the accepted baseline:", file=sys.stderr)
-        for (path, code, message), count in unexpected.items():
-            print(f"  {path}: [{code}] {message} (+{count})", file=sys.stderr)
+    additions = unexpected_diagnostics(current, candidate)
+    stale = unexpected_diagnostics(candidate, current)
+    if additions:
+        _print_diagnostics(
+            "current mypy diagnostics missing from the candidate baseline:", additions
+        )
+    if stale:
+        _print_diagnostics("candidate baseline contains stale excess diagnostics:", stale)
+    if additions or stale:
         return 1
 
-    print(
-        "mypy baseline passed: "
-        f"{sum(current.values())} current errors; "
-        f"{sum(baseline.values())} accepted maximum"
-    )
+    if trusted is not None:
+        growth = unexpected_diagnostics(candidate, trusted)
+        if growth:
+            _print_diagnostics("candidate baseline exceeds the trusted base baseline:", growth)
+            return 1
+
+    bootstrap = " (trusted base has no baseline; bootstrap accepted)" if trusted is None else ""
+    print(f"mypy baseline passed: {sum(current.values())} exact diagnostics{bootstrap}")
     return 0
 
 
