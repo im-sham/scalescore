@@ -80,16 +80,40 @@ def _load_trusted_baseline(base_ref: str) -> DiagnosticCounts | None:
     )
     if verified.returncode != 0:
         raise ValueError(f"invalid trusted base ref: {base_ref}")
+    verified_commit = verified.stdout.strip()
+
+    baseline_entry = subprocess.run(
+        [
+            "git",
+            "ls-tree",
+            "--name-only",
+            "--full-tree",
+            "-z",
+            verified_commit,
+            "--",
+            BASELINE.name,
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if baseline_entry.returncode != 0:
+        raise ValueError(f"failed to inspect trusted base tree {verified_commit}")
+    if not baseline_entry.stdout:
+        return None
+    if baseline_entry.stdout != f"{BASELINE.name}\0":
+        raise ValueError(f"ambiguous baseline path in trusted base tree {verified_commit}")
 
     baseline_at_base = subprocess.run(
-        ["git", "show", f"{base_ref}:{BASELINE.name}"],
+        ["git", "show", f"{verified_commit}:{BASELINE.name}"],
         cwd=ROOT,
         capture_output=True,
         text=True,
         check=False,
     )
     if baseline_at_base.returncode != 0:
-        return None
+        raise ValueError(f"failed to read {BASELINE.name} from trusted base {verified_commit}")
     return _baseline_from_text(baseline_at_base.stdout)
 
 

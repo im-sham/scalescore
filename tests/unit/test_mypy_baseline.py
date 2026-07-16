@@ -195,6 +195,59 @@ def test_valid_base_without_baseline_is_bootstrap(
     assert checker._load_trusted_baseline(base_ref) is None
 
 
+def test_present_baseline_retrieval_failure_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checker = _load_checker()
+    verified_commit = "a" * 40
+    results = iter(
+        [
+            SimpleNamespace(returncode=0, stdout=f"{verified_commit}\n", stderr=""),
+            SimpleNamespace(
+                returncode=0,
+                stdout="typecheck-baseline.json\0",
+                stderr="",
+            ),
+            SimpleNamespace(
+                returncode=128,
+                stdout="",
+                stderr="sensitive implementation detail",
+            ),
+        ]
+    )
+    monkeypatch.setattr(checker.subprocess, "run", lambda *_args, **_kwargs: next(results))
+
+    with pytest.raises(ValueError) as error:
+        checker._load_trusted_baseline("trusted")
+
+    assert str(error.value) == (
+        f"failed to read typecheck-baseline.json from trusted base {verified_commit}"
+    )
+
+
+def test_trusted_base_tree_lookup_failure_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checker = _load_checker()
+    verified_commit = "b" * 40
+    results = iter(
+        [
+            SimpleNamespace(returncode=0, stdout=f"{verified_commit}\n", stderr=""),
+            SimpleNamespace(
+                returncode=128,
+                stdout="",
+                stderr="sensitive implementation detail",
+            ),
+        ]
+    )
+    monkeypatch.setattr(checker.subprocess, "run", lambda *_args, **_kwargs: next(results))
+
+    with pytest.raises(ValueError) as error:
+        checker._load_trusted_baseline("trusted")
+
+    assert str(error.value) == f"failed to inspect trusted base tree {verified_commit}"
+
+
 def test_invalid_base_ref_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     checker = _load_checker()
     _init_git_repository(tmp_path)
