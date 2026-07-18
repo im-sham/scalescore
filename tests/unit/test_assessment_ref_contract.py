@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 from jsonschema import Draft202012Validator, FormatChecker
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
-from scalescore.contracts.assessment_ref import AssessmentRefEnvelope
+from scalescore.contracts.assessment_ref import AssessmentRefEnvelope, DateTimeString
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LOCK_PATH = REPO_ROOT / "contracts" / "assessment-ref-v0.1.lock.json"
@@ -68,6 +68,18 @@ def _canonical_payload(
             "top_reasons": ["Synthetic control coverage is partial"],
         },
     }
+
+
+@pytest.mark.parametrize("value", ["not-a-timestamp", "2026-07-18T07:17:27"])
+def test_generated_datetime_string_rejects_non_rfc3339_values(value: str) -> None:
+    with pytest.raises(ValidationError, match="must be an RFC 3339 date-time string"):
+        TypeAdapter(DateTimeString).validate_python(value)
+
+
+def test_generated_datetime_string_accepts_rfc3339_value() -> None:
+    value = "2026-07-18T07:17:27Z"
+
+    assert TypeAdapter(DateTimeString).validate_python(value) == value
 
 
 @pytest.mark.parametrize(
