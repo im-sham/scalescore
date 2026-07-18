@@ -13,6 +13,10 @@ from scalescore.contracts.assessment_ref import (
 from scalescore.contracts.assessment_ref import (
     WorkflowRefMetadata as ContractWorkflowRefMetadata,
 )
+from scalescore.contracts.control_ref_consumer import (
+    CanonicalControlRefEnvelope,
+    ControlRefEnvelope,
+)
 from scalescore.core.document_operations import derive_document_operations_readiness_inputs
 from scalescore.core.exceptions import (
     MultipleOrganizationsError,
@@ -28,7 +32,6 @@ from scalescore.models.core import Facility, Organization, System, Team, Vendor
 from scalescore.models.scaling import (
     AssessmentMode,
     CapacityConstraint,
-    ControlRefEnvelope,
     DocumentOperationsReadinessProfile,
     FunctionalArea,
     OperationalLearningInputs,
@@ -263,26 +266,33 @@ def _workflow_evidence_from_control_refs(
     control_refs: list[ControlRefEnvelope],
 ) -> WorkflowEvidenceInput:
     coverage_values: dict[str, WorkflowControlStatus] = {}
-    complete_evidence_count = 0
+    verified_linkage_count = 0
+    linked_control_count = 0
     for envelope in control_refs:
         ref = envelope.ref
         field_name = _control_coverage_field(ref.control_key)
         if field_name is not None and field_name not in coverage_values:
             coverage_values[field_name] = _control_status_from_ref(envelope)
-        if _control_ref_has_complete_evidence(envelope):
-            complete_evidence_count += 1
+        if isinstance(envelope, CanonicalControlRefEnvelope):
+            if envelope.ref.linkage_state in {"linked", "verified"}:
+                linked_control_count += 1
+            if envelope.ref.linkage_state == "verified":
+                verified_linkage_count += 1
 
-    coverage_percent = round((complete_evidence_count / len(control_refs)) * 100.0, 1)
+    coverage_percent = round(
+        (verified_linkage_count / len(control_refs)) * 100.0,
+        1,
+    )
     return WorkflowEvidenceInput(
         control_coverage=WorkflowControlCoverageInput(**coverage_values),
         evidence_posture=WorkflowEvidencePostureInput(
             control_evidence_coverage_percent=coverage_percent,
-            audit_trail_complete=complete_evidence_count == len(control_refs),
-            linked_artifacts=True,
+            audit_trail_complete=False,
+            linked_artifacts=linked_control_count > 0,
         ),
-        owner_confirmed=any(envelope.ref.owner for envelope in control_refs),
-        approval_evidence_count=complete_evidence_count,
-        decision_log_count=complete_evidence_count,
+        owner_confirmed=False,
+        approval_evidence_count=0,
+        decision_log_count=0,
     )
 
 
@@ -302,25 +312,17 @@ def _control_coverage_field(control_key: str) -> str | None:
 
 
 def _control_status_from_ref(envelope: ControlRefEnvelope) -> WorkflowControlStatus:
-    implementation = envelope.ref.implementation_status.lower().replace("-", "_")
-    if _control_ref_has_complete_evidence(envelope):
-        return WorkflowControlStatus.VERIFIED
-    if implementation in {"implemented", "operating", "active"}:
+    if not isinstance(envelope, CanonicalControlRefEnvelope):
+        return WorkflowControlStatus.MISSING
+
+    implementation = envelope.ref.implementation_state
+    if implementation == "implemented":
+        if envelope.ref.linkage_state == "verified":
+            return WorkflowControlStatus.VERIFIED
         return WorkflowControlStatus.OPERATING
-    if implementation in {"documented", "planned"}:
+    if implementation == "in_progress":
         return WorkflowControlStatus.DOCUMENTED
     return WorkflowControlStatus.MISSING
-
-
-def _control_ref_has_complete_evidence(envelope: ControlRefEnvelope) -> bool:
-    evidence = envelope.ref.evidence_status.lower().replace("-", "_")
-    implementation = envelope.ref.implementation_status.lower().replace("-", "_")
-    return evidence in {"complete", "verified", "reviewed", "current"} and implementation in {
-        "implemented",
-        "operating",
-        "active",
-        "verified",
-    }
 
 
 def apply_assessment_ref(

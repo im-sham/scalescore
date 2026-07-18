@@ -1,0 +1,35 @@
+{
+  "contract_name": "ControlRef",
+  "contract_version": "proofhouse-shared-contracts/v0.1",
+  "distribution_authority": "metadata_distribution_only",
+  "authority_sources": {
+    "accepted_decision": {
+      "commit": "9c63e4d674a7b4742a6ed75cb9a1814d46861063",
+      "path": "decisions/2026-07-18-wp-ri-03-control-ref-d12-owner-acceptance.md",
+      "repository": "USMI"
+    },
+    "workflow_context_product_canon": {
+      "commit": "f9304d7ffb6626599d4b66c02258016ea553a95a",
+      "paths": [
+        "app/workflows/models.py",
+        "app/workflows/service.py"
+      ],
+      "protected_ref": "main",
+      "repository": "im-sham/opsorchestra"
+    }
+  },
+  "distributed_artifacts": {
+    "schema": {
+      "path": "contracts/control-ref/v0.1/schema.json",
+      "sha256": "631c133c866472f6e1ea24e948cf2386a3c9f6b7c57314c05539cafda573c29f"
+    },
+    "synthetic_fixture": {
+      "path": "contracts/control-ref/v0.1/fixtures/synthetic-control.json",
+      "sha256": "7e63bb470a1ea00da8034aebb812a046474b81b72a9e8524f100b55f2ee9a7b1"
+    },
+    "source_mapping": {
+      "path": "contracts/control-ref/v0.1/README.md",
+      "sha256": "29b952ad5d84db4a707abe18072a0421fcede7e9354a27ed9e15917d4c1dec48"
+    }
+  }
+}
