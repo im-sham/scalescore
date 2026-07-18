@@ -182,10 +182,7 @@ def test_run_assessment_can_enrich_with_workflow_readiness_context() -> None:
     assert report.prioritized_remediation_actions
     assert report.org_rollup is not None
     assert report.org_rollup.workflow_count == 1
-    assert report.assessment_ref is not None
-    assert report.assessment_ref.contract_name == "AssessmentRef"
-    assert report.assessment_ref.ref.assessment_id == report.report_id
-    assert report.assessment_ref.ref.workflow_id == "wf_finance_close"
+    assert report.assessment_ref is None
 
 
 def test_run_workflow_assessment_uses_structured_workflow_evidence() -> None:
@@ -287,7 +284,10 @@ def test_run_workflow_assessment_uses_structured_workflow_evidence() -> None:
     assert strong_control.score > weak_control.score
     assert any("verified by source evidence" in strength for strength in strong_control.strengths)
     assert "Workflow evidence includes 4 approval artifact(s)." in strong_report.key_findings
-    assert "Explicit workflow control coverage was provided for 5 control area(s)." in strong_report.key_findings
+    assert (
+        "Explicit workflow control coverage was provided for 5 control area(s)."
+        in strong_report.key_findings
+    )
     assert any("Rollback path has not been tested" in gap for gap in weak_automation.gaps)
 
 
@@ -341,7 +341,9 @@ def test_run_workflow_assessment_adds_operational_learning_suitability() -> None
     assert report.operational_learning_suitability.top_blockers == []
 
 
-def test_run_workflow_assessment_marks_operational_learning_blocked_when_governance_inputs_missing() -> None:
+def test_run_workflow_assessment_marks_operational_learning_blocked_when_governance_inputs_missing() -> (
+    None
+):
     workflow_context = WorkflowAssessmentContext(
         workflow_id="wf_finance_close",
         name="Finance Close Automation",
@@ -449,10 +451,7 @@ def test_run_workflow_assessment_scores_document_operations_profile() -> None:
     assert report.workflow_readiness_score is not None
     assert len(report.workflow_pillar_scores) == 5
     assert report.overall_score == report.workflow_readiness_score
-    assert report.assessment_ref is not None
-    assert report.assessment_ref.contract_version == "proofhouse-shared-contracts/v0.1"
-    assert report.assessment_ref.ref.assessment_type == "workflow_readiness"
-    assert report.assessment_ref.ref.workflow_id == "document_ops_regulated_review_v0"
+    assert report.assessment_ref is None
     assert report.operational_learning_suitability is not None
     assert (
         report.operational_learning_suitability.status
@@ -545,8 +544,7 @@ def test_run_workflow_assessment_adds_claims_suitability_from_document_operation
     assert report.claims_suitability is not None
     assert report.claims_suitability.status == ClaimsSuitabilityStatus.EVAL_SUITABLE
     assert report.claims_suitability.top_blockers == []
-    assert report.assessment_ref is not None
+    assert report.assessment_ref is None
     assert any(
-        "Claims suitability status: eval_suitable." in finding
-        for finding in report.key_findings
+        "Claims suitability status: eval_suitable." in finding for finding in report.key_findings
     )
