@@ -3,7 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from pathlib import Path
+import re
+from pathlib import Path, PurePosixPath
 
 import pytest
 from jsonschema import Draft202012Validator, FormatChecker
@@ -24,6 +25,44 @@ VENDORED_ROOT = REPO_ROOT / "contracts" / "vendor" / "proofhouse-contracts"
 VENDORED_BINDING = REPO_ROOT / "src" / "scalescore" / "contracts" / "control_ref.py"
 CORPUS_ROOT = VENDORED_ROOT / CONTRACT_RELATIVE_ROOT / "fixtures" / "corpus"
 CONTROL_REF_ADAPTER = TypeAdapter(ControlRefEnvelope)
+
+EXPECTED_LOCK = {
+    "contract": "ControlRef",
+    "contract_version": "proofhouse-shared-contracts/v0.1",
+    "repository": "im-sham/proofhouse-contracts",
+    "protected_ref": "main",
+    "commit": "299384b1432fe4071d0d43ae4710e81feb9e31a5",
+    "contracts_tree": "228a1fde26e9adbd9b0cda7b8fab9dfdf2633256",
+    "contract_tree": "e03b662adb0f32522ecd0c87c2cf9fa90fd837ab",
+    "vendor_root": "contracts/vendor/proofhouse-contracts",
+    "sha256": {
+        "bindings/python/control_ref.py": (
+            "6db28ea5f861177a1748eb7724d95447c6b1b09a9cb0f3088c1617f2edc76cbd"
+        ),
+        "contracts/control-ref/v0.1/artifact-digests.json": (
+            "e180d05ef1c5167da6e1ddc67daf1490484b33560c6023ea35851b0e6c7a56ac"
+        ),
+        "contracts/control-ref/v0.1/fixtures/corpus/index.json": (
+            "1f12aef06eb90c5181e919571f2080d4af8b3f943fd86256022ebc9111ab1076"
+        ),
+        "contracts/control-ref/v0.1/provenance.json": (
+            "7740eba201a5f73688f28ff51cadf10aaf362fe202ee371bc2f9dd2ea0c12da0"
+        ),
+        "contracts/control-ref/v0.1/schema.json": (
+            "631c133c866472f6e1ea24e948cf2386a3c9f6b7c57314c05539cafda573c29f"
+        ),
+    },
+}
+NON_VENDORED_BINDING_DIGESTS = {
+    "bindings/typescript/control-ref-validator.ts": (
+        "7964f8acac118e880f45ae957511b0913d8e3a86c20a5b2f486bda61ee48ff9e"
+    ),
+    "bindings/typescript/control-ref.ts": (
+        "df59e25a828de9ffedef52cf73f68d177b146fa2c88a31d791a6cd43a671d4fa"
+    ),
+}
+SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
+SAFE_CASE_NAME_PATTERN = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
 
 def _corpus_payload(name: str = "valid-canonical-synthetic.json") -> dict[str, object]:
@@ -67,8 +106,9 @@ def _legacy_payload() -> dict[str, object]:
 
 def test_canonical_control_ref_corpus_matches_readiness_consumer() -> None:
     lock = json.loads(LOCK_PATH.read_text(encoding="utf-8"))
+    assert lock == EXPECTED_LOCK
 
-    for relative_path, expected_digest in lock["sha256"].items():
+    for relative_path, expected_digest in EXPECTED_LOCK["sha256"].items():
         artifact = (
             VENDORED_BINDING
             if relative_path == "bindings/python/control_ref.py"
@@ -80,29 +120,80 @@ def test_canonical_control_ref_corpus_matches_readiness_consumer() -> None:
     digest_manifest = json.loads(
         (contract_root / "artifact-digests.json").read_text(encoding="utf-8")
     )
-    for relative_path, expected_digest in digest_manifest["artifacts"].items():
+    assert set(digest_manifest) == {"algorithm", "artifacts", "format_version"}
+    assert digest_manifest["algorithm"] == "sha256"
+    assert digest_manifest["format_version"] == 1
+    artifacts = digest_manifest["artifacts"]
+    assert isinstance(artifacts, dict)
+    assert artifacts
+
+    listed_contract_artifacts: set[str] = set()
+    for relative_path, expected_digest in artifacts.items():
+        assert isinstance(relative_path, str)
+        path = PurePosixPath(relative_path)
+        assert "\\" not in relative_path
+        assert "." not in path.parts
+        assert not path.is_absolute()
+        assert path.as_posix() == relative_path
+        assert ".." not in path.parts
+        assert isinstance(expected_digest, str)
+        assert SHA256_PATTERN.fullmatch(expected_digest)
+
         if relative_path == "bindings/python/control_ref.py":
             artifact = VENDORED_BINDING
-        elif relative_path.startswith(f"{CONTRACT_RELATIVE_ROOT.as_posix()}/"):
-            artifact = VENDORED_ROOT / relative_path
-        else:
+        elif relative_path in NON_VENDORED_BINDING_DIGESTS:
+            assert expected_digest == NON_VENDORED_BINDING_DIGESTS[relative_path]
             continue
+        else:
+            assert relative_path.startswith(f"{CONTRACT_RELATIVE_ROOT.as_posix()}/")
+            artifact = VENDORED_ROOT / relative_path
+            listed_contract_artifacts.add(relative_path)
         assert hashlib.sha256(artifact.read_bytes()).hexdigest() == expected_digest
+
+    expected_contract_artifacts = {
+        path.relative_to(VENDORED_ROOT).as_posix()
+        for path in contract_root.rglob("*")
+        if path.is_file() and path.name != "artifact-digests.json"
+    }
+    assert listed_contract_artifacts == expected_contract_artifacts
 
     schema = json.loads((contract_root / "schema.json").read_text(encoding="utf-8"))
     schema_validator = Draft202012Validator(schema, format_checker=FormatChecker())
     index = json.loads((CORPUS_ROOT / "index.json").read_text(encoding="utf-8"))
-    for case in index["cases"]:
-        payload = _corpus_payload(case["file"])
+    assert set(index) == {"cases", "fixture_notice", "format_version"}
+    assert index["format_version"] == 1
+    cases = index["cases"]
+    assert len(cases) == 40
+    assert len({case["name"] for case in cases}) == 40
+    assert len({case["file"] for case in cases}) == 40
+    assert sum(case["expected_valid"] is True for case in cases) == 12
+    assert sum(case["expected_valid"] is False for case in cases) == 28
+
+    for case in cases:
+        assert set(case) == {"coverage", "expected_valid", "file", "name"}
+        assert SAFE_CASE_NAME_PATTERN.fullmatch(case["name"])
+        assert type(case["expected_valid"]) is bool
+        case_path = PurePosixPath(case["file"])
+        assert case_path.name == case["file"]
+        assert case_path.suffix == ".json"
+        assert case_path.stem == case["name"]
+        artifact_path = f"{CONTRACT_RELATIVE_ROOT.as_posix()}/fixtures/corpus/{case['file']}"
+        assert artifact_path in artifacts
+
+        raw_payload = (CORPUS_ROOT / case["file"]).read_bytes()
+        payload = json.loads(raw_payload)
         schema_errors = list(schema_validator.iter_errors(payload))
         if case["expected_valid"]:
             assert schema_errors == [], case["name"]
-            canonical = CONTROL_REF_ADAPTER.validate_python(payload)
+            canonical = CanonicalControlRefEnvelope.model_validate_json(
+                raw_payload, strict=True
+            )
             assert isinstance(canonical, CanonicalControlRefEnvelope), case["name"]
+            consumer = CONTROL_REF_ADAPTER.validate_json(raw_payload, strict=True)
+            assert isinstance(consumer, CanonicalControlRefEnvelope), case["name"]
         else:
             with pytest.raises(ValidationError):
                 CONTROL_REF_ADAPTER.validate_python(payload)
-
 
 def test_pin_only_payloads_preserve_exact_omission_shape() -> None:
     for fixture_name in (
