@@ -1,0 +1,18 @@
+{
+  "contract": "AssessmentRef",
+  "contract_version": "proofhouse-shared-contracts/v0.1",
+  "repository": "im-sham/proofhouse-contracts",
+  "protected_ref": "main",
+  "commit": "bf07fe1728f2ac18037f42f304736d1399fbfc77",
+  "reviewed_pr_head": "78628523bc4cd72f0850cf23dbc50db3c62f156f",
+  "contracts_tree": "37d44484282d2aaa45d83a340df67a4d5cb2d7d6",
+  "contract_tree": "4d9c66a8788f2359404f51372c69ab08aec3ce23",
+  "vendor_root": "contracts/vendor/proofhouse-contracts",
+  "sha256": {
+    "bindings/python/assessment_ref.py": "3a168097d35404647616efe407333cd3250c19054aa4a8cc333a6577e98c37ea",
+    "contracts/assessment-ref/v0.1/artifact-digests.json": "f2a664a79a615c7a99a7f46e941455eb5d8e54f3ce7c08d4073b6238db53ba10",
+    "contracts/assessment-ref/v0.1/fixtures/corpus/index.json": "2fa89d4cd3ad4d67916d9581b56494e24bb0a10944089f890b44215d8e7e797f",
+    "contracts/assessment-ref/v0.1/provenance.json": "9c6fa58e71e91153a9372ba9c4003bc8a7f8e2d40ba3098af17b09d1e0796025",
+    "contracts/assessment-ref/v0.1/schema.json": "9f14657df6eda357031a2e9de93392d3aabd3543b9e6b5b62dad4f55f424782d"
+  }
+}

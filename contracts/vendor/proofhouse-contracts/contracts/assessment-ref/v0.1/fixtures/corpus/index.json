@@ -1,0 +1,222 @@
+{
+  "cases": [
+    {
+      "coverage": "canonical synthetic diagnostic reference",
+      "expected_valid": true,
+      "file": "valid-canonical-synthetic.json",
+      "name": "valid-canonical-synthetic"
+    },
+    {
+      "coverage": "Readiness-owned operational-learning suitability diagnostic; not OL adoption or approval",
+      "expected_valid": true,
+      "file": "valid-operational-learning-diagnostic.json",
+      "name": "valid-operational-learning-diagnostic"
+    },
+    {
+      "coverage": "blocked and F lower boundary",
+      "expected_valid": true,
+      "file": "valid-score-0.json",
+      "name": "valid-score-0"
+    },
+    {
+      "coverage": "blocked upper boundary",
+      "expected_valid": true,
+      "file": "valid-score-49-999.json",
+      "name": "valid-score-49-999"
+    },
+    {
+      "coverage": "at-risk lower boundary",
+      "expected_valid": true,
+      "file": "valid-score-50.json",
+      "name": "valid-score-50"
+    },
+    {
+      "coverage": "F upper boundary",
+      "expected_valid": true,
+      "file": "valid-score-59-999.json",
+      "name": "valid-score-59-999"
+    },
+    {
+      "coverage": "D lower boundary",
+      "expected_valid": true,
+      "file": "valid-score-60.json",
+      "name": "valid-score-60"
+    },
+    {
+      "coverage": "at-risk upper boundary",
+      "expected_valid": true,
+      "file": "valid-score-64-999.json",
+      "name": "valid-score-64-999"
+    },
+    {
+      "coverage": "watch lower boundary",
+      "expected_valid": true,
+      "file": "valid-score-65.json",
+      "name": "valid-score-65"
+    },
+    {
+      "coverage": "D upper boundary",
+      "expected_valid": true,
+      "file": "valid-score-69-999.json",
+      "name": "valid-score-69-999"
+    },
+    {
+      "coverage": "C lower boundary",
+      "expected_valid": true,
+      "file": "valid-score-70.json",
+      "name": "valid-score-70"
+    },
+    {
+      "coverage": "watch and C upper boundary",
+      "expected_valid": true,
+      "file": "valid-score-79-999.json",
+      "name": "valid-score-79-999"
+    },
+    {
+      "coverage": "ready and B lower boundary",
+      "expected_valid": true,
+      "file": "valid-score-80.json",
+      "name": "valid-score-80"
+    },
+    {
+      "coverage": "B upper boundary",
+      "expected_valid": true,
+      "file": "valid-score-89-999.json",
+      "name": "valid-score-89-999"
+    },
+    {
+      "coverage": "A lower boundary",
+      "expected_valid": true,
+      "file": "valid-score-90.json",
+      "name": "valid-score-90"
+    },
+    {
+      "coverage": "ready and A upper boundary",
+      "expected_valid": true,
+      "file": "valid-score-100.json",
+      "name": "valid-score-100"
+    },
+    {
+      "coverage": "grade must map from score",
+      "expected_valid": false,
+      "file": "invalid-score-grade-mismatch.json",
+      "name": "invalid-score-grade-mismatch"
+    },
+    {
+      "coverage": "status must map from score",
+      "expected_valid": false,
+      "file": "invalid-score-status-mismatch.json",
+      "name": "invalid-score-status-mismatch"
+    },
+    {
+      "coverage": "workflow and assessment tenant identity must match",
+      "expected_valid": false,
+      "file": "invalid-workflow-tenant-mismatch.json",
+      "name": "invalid-workflow-tenant-mismatch"
+    },
+    {
+      "coverage": "score upper bound",
+      "expected_valid": false,
+      "file": "invalid-score-101.json",
+      "name": "invalid-score-101"
+    },
+    {
+      "coverage": "enumerated diagnostic status",
+      "expected_valid": false,
+      "file": "invalid-arbitrary-status.json",
+      "name": "invalid-arbitrary-status"
+    },
+    {
+      "coverage": "closed envelope",
+      "expected_valid": false,
+      "file": "invalid-extra-envelope-field.json",
+      "name": "invalid-extra-envelope-field"
+    },
+    {
+      "coverage": "closed diagnostic summary fields",
+      "expected_valid": false,
+      "file": "invalid-extra-summary-field.json",
+      "name": "invalid-extra-summary-field"
+    },
+    {
+      "coverage": "Readiness sole producer",
+      "expected_valid": false,
+      "file": "invalid-workflow-producer.json",
+      "name": "invalid-workflow-producer"
+    },
+    {
+      "coverage": "noncanonical Workflow Context assessment type",
+      "expected_valid": false,
+      "file": "invalid-workflow-assessment-type.json",
+      "name": "invalid-workflow-assessment-type"
+    },
+    {
+      "coverage": "family-specific envelope required",
+      "expected_valid": false,
+      "file": "invalid-generic-envelope.json",
+      "name": "invalid-generic-envelope"
+    },
+    {
+      "coverage": "connector mutation shape rejected",
+      "expected_valid": false,
+      "file": "invalid-mutation-shape.json",
+      "name": "invalid-mutation-shape"
+    },
+    {
+      "coverage": "summary snapshot only",
+      "expected_valid": false,
+      "file": "invalid-cache-policy.json",
+      "name": "invalid-cache-policy"
+    },
+    {
+      "coverage": "required tenant-scoping organization identity",
+      "expected_valid": false,
+      "file": "invalid-missing-tenant.json",
+      "name": "invalid-missing-tenant"
+    },
+    {
+      "coverage": "required immutable snapshot identity",
+      "expected_valid": false,
+      "file": "invalid-missing-integrity.json",
+      "name": "invalid-missing-integrity"
+    },
+    {
+      "coverage": "status cannot confer governance approval",
+      "expected_valid": false,
+      "file": "invalid-governance-status.json",
+      "name": "invalid-governance-status"
+    },
+    {
+      "coverage": "full assessment report prohibited",
+      "expected_valid": false,
+      "file": "invalid-full-report.json",
+      "name": "invalid-full-report"
+    },
+    {
+      "coverage": "readiness pillar detail prohibited",
+      "expected_valid": false,
+      "file": "invalid-pillar-details.json",
+      "name": "invalid-pillar-details"
+    },
+    {
+      "coverage": "raw customer or source payload prohibited",
+      "expected_valid": false,
+      "file": "invalid-raw-payload.json",
+      "name": "invalid-raw-payload"
+    },
+    {
+      "coverage": "credentials prohibited",
+      "expected_valid": false,
+      "file": "invalid-credentials.json",
+      "name": "invalid-credentials"
+    },
+    {
+      "coverage": "canonical Governance truth prohibited",
+      "expected_valid": false,
+      "file": "invalid-governance-truth.json",
+      "name": "invalid-governance-truth"
+    }
+  ],
+  "fixture_notice": "All values are synthetic and test-only. Scores, statuses, digests, and references are not operational findings, approvals, or cryptographic verification.",
+  "format_version": 1
+}

@@ -193,6 +193,7 @@ def _workflow_ref_payload() -> dict[str, object]:
             "environment_id": "production",
             "external_uri": "/api/workflows/wf_support_triage",
             "snapshot_id": "snapshot-support-triage-1",
+            "version": "1.0",
             "created_at": "2026-04-25T11:55:00Z",
             "updated_at": "2026-04-25T11:59:00Z",
             "summary": "Support Triage (customer_support)",
@@ -524,15 +525,41 @@ def test_create_mila_workflow_assessment_direct() -> None:
     assert payload["assessment_ref"]["contract_name"] == "AssessmentRef"
     assert payload["assessment_ref"]["producer_capability"] == "readiness"
     assert payload["assessment_ref"]["ref"]["assessment_id"] == payload["report_id"]
-    assert payload["assessment_ref"]["ref"]["workflow_id"] == "wf_support_triage"
-    assert (
-        payload["assessment_ref"]["ref"]["workflow_ref"]["ref"]["workflow_id"]
-        == "wf_support_triage"
+    assessment_summary = payload["assessment_ref"]["ref"]
+    assert assessment_summary["external_uri"] == f"/api/v1/assessments/{payload['report_id']}"
+    assert assessment_summary["workflow_ref"]["ref"]["ref_id"] == (
+        "workflow:tenant_default:wf_support_triage"
     )
-    assert payload["assessment_ref"]["ref"]["score"] == payload["workflow_readiness_score"]
-    assert payload["assessment_ref"]["ref"]["report_uri"] == (
-        f"/api/v1/assessments/{payload['report_id']}"
-    )
+    assert set(assessment_summary) == {
+        "ref_id",
+        "ref_type",
+        "source_capability",
+        "organization_id",
+        "environment_id",
+        "external_uri",
+        "snapshot_id",
+        "version",
+        "created_at",
+        "summary",
+        "assessment_id",
+        "workflow_ref",
+        "assessment_type",
+        "score",
+        "grade",
+        "status",
+        "top_blockers",
+        "top_reasons",
+    }
+    assert set(assessment_summary["workflow_ref"]["ref"]) == {
+        "ref_id",
+        "ref_type",
+        "source_capability",
+        "organization_id",
+        "environment_id",
+        "external_uri",
+        "snapshot_id",
+        "version",
+    }
     assert payload["workflow_readiness_score"] is not None
     assert payload["overall_score"] == payload["workflow_readiness_score"]
     assert payload["operational_learning_suitability"] is not None
@@ -567,6 +594,31 @@ def test_create_mila_workflow_assessment_direct() -> None:
     assert stored_payload["report_id"] == payload["report_id"]
     assert stored_payload["workflow_ref"]["ref"]["snapshot_id"] == "snapshot-support-triage-1"
     assert stored_payload["assessment_ref"]["ref"]["assessment_id"] == payload["report_id"]
+
+
+def test_assessment_dereference_isolated_by_authenticated_tenant() -> None:
+    tenant_a_headers = _signup_and_auth_headers(tenant_id=f"tenant-a-{uuid4().hex[:8]}")
+    tenant_b_headers = _signup_and_auth_headers(tenant_id=f"tenant-b-{uuid4().hex[:8]}")
+    create_response = client.post(
+        "/api/v1/assessments/mila/workflow",
+        json=_mila_workflow_assessment_payload(),
+        headers=tenant_a_headers,
+    )
+    assert create_response.status_code == 200
+    assessment_id = create_response.json()["report_id"]
+
+    owner_response = client.get(
+        f"/api/v1/assessments/{assessment_id}",
+        headers=tenant_a_headers,
+    )
+    cross_tenant_response = client.get(
+        f"/api/v1/assessments/{assessment_id}",
+        headers=tenant_b_headers,
+    )
+
+    assert owner_response.status_code == 200
+    assert cross_tenant_response.status_code == 404
+    assert cross_tenant_response.json()["error"]["code"] == "SCALE_2000"
 
 
 def test_create_mila_workflow_assessment_accepts_control_refs_as_fallback_evidence() -> None:
@@ -803,10 +855,10 @@ def test_create_mila_workflow_assessment_accepts_document_operations_profile() -
     assert payload["workflow_readiness_score"] is not None
     assert len(payload["workflow_pillar_scores"]) == 5
     assert payload["assessment_ref"]["contract_version"] == "proofhouse-shared-contracts/v0.1"
-    assert payload["assessment_ref"]["ref"]["workflow_id"] == "document_ops_regulated_review_v0"
-    assert (
-        payload["assessment_ref"]["ref"]["workflow_ref"]["ref"]["subject_type"] == "document_packet"
+    assert payload["assessment_ref"]["ref"]["workflow_ref"]["ref"]["ref_id"] == (
+        "workflow:tenant_default:document_ops_regulated_review_v0"
     )
+    assert payload["workflow_ref"]["ref"]["subject_type"] == "document_packet"
     assert payload["operational_learning_suitability"]["status"] == "training_candidate"
     assert payload["claims_suitability"] is None
     assert any("document_ops_regulated_review_v0" in finding for finding in payload["key_findings"])

@@ -24,6 +24,8 @@ from scalescore.models.scaling import (
     ScaleScoreReport,
     WorkflowAssessmentContext,
     WorkflowBlastRadius,
+    WorkflowRef,
+    WorkflowRefEnvelope,
 )
 
 
@@ -70,9 +72,32 @@ def _sample_report() -> ScaleScoreReport:
     )
 
 
+def _workflow_ref() -> WorkflowRefEnvelope:
+    issued_at = datetime(2026, 2, 22, tzinfo=UTC)
+    return WorkflowRefEnvelope(
+        issued_at=issued_at,
+        ref=WorkflowRef(
+            ref_id="workflow:org_1:document_ops_regulated_review_v0",
+            organization_id="org_1",
+            environment_id="test",
+            external_uri="/api/workflows/document_ops_regulated_review_v0",
+            snapshot_id="workflow_snapshot_1",
+            version="1.0",
+            created_at=issued_at,
+            updated_at=issued_at,
+            summary="Synthetic document operations workflow.",
+            workflow_id="document_ops_regulated_review_v0",
+            title="Claims and Benefits Packet Review",
+            subject_type="document_packet",
+            review_status="human_reviewed",
+        ),
+    )
+
+
 def _claims_workflow_report() -> ScaleScoreReport:
     report = _sample_report().model_copy(
         update={
+            "workflow_ref": _workflow_ref(),
             "workflow_context": WorkflowAssessmentContext(
                 workflow_id="document_ops_regulated_review_v0",
                 name="Claims and Benefits Packet Review",
@@ -111,6 +136,7 @@ def _claims_workflow_report() -> ScaleScoreReport:
 def _operational_learning_workflow_report() -> ScaleScoreReport:
     report = _sample_report().model_copy(
         update={
+            "workflow_ref": _workflow_ref(),
             "workflow_context": WorkflowAssessmentContext(
                 workflow_id="document_ops_regulated_review_v0",
                 name="Claims and Benefits Packet Review",
@@ -431,7 +457,9 @@ async def test_push_assessment_report_posts_event_payload(monkeypatch: pytest.Mo
     assert headers["Authorization"] == "Bearer token-123"
 
 
-def test_connector_rejects_non_https_opsorchestra_url_in_staging(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_connector_rejects_non_https_opsorchestra_url_in_staging(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(settings, "environment", "staging")
     monkeypatch.setattr(settings.integration, "opsorchestra_allow_private_network", False)
 
