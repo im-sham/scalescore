@@ -37,6 +37,10 @@ from scalescore.contracts.assessment_ref import AssessmentRefEnvelope, DateTimeS
 from scalescore.contracts.assessment_ref import (
     WorkflowRefEnvelope as ContractWorkflowRefEnvelope,
 )
+from scalescore.contracts.control_ref_consumer import (
+    CanonicalControlRefEnvelope,
+    ControlRefEnvelope,
+)
 from scalescore.core.assessment import run_assessment_from_csv, run_workflow_assessment
 from scalescore.core.async_assessment import AsyncAssessmentWorker
 from scalescore.core.async_broker import AsyncAssessmentBrokerError, get_async_assessment_broker
@@ -67,7 +71,6 @@ from scalescore.models.core import (
     Vendor,
 )
 from scalescore.models.scaling import (
-    ControlRefEnvelope,
     DocumentOperationsReadinessProfile,
     OperationalLearningInputs,
     ScaleScoreReport,
@@ -742,11 +745,75 @@ async def create_workflow_assessment(
     return report
 
 
+def _validate_control_ref_alignment(
+    payload: CreateMilaWorkflowAssessmentRequest,
+    *,
+    tenant_id: str,
+) -> None:
+    organization_ids = [payload.org_id]
+    workflow_ids: list[str] = []
+    environment_ids: list[str] = []
+
+    if payload.workflow_ref is not None:
+        organization_ids.append(payload.workflow_ref.ref.organization_id)
+        workflow_ids.append(payload.workflow_ref.ref.workflow_id)
+        environment_ids.append(payload.workflow_ref.ref.environment_id)
+
+    for envelope in payload.control_refs:
+        organization_ids.append(envelope.ref.organization_id)
+        workflow_ids.append(envelope.ref.workflow_id)
+        environment_ids.append(envelope.ref.environment_id)
+        if isinstance(envelope, CanonicalControlRefEnvelope):
+            owning_workflow = envelope.ref.workflow_ref.ref
+            organization_ids.append(owning_workflow.organization_id)
+            workflow_ids.append(owning_workflow.workflow_id)
+            environment_ids.append(owning_workflow.environment_id)
+
+    if any(organization_id != tenant_id for organization_id in organization_ids):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "TENANT_SCOPE_MISMATCH",
+                "message": (
+                    "Request organization and every carried workflow/control "
+                    "organization must match the authenticated tenant."
+                ),
+            },
+        )
+
+    if any(workflow_id != payload.workflow_context.workflow_id for workflow_id in workflow_ids):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "CONTROL_WORKFLOW_MISMATCH",
+                "message": (
+                    "workflow_context, workflow_ref, ControlRef, and each owning "
+                    "WorkflowRef must identify the same workflow."
+                ),
+            },
+        )
+
+    if environment_ids and any(
+        environment_id != environment_ids[0] for environment_id in environment_ids
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "CONTROL_ENVIRONMENT_MISMATCH",
+                "message": (
+                    "workflow_ref, ControlRef, and each owning WorkflowRef must "
+                    "identify the same environment."
+                ),
+            },
+        )
+
+
 def _run_and_persist_mila_workflow_assessment(
     payload: CreateMilaWorkflowAssessmentRequest,
     current_user: TokenPayload,
     repository: AssessmentRepository,
 ) -> ScaleScoreReport:
+    _validate_control_ref_alignment(payload, tenant_id=current_user.tenant_id)
     _validate_mila_workflow_summary_text(payload)
     source_findings = list(payload.source_findings)
     if payload.source_workflow_type:

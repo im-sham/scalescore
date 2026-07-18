@@ -1,0 +1,17 @@
+{
+  "contract": "ControlRef",
+  "contract_version": "proofhouse-shared-contracts/v0.1",
+  "repository": "im-sham/proofhouse-contracts",
+  "protected_ref": "main",
+  "commit": "299384b1432fe4071d0d43ae4710e81feb9e31a5",
+  "contracts_tree": "228a1fde26e9adbd9b0cda7b8fab9dfdf2633256",
+  "contract_tree": "e03b662adb0f32522ecd0c87c2cf9fa90fd837ab",
+  "vendor_root": "contracts/vendor/proofhouse-contracts",
+  "sha256": {
+    "bindings/python/control_ref.py": "6db28ea5f861177a1748eb7724d95447c6b1b09a9cb0f3088c1617f2edc76cbd",
+    "contracts/control-ref/v0.1/artifact-digests.json": "e180d05ef1c5167da6e1ddc67daf1490484b33560c6023ea35851b0e6c7a56ac",
+    "contracts/control-ref/v0.1/fixtures/corpus/index.json": "1f12aef06eb90c5181e919571f2080d4af8b3f943fd86256022ebc9111ab1076",
+    "contracts/control-ref/v0.1/provenance.json": "7740eba201a5f73688f28ff51cadf10aaf362fe202ee371bc2f9dd2ea0c12da0",
+    "contracts/control-ref/v0.1/schema.json": "631c133c866472f6e1ea24e948cf2386a3c9f6b7c57314c05539cafda573c29f"
+  }
+}

@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.proofhouse.local/control-ref/v0.1/schema.json",
+  "title": "Proofhouse ControlRef V0.1",
+  "description": "Workflow Context-owned diagnostic control reference metadata for private neutral distribution. No state grants Governance, policy, use, release, or gate authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "contract_name",
+    "producer_capability",
+    "producer_system",
+    "canonical_owner",
+    "issued_at",
+    "cache_policy",
+    "ref"
+  ],
+  "properties": {
+    "contract_version": { "const": "proofhouse-shared-contracts/v0.1" },
+    "contract_name": { "const": "ControlRef" },
+    "producer_capability": { "const": "workflow_context" },
+    "producer_system": { "const": "proofhouse-workflow-context" },
+    "canonical_owner": { "const": "workflow_context" },
+    "issued_at": { "type": "string", "format": "date-time" },
+    "cache_policy": { "const": "summary_snapshot" },
+    "ref": { "$ref": "#/$defs/control_ref" }
+  },
+  "$defs": {
+    "control_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref_id",
+        "ref_type",
+        "source_capability",
+        "organization_id",
+        "environment_id",
+        "external_uri",
+        "created_at",
+        "summary",
+        "control_assignment_id",
+        "control_id",
+        "control_key",
+        "control_family",
+        "workflow_id",
+        "workflow_ref",
+        "implementation_state",
+        "linkage_state"
+      ],
+      "anyOf": [
+        { "properties": { "snapshot_id": {} }, "required": ["snapshot_id"] },
+        { "properties": { "version": {} }, "required": ["version"] }
+      ],
+      "properties": {
+        "ref_id": {
+          "type": "string",
+          "pattern": "^control:[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "ref_type": { "const": "control" },
+        "source_capability": { "const": "workflow_context" },
+        "organization_id": { "$ref": "#/$defs/identity" },
+        "environment_id": { "$ref": "#/$defs/identity" },
+        "external_uri": { "type": "string", "minLength": 1 },
+        "snapshot_id": { "$ref": "#/$defs/immutable_pin" },
+        "version": { "$ref": "#/$defs/immutable_pin" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "control_assignment_id": { "$ref": "#/$defs/identity" },
+        "control_id": { "$ref": "#/$defs/identity" },
+        "control_key": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "control_family": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "workflow_id": { "$ref": "#/$defs/identity" },
+        "workflow_ref": { "$ref": "#/$defs/workflow_ref_envelope" },
+        "implementation_state": {
+          "type": "string",
+          "enum": ["planned", "in_progress", "implemented", "waived"]
+        },
+        "linkage_state": {
+          "type": "string",
+          "enum": ["missing", "linked", "verified", "not_applicable"]
+        }
+      }
+    },
+    "workflow_ref_envelope": {
+      "type": "object",
+      "description": "Owning WorkflowRef alignment metadata only; Workflow Context remains canonical for workflow truth.",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "contract_name",
+        "producer_capability",
+        "producer_system",
+        "canonical_owner",
+        "issued_at",
+        "cache_policy",
+        "ref"
+      ],
+      "properties": {
+        "contract_version": { "const": "proofhouse-shared-contracts/v0.1" },
+        "contract_name": { "const": "WorkflowRef" },
+        "producer_capability": { "const": "workflow_context" },
+        "producer_system": { "const": "proofhouse-workflow-context" },
+        "canonical_owner": { "const": "workflow_context" },
+        "issued_at": { "type": "string", "format": "date-time" },
+        "cache_policy": { "const": "summary_snapshot" },
+        "ref": { "$ref": "#/$defs/workflow_ref_metadata" }
+      }
+    },
+    "workflow_ref_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref_id",
+        "ref_type",
+        "source_capability",
+        "organization_id",
+        "environment_id",
+        "external_uri",
+        "workflow_id"
+      ],
+      "anyOf": [
+        { "properties": { "snapshot_id": {} }, "required": ["snapshot_id"] },
+        { "properties": { "version": {} }, "required": ["version"] }
+      ],
+      "properties": {
+        "ref_id": {
+          "type": "string",
+          "pattern": "^workflow:[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "ref_type": { "const": "workflow" },
+        "source_capability": { "const": "workflow_context" },
+        "organization_id": { "$ref": "#/$defs/identity" },
+        "environment_id": { "$ref": "#/$defs/identity" },
+        "external_uri": { "type": "string", "minLength": 1 },
+        "snapshot_id": { "$ref": "#/$defs/immutable_pin" },
+        "version": { "$ref": "#/$defs/immutable_pin" },
+        "workflow_id": { "$ref": "#/$defs/identity" }
+      }
+    },
+    "identity": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+      "maxLength": 256
+    },
+    "immutable_pin": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+-]*$",
+      "maxLength": 256
+    }
+  }
+}

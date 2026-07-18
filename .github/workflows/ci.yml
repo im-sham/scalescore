@@ -46,8 +46,12 @@ jobs:
       - name: Run Ruff
         run: ruff check src tests scripts/run_tests.py scripts/compile_dependency_constraints.py
 
+      - name: Run pinned ControlRef V0.1 conformance and compatibility
+        run: python scripts/run_tests.py -q tests/unit/test_control_ref_contract.py
+
       - name: Run pytest
         run: python scripts/run_tests.py -q --ignore=tests/integration/test_redis_rate_limit.py
+
 
   redis-rate-limit-integration:
     name: Redis Rate Limit Integration

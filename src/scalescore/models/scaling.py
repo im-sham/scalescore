@@ -12,6 +12,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from scalescore.contracts.assessment_ref import AssessmentRefEnvelope
+from scalescore.contracts.control_ref_consumer import ControlRefEnvelope
 
 
 class RiskLevel(StrEnum):
@@ -127,47 +128,6 @@ class WorkflowRefEnvelope(BaseModel):
     issued_at: datetime | str
     cache_policy: ProofhouseCachePolicy = "summary_snapshot"
     ref: WorkflowRef
-
-
-class ControlRef(BaseModel):
-    """Workflow Context-owned workflow control reference consumed by Readiness."""
-
-    ref_id: str
-    ref_type: Literal["control"] = "control"
-    source_capability: Literal["workflow_context"] = "workflow_context"
-    organization_id: str
-    environment_id: str = "production"
-    external_uri: str | None = None
-    snapshot_id: str | None = None
-    version: str | None = None
-    created_at: datetime | str
-    updated_at: datetime | str
-    summary: str
-    control_assignment_id: str
-    control_id: str
-    control_key: str
-    control_family: str
-    control_statement: str
-    implementation_status: str
-    evidence_status: str
-    owner: str | None = None
-    workflow_id: str
-    required_evidence_types: list[str] = Field(default_factory=list)
-
-
-class ControlRefEnvelope(BaseModel):
-    """Proofhouse V0.1 envelope for Workflow Context control refs."""
-
-    contract_version: Literal["proofhouse-shared-contracts/v0.1"] = (
-        "proofhouse-shared-contracts/v0.1"
-    )
-    contract_name: Literal["ControlRef"] = "ControlRef"
-    producer_capability: Literal["workflow_context"] = "workflow_context"
-    producer_system: Literal["proofhouse-workflow-context"] = "proofhouse-workflow-context"
-    canonical_owner: Literal["workflow_context"] = "workflow_context"
-    issued_at: datetime | str
-    cache_policy: ProofhouseCachePolicy = "summary_snapshot"
-    ref: ControlRef
 
 
 class WorkflowAssessmentContext(BaseModel):
