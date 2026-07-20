@@ -101,6 +101,9 @@ source .venv/bin/activate
 # Python 3.11 users must select python3.11 and the matching Python 3.11 target file.
 python -m pip install --constraint constraints/darwin-arm64-python3.12-dev.txt -e ".[dev]"
 
+# Optional: install the separately constrained dashboard graph before launching it.
+python -m pip install --constraint constraints/darwin-arm64-python3.12-frontend.txt -e ".[frontend]"
+
 # Confirm "Editable project location" is this checkout, then run tests.
 python -m pip show scalescore
 python scripts/run_tests.py -q --ignore=tests/integration/test_redis_rate_limit.py
@@ -126,11 +129,14 @@ another checkout. It reports the interpreter, expected source, imported package 
 commands for rebuilding only this checkout's `.venv`; pytest is not imported or collected
 until that provenance check succeeds.
 
-For a runtime-only environment, install `-e .` with the file matching the
-target environment (`darwin-arm64` or `linux-x86_64`) and Python minor. These
-eight target-specific application constraint sets reproduce accepted Readiness
-development and CI dependency graphs. They are not cross-platform lock files
-and do not describe a production image.
+For a runtime-only environment, install `-e .` with the runtime file matching
+the target environment (`darwin-arm64` or `linux-x86_64`) and Python minor.
+Development installs use `-e ".[dev]"` with the matching development file;
+dashboard installs use `-e ".[frontend]"` with the matching frontend file.
+The twelve target-specific application constraint sets reproduce these three
+accepted Readiness graphs without allowing frontend-only dependencies to
+contaminate the core service graph. They are not cross-platform lock files,
+do not define a production image, and do not establish rollback retention.
 
 ## Shared Request Limiter
 
