@@ -44,7 +44,11 @@ jobs:
         run: python scripts/compile_dependency_constraints.py --check
 
       - name: Run Ruff
-        run: ruff check src tests scripts/run_tests.py scripts/compile_dependency_constraints.py
+        run: >-
+          ruff check src tests scripts/run_tests.py
+          scripts/compile_dependency_constraints.py
+          scripts/compile_production_lock.py
+          scripts/verify_runtime_sbom_parity.py
 
       - name: Run pinned ControlRef V0.1 conformance and compatibility
         run: python scripts/run_tests.py -q tests/unit/test_control_ref_contract.py

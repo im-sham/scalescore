@@ -43,7 +43,7 @@ def test_staging_validation_uses_constrained_editable_install_without_source_byp
 
 def test_github_actions_are_pinned_to_commit_shas() -> None:
     offenders: list[str] = []
-    for name in ("ci.yml", "staging-validation-gate.yml"):
+    for name in ("ci.yml", "image.yml", "staging-validation-gate.yml"):
         offenders.extend(
             f"{name}: {line.strip()}"
             for line in _workflow(name).splitlines()
@@ -53,10 +53,11 @@ def test_github_actions_are_pinned_to_commit_shas() -> None:
     assert offenders == []
 
 
-def test_dependabot_tracks_ci_and_python_updates() -> None:
+def test_dependabot_tracks_ci_image_and_python_updates() -> None:
     config = ROOT / ".github" / "dependabot.yml"
 
     assert config.exists()
     content = config.read_text()
     assert 'package-ecosystem: "github-actions"' in content
+    assert 'package-ecosystem: "docker"' in content
     assert 'package-ecosystem: "pip"' in content
