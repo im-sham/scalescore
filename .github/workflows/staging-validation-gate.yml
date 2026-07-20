@@ -34,7 +34,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
-      PYTHONPATH: src
       BASE_URL: http://127.0.0.1:8000
       EXTERNAL_OIDC_BASE_URL: http://127.0.0.1:8001
       ENVIRONMENT: staging
@@ -56,10 +55,11 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install dependencies
+      - name: Install constrained dependencies
         run: |
-          python -m pip install --upgrade "pip>=26.0.1"
-          pip install -e ".[dev]"
+          python -m pip install --upgrade --constraint constraints/linux-x86_64-python3.12-dev.txt 'pip>=26.0.1'
+          python -m pip install --constraint constraints/linux-x86_64-python3.12-dev.txt -e ".[dev]"
+          python -m pip check
 
       - name: Prepare benchmark dataset and artifact directories
         run: |
@@ -105,7 +105,7 @@ jobs:
           echo "AUTH_JWT_PRIVATE_KEY_PATH=${INTERNAL_JWT_PRIVATE_KEY_PATH}" >>"${GITHUB_ENV}"
           echo "AUTH_JWT_PUBLIC_KEY_PATH=${INTERNAL_JWT_PUBLIC_KEY_PATH}" >>"${GITHUB_ENV}"
 
-          PYTHONPATH=src python scripts/generate_async_benchmark_dataset.py \
+          python scripts/generate_async_benchmark_dataset.py \
             --output-dir "${DATASET_DIR}" \
             --organizations 1 \
             --teams-per-org 300 \
@@ -132,7 +132,6 @@ jobs:
           }
           trap cleanup EXIT
 
-          PYTHONPATH=src \
           STORAGE_ASSESSMENTS_DB_PATH="${RUNNER_TEMP}/assessments-8000.sqlite3" \
           STORAGE_AUTH_DB_PATH="${RUNNER_TEMP}/auth-8000.sqlite3" \
           uvicorn scalescore.api.main:app --host 127.0.0.1 --port 8000 \
@@ -162,7 +161,7 @@ jobs:
 
           if [[ "${INTERNAL_JWT_SMOKE_STATUS}" == "PASS" ]]; then
             ACCESS_TOKEN="$(tr -d '\n' < "${SMOKE_DIR}/internal_access_token.txt")"
-            if ACCESS_TOKEN="${ACCESS_TOKEN}" PYTHONPATH=src python scripts/run_async_assessment_benchmark.py \
+            if ACCESS_TOKEN="${ACCESS_TOKEN}" python scripts/run_async_assessment_benchmark.py \
               --base-url "${BASE_URL}" \
               --dataset-dir "${DATASET_DIR}" \
               --jobs "${BENCHMARK_JOBS}" \
@@ -220,7 +219,6 @@ jobs:
               -pubout -out "${EXTERNAL_OIDC_PUBLIC_KEY_PATH}" >/dev/null 2>&1; then
             echo "Failed to generate external OIDC key pair." >&2
           else
-            PYTHONPATH=src \
             STORAGE_ASSESSMENTS_DB_PATH="${RUNNER_TEMP}/assessments-8001.sqlite3" \
             STORAGE_AUTH_DB_PATH="${RUNNER_TEMP}/auth-8001.sqlite3" \
             INTEGRATION_EXTERNAL_OIDC_AUTH_ENABLED=true \

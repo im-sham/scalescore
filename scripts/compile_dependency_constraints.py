@@ -24,7 +24,7 @@ ARCHITECTURE_ALIASES = {
     "arm64": "arm64",
     "x86_64": "x86_64",
 }
-KINDS = ("runtime", "dev")
+KINDS = ("runtime", "dev", "frontend")
 Runner = Callable[[Sequence[str]], None]
 
 
@@ -89,8 +89,8 @@ def _compile_command(*, root: Path, output: Path, kind: str, upgrade: bool) -> l
     ]
     if upgrade:
         command.append("--upgrade")
-    if kind == "dev":
-        command.append("--extra=dev")
+    if kind != "runtime":
+        command.append(f"--extra={kind}")
     command.append(str(root / "pyproject.toml"))
     return command
 

@@ -23,6 +23,24 @@ def test_staging_validation_gate_uses_least_privilege_permissions() -> None:
     assert "\npermissions:\n  contents: read\n" in workflow
 
 
+def test_staging_validation_uses_constrained_editable_install_without_source_bypass() -> None:
+    workflow = _workflow("staging-validation-gate.yml")
+    install_block = workflow.split("      - name: Install constrained dependencies", 1)[1].split(
+        "\n      - name:", 1
+    )[0]
+    constraint = "constraints/linux-x86_64-python3.12-dev.txt"
+    pip_floor = f"python -m pip install --upgrade --constraint {constraint} 'pip>=26.0.1'"
+    editable_install = f'python -m pip install --constraint {constraint} -e ".[dev]"'
+    pip_check = "python -m pip check"
+
+    assert pip_floor in install_block
+    assert editable_install in install_block
+    assert pip_check in install_block
+    assert install_block.index(pip_floor) < install_block.index(editable_install)
+    assert install_block.index(editable_install) < install_block.index(pip_check)
+    assert "PYTHONPATH" not in workflow
+
+
 def test_github_actions_are_pinned_to_commit_shas() -> None:
     offenders: list[str] = []
     for name in ("ci.yml", "staging-validation-gate.yml"):
