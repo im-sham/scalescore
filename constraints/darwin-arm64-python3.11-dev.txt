@@ -13,16 +13,16 @@ certifi==2026.6.17
 cffi==2.1.0
 charset-normalizer==3.4.9
 click==8.4.2
-coverage==7.15.1
+coverage==7.15.2
 cryptography==49.0.0
 cyclonedx-python-lib==11.11.0
 defusedxml==0.7.1
 dnspython==2.8.0
 email-validator==2.3.0
-fastapi==0.139.0
-filelock==3.29.7
+fastapi==0.139.2
+filelock==3.31.0
 gitdb==4.0.12
-gitpython==3.1.51
+gitpython==3.1.52
 h11==0.16.0
 httpcore==1.0.9
 httptools==0.8.0
@@ -52,8 +52,8 @@ pillow==12.3.0
 pip-api==0.0.34
 pip-audit==2.10.1
 pip-requirements-parser==32.0.1
-pip-tools==7.5.3
-platformdirs==4.10.0
+pip-tools==7.6.0
+platformdirs==4.10.1
 plotly==6.9.0
 pluggy==1.6.0
 protobuf==7.35.1
@@ -61,7 +61,7 @@ py-serializable==2.1.0
 pyarrow==24.0.0
 pycparser==3.0
 pydantic==2.13.4
-pydantic-core==2.46.4
+pydantic-core==2.47.0
 pydantic-settings==2.14.2
 pydeck==0.9.3
 pygments==2.20.0
@@ -81,7 +81,7 @@ requests==2.34.2
 rfc3339-validator==0.1.4
 rich==15.0.0
 rpds-py==2026.6.3
-ruff==0.15.21
+ruff==0.15.22
 six==1.17.0
 smmap==5.0.3
 sortedcontainers==2.4.0
@@ -96,7 +96,7 @@ typing-extensions==4.16.0
 typing-inspection==0.4.2
 urllib3==2.7.0
 uvicorn==0.51.0
-websockets==16.1
+websockets==16.1.1
 wheel==0.47.0
 
 # The following packages are considered to be unsafe in a requirements file:
