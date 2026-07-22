@@ -60,3 +60,24 @@ def test_dependabot_tracks_ci_and_python_updates() -> None:
     content = config.read_text()
     assert 'package-ecosystem: "github-actions"' in content
     assert 'package-ecosystem: "pip"' in content
+
+
+def test_ci_matrix_blocks_new_mypy_diagnostics() -> None:
+    workflow = _workflow("ci.yml")
+    matrix_job = workflow.split("\n  redis-rate-limit-integration:", maxsplit=1)[0]
+
+    assert matrix_job.count("name: Lint and Test (Python ${{ matrix.python-version }})") == 1
+    assert matrix_job.count("fetch-depth: 0") == 1
+    dev_install = (
+        'python -m pip install --constraint "constraints/linux-x86_64-python'
+        '${{ matrix.python-version }}-dev.txt" -e ".[dev]"'
+    )
+    assert matrix_job.count(dev_install) == 1
+    assert ".[dev,frontend]" not in matrix_job
+    assert matrix_job.count("TRUSTED_BASE_REF:") == 1
+    assert "github.event.pull_request.base.sha" in matrix_job
+    assert "github.event.before" in matrix_job
+    expected_command = 'python scripts/check_mypy_baseline.py --base-ref "$TRUSTED_BASE_REF"'
+    assert matrix_job.count(expected_command) == 1
+    assert matrix_job.index(dev_install) < matrix_job.index(expected_command)
+    assert workflow.count(expected_command) == 1
