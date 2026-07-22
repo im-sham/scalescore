@@ -1,0 +1,35 @@
+{
+  "contract_name": "AssessmentRef",
+  "contract_version": "proofhouse-shared-contracts/v0.1",
+  "distribution_authority": "metadata_distribution_only",
+  "authority_sources": {
+    "accepted_decision": {
+      "commit": "e401def7f42e66691d2552272b67501b5b5df04a",
+      "path": "decisions/2026-07-17-wp-ri-03-assessment-ref-d12-owner-acceptance.md",
+      "repository": "USMI"
+    },
+    "readiness_product_canon": {
+      "commit": "5ed3a0f1c0a4d28e154852df4fa402c55b7b7cdc",
+      "paths": [
+        "src/scalescore/models/scaling.py",
+        "src/scalescore/core/assessment.py"
+      ],
+      "protected_ref": "main",
+      "repository": "ScaleScore / Readiness"
+    }
+  },
+  "distributed_artifacts": {
+    "schema": {
+      "path": "contracts/assessment-ref/v0.1/schema.json",
+      "sha256": "9f14657df6eda357031a2e9de93392d3aabd3543b9e6b5b62dad4f55f424782d"
+    },
+    "synthetic_fixture": {
+      "path": "contracts/assessment-ref/v0.1/fixtures/synthetic-assessment.json",
+      "sha256": "4be0e80449c2814c62ef216d848079d382544318bb352483fdd7e9142246561e"
+    },
+    "source_mapping": {
+      "path": "contracts/assessment-ref/v0.1/README.md",
+      "sha256": "ed26a78c17eb8c3fab553da36fc9c6931aad86b786e1e6b249d191c647aca24e"
+    }
+  }
+}

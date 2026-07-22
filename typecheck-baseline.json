@@ -42,6 +42,26 @@
       "message": "Argument 1 to \"post\" of \"AsyncClient\" has incompatible type \"str | None\"; expected \"URL | str\""
     },
     {
+      "file": "src/scalescore/contracts/assessment_ref.py",
+      "code": "import-untyped",
+      "message": "Library stubs not installed for \"jsonschema\""
+    },
+    {
+      "file": "src/scalescore/contracts/assessment_ref.py",
+      "code": "import-untyped",
+      "message": "Library stubs not installed for \"jsonschema.exceptions\""
+    },
+    {
+      "file": "src/scalescore/contracts/control_ref.py",
+      "code": "import-untyped",
+      "message": "Library stubs not installed for \"jsonschema\""
+    },
+    {
+      "file": "src/scalescore/contracts/control_ref.py",
+      "code": "import-untyped",
+      "message": "Library stubs not installed for \"jsonschema.exceptions\""
+    },
+    {
       "file": "src/scalescore/core/auth/opsorchestra.py",
       "code": "arg-type",
       "message": "Argument 1 to \"Path\" has incompatible type \"str | None\"; expected \"str | PathLike[str]\""

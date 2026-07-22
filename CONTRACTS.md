@@ -41,13 +41,47 @@ Consumed as source evidence posture for scoring. The current compatibility mappi
 
 ### `ControlRef`
 
-Consumed as control coverage and evidence status. The current compatibility mapping lands in `WorkflowControlCoverageInput` and `WorkflowEvidencePostureInput`.
+Workflow Context is the semantic owner, sensitivity authority, and sole initial
+producer. Readiness is a consumer only. Canonical control detail is available
+only by authenticated, tenant-scoped dereference through Workflow Context;
+Readiness never reconstructs canonical detail from the shared metadata.
 
 Current implementation:
 
-- `CreateMilaWorkflowAssessmentRequest.control_refs` accepts V0.1 `ControlRef` envelopes from Workflow Context.
-- `ScaleScoreReport.control_refs` preserves and echoes the upstream control refs.
-- When explicit `workflow_evidence` is absent, Readiness derives local control coverage and evidence posture from `control_refs`; it does not own or mutate workflow-control truth.
+- `CreateMilaWorkflowAssessmentRequest.control_refs` validates the generated,
+  byte-pinned V0.1 `ControlRef` binding at Contracts commit
+  `299384b1432fe4071d0d43ae4710e81feb9e31a5`.
+- Request `org_id`, authenticated tenant, `workflow_context.workflow_id`,
+  optional top-level `WorkflowRef`, every `ControlRef`, and every embedded
+  owning `WorkflowRef` must align across tenant, environment, and workflow
+  before scoring or persistence.
+- `ScaleScoreReport.control_refs`, SQLite persistence/readback, and API
+  responses preserve canonical field values and the producer's immutable-pin
+  omission shape. Explicit JSON null pins are invalid; an omitted alternate pin
+  remains valid.
+- `implementation_state` and `linkage_state` feed conservative Readiness
+  diagnostics only. They do not imply owner confirmation, Governance approval,
+  policy or use authority, release or external authority, gate state, or
+  completion. Verified linkage is not counted as approval evidence, a decision
+  log, or a complete audit trail.
+- Synthetic canonical placeholders use `planned` / `missing` and state that no
+  durable Workflow assignment record exists. They may claim stronger states
+  only when backed by a real immutable Workflow assignment.
+
+One-release compatibility is deliberately narrow: the exact former
+repository-local envelope/ref shape remains accepted inbound because the
+existing Workflow Context compatibility route is a live product path, and it
+remains readable from stored reports. Legacy objects remain observably legacy;
+they are never repaired or converted into canonical `ControlRef` truth, and
+authority-like legacy fields are not scored. Historical Pydantic behavior is
+retained: omitted legacy fields with defaults are accepted and those defaults
+materialize during serialization and persistence/readback.
+Malformed canonical input cannot enter through the legacy branch. Removal is a
+release-boundary migration, not part of WP-RI-03.
+
+This migration excludes `PolicyDecisionRef`, `UseApprovalRef`, deployment,
+release activation, live data, Operational Learning activation, external use,
+and WP-RI-03/G3 closure.
 
 ### Document-operations profile
 

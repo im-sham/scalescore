@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.proofhouse.local/assessment-ref/v0.1/schema.json",
+  "title": "Proofhouse AssessmentRef V0.1",
+  "description": "Readiness-owned diagnostic reference metadata for private neutral distribution. No status grants Governance or use approval.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "contract_name",
+    "producer_capability",
+    "producer_system",
+    "canonical_owner",
+    "issued_at",
+    "cache_policy",
+    "ref"
+  ],
+  "properties": {
+    "contract_version": { "const": "proofhouse-shared-contracts/v0.1" },
+    "contract_name": { "const": "AssessmentRef" },
+    "producer_capability": { "const": "readiness" },
+    "producer_system": { "const": "proofhouse-readiness" },
+    "canonical_owner": { "const": "readiness" },
+    "issued_at": { "type": "string", "format": "date-time" },
+    "cache_policy": { "const": "summary_snapshot" },
+    "ref": { "$ref": "#/$defs/assessment_ref" }
+  },
+  "$defs": {
+    "assessment_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref_id",
+        "ref_type",
+        "source_capability",
+        "organization_id",
+        "environment_id",
+        "external_uri",
+        "snapshot_id",
+        "version",
+        "created_at",
+        "summary",
+        "assessment_id",
+        "workflow_ref",
+        "assessment_type",
+        "score",
+        "grade",
+        "status",
+        "top_blockers",
+        "top_reasons"
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "score": { "type": "number", "minimum": 90 },
+                "grade": { "type": "string", "const": "A" }
+              }
+            },
+            {
+              "properties": {
+                "score": { "type": "number", "minimum": 80, "exclusiveMaximum": 90 },
+                "grade": { "type": "string", "const": "B" }
+              }
+            },
+            {
+              "properties": {
+                "score": { "type": "number", "minimum": 70, "exclusiveMaximum": 80 },
+                "grade": { "type": "string", "const": "C" }
+              }
+            },
+            {
+              "properties": {
+                "score": { "type": "number", "minimum": 60, "exclusiveMaximum": 70 },
+                "grade": { "type": "string", "const": "D" }
+              }
+            },
+            {
+              "properties": {
+                "score": { "type": "number", "exclusiveMaximum": 60 },
+                "grade": { "type": "string", "const": "F" }
+              }
+            }
+          ]
+        },
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "score": { "type": "number", "minimum": 80 },
+                "status": { "type": "string", "const": "ready" }
+              }
+            },
+            {
+              "properties": {
+                "score": { "type": "number", "minimum": 65, "exclusiveMaximum": 80 },
+                "status": { "type": "string", "const": "watch" }
+              }
+            },
+            {
+              "properties": {
+                "score": { "type": "number", "minimum": 50, "exclusiveMaximum": 65 },
+                "status": { "type": "string", "const": "at_risk" }
+              }
+            },
+            {
+              "properties": {
+                "score": { "type": "number", "exclusiveMaximum": 50 },
+                "status": { "type": "string", "const": "blocked" }
+              }
+            }
+          ]
+        }
+      ],
+      "properties": {
+        "ref_id": {
+          "type": "string",
+          "pattern": "^assessment:.+$"
+        },
+        "ref_type": { "const": "assessment" },
+        "source_capability": { "const": "readiness" },
+        "organization_id": { "type": "string", "minLength": 1 },
+        "environment_id": { "type": "string", "minLength": 1 },
+        "external_uri": { "type": "string", "minLength": 1 },
+        "snapshot_id": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "created_at": { "type": "string", "format": "date-time" },
+        "summary": { "type": "string", "minLength": 1 },
+        "assessment_id": { "type": "string", "minLength": 1 },
+        "workflow_ref": { "$ref": "#/$defs/workflow_ref_envelope" },
+        "assessment_type": {
+          "type": "string",
+          "enum": ["workflow_readiness", "operational_learning_suitability"]
+        },
+        "score": { "type": "number", "minimum": 0, "maximum": 100 },
+        "grade": { "type": "string", "enum": ["A", "B", "C", "D", "F"] },
+        "status": {
+          "type": "string",
+          "enum": ["ready", "watch", "at_risk", "blocked"]
+        },
+        "top_blockers": {
+          "type": "array",
+          "maxItems": 5,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "top_reasons": {
+          "type": "array",
+          "maxItems": 5,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "workflow_ref_envelope": {
+      "type": "object",
+      "description": "WorkflowRef reference metadata only; Workflow Context remains canonical for workflow truth.",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "contract_name",
+        "producer_capability",
+        "producer_system",
+        "canonical_owner",
+        "issued_at",
+        "cache_policy",
+        "ref"
+      ],
+      "properties": {
+        "contract_version": { "const": "proofhouse-shared-contracts/v0.1" },
+        "contract_name": { "const": "WorkflowRef" },
+        "producer_capability": { "const": "workflow_context" },
+        "producer_system": { "const": "proofhouse-workflow-context" },
+        "canonical_owner": { "const": "workflow_context" },
+        "issued_at": { "type": "string", "format": "date-time" },
+        "cache_policy": { "const": "summary_snapshot" },
+        "ref": { "$ref": "#/$defs/workflow_ref_metadata" }
+      }
+    },
+    "workflow_ref_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref_id",
+        "ref_type",
+        "source_capability",
+        "organization_id",
+        "environment_id",
+        "external_uri",
+        "snapshot_id",
+        "version"
+      ],
+      "properties": {
+        "ref_id": { "type": "string", "minLength": 1 },
+        "ref_type": { "const": "workflow" },
+        "source_capability": { "const": "workflow_context" },
+        "organization_id": { "type": "string", "minLength": 1 },
+        "environment_id": { "type": "string", "minLength": 1 },
+        "external_uri": { "type": "string", "minLength": 1 },
+        "snapshot_id": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

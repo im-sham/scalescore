@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from contextlib import closing
 from functools import lru_cache
@@ -9,6 +10,39 @@ from typing import Protocol
 from scalescore.config import settings
 from scalescore.core.exceptions import DatabaseError
 from scalescore.models.scaling import ScaleScoreReport
+
+_CANONICAL_ASSESSMENT_REF_MARKERS = frozenset(
+    {
+        "contract_version",
+        "contract_name",
+        "producer_capability",
+        "producer_system",
+        "canonical_owner",
+    }
+)
+_LEGACY_ASSESSMENT_REF_FIELDS = frozenset({"workflow_id", "report_uri"})
+
+
+def _load_report(report_data: str) -> ScaleScoreReport:
+    payload = json.loads(report_data)
+    if isinstance(payload, dict):
+        assessment_ref = payload.get("assessment_ref")
+        if _should_suppress_assessment_ref(assessment_ref):
+            payload.pop("assessment_ref", None)
+    return ScaleScoreReport.model_validate(payload)
+
+
+def _should_suppress_assessment_ref(value: object) -> bool:
+    if value is None:
+        return False
+    if not isinstance(value, dict):
+        return True
+
+    ref = value.get("ref")
+    if isinstance(ref, dict) and _LEGACY_ASSESSMENT_REF_FIELDS.intersection(ref):
+        return True
+
+    return not _CANONICAL_ASSESSMENT_REF_MARKERS.intersection(value)
 
 
 class AssessmentRepository(Protocol):
@@ -114,7 +148,7 @@ class SQLiteAssessmentRepository:
         if row is None:
             return None
 
-        return ScaleScoreReport.model_validate_json(row["report_data"])
+        return _load_report(row["report_data"])
 
     def list_reports(
         self,
@@ -138,7 +172,7 @@ class SQLiteAssessmentRepository:
         except sqlite3.Error as err:
             raise DatabaseError("Failed to list assessment reports", cause=err) from err
 
-        return [ScaleScoreReport.model_validate_json(row["report_data"]) for row in rows]
+        return [_load_report(row["report_data"]) for row in rows]
 
     def list_history(
         self,
@@ -162,7 +196,7 @@ class SQLiteAssessmentRepository:
         except sqlite3.Error as err:
             raise DatabaseError("Failed to load score history", cause=err) from err
 
-        return [ScaleScoreReport.model_validate_json(row["report_data"]) for row in rows]
+        return [_load_report(row["report_data"]) for row in rows]
 
 
 @lru_cache

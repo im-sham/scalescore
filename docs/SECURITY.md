@@ -458,27 +458,32 @@ VOLUME ["/tmp"]
 
 ### Dependency Security
 
-Install through the runtime or development constraint matching both the target
-environment and Python minor. These files capture Readiness development and CI
-dependency graphs, not a production image. CI installs `pip-audit` through the
-Linux x86_64 Python 3.12 development constraints, disables its dependency
-installer, and audits every exact set:
+Install through the runtime, development, or frontend constraint matching both
+the target environment and Python minor. These files capture three separate
+Readiness application graphs, not a production image or rollback-retention
+policy. CI installs `pip-audit` through the Linux x86_64 Python 3.12
+development constraints, disables its dependency installer, and audits every
+exact set:
 
 ```bash
 python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/darwin-arm64-python3.11-runtime.txt
 python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/darwin-arm64-python3.11-dev.txt
+python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/darwin-arm64-python3.11-frontend.txt
 python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/darwin-arm64-python3.12-runtime.txt
 python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/darwin-arm64-python3.12-dev.txt
+python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/darwin-arm64-python3.12-frontend.txt
 python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/linux-x86_64-python3.11-runtime.txt
 python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/linux-x86_64-python3.11-dev.txt
+python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/linux-x86_64-python3.11-frontend.txt
 python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/linux-x86_64-python3.12-runtime.txt
 python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/linux-x86_64-python3.12-dev.txt
+python -m pip_audit --progress-spinner off --strict --no-deps --disable-pip --requirement constraints/linux-x86_64-python3.12-frontend.txt
 ```
 
 **Dependency Policy:**
 - Review all new dependencies for security and license compatibility.
 - Keep library-style lower bounds in `pyproject.toml`; reproduce accepted
-  target-specific application graphs with all eight exact constraint files.
+  target-specific application graphs with all twelve exact constraint files.
 - Run automated dependency scans on every CI run and weekly dependency updates.
 - Critical vulnerabilities must be patched within 24 hours.
 - Any advisory fails the dependency scan; do not add ignores or exceptions.

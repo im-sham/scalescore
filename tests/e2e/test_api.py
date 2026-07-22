@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import jwt
+import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
@@ -186,13 +187,14 @@ def _workflow_ref_payload() -> dict[str, object]:
         "issued_at": "2026-04-25T12:00:00Z",
         "cache_policy": "summary_snapshot",
         "ref": {
-            "ref_id": "workflow:tenant_default:wf_support_triage",
+            "ref_id": "workflow:dev-tenant:wf_support_triage",
             "ref_type": "workflow",
             "source_capability": "workflow_context",
-            "organization_id": "tenant_default",
+            "organization_id": "dev-tenant",
             "environment_id": "production",
             "external_uri": "/api/workflows/wf_support_triage",
             "snapshot_id": "snapshot-support-triage-1",
+            "version": "1.0",
             "created_at": "2026-04-25T11:55:00Z",
             "updated_at": "2026-04-25T11:59:00Z",
             "summary": "Support Triage (customer_support)",
@@ -209,7 +211,8 @@ def _workflow_ref_payload() -> dict[str, object]:
 def _control_ref_payload(
     *,
     control_key: str = "approval_gate",
-    evidence_status: str = "complete",
+    implementation_state: str = "planned",
+    linkage_state: str = "missing",
 ) -> dict[str, object]:
     return {
         "contract_version": "proofhouse-shared-contracts/v0.1",
@@ -220,29 +223,63 @@ def _control_ref_payload(
         "issued_at": "2026-04-25T12:00:30Z",
         "cache_policy": "summary_snapshot",
         "ref": {
-            "ref_id": f"control:tenant_default:wf_support_triage:{control_key}",
+            "ref_id": f"control:dev-tenant:wf_support_triage:{control_key}",
             "ref_type": "control",
             "source_capability": "workflow_context",
-            "organization_id": "tenant_default",
+            "organization_id": "dev-tenant",
             "environment_id": "production",
             "external_uri": f"/api/workflows/wf_support_triage/controls/{control_key}",
             "snapshot_id": f"snapshot-support-triage-{control_key}",
-            "version": "proofhouse-shared-contracts/v0.1",
             "created_at": "2026-04-25T11:58:00Z",
-            "updated_at": "2026-04-25T12:00:00Z",
-            "summary": f"{control_key} control for Support Triage",
+            "summary": ("Synthetic placeholder; no durable Workflow assignment record."),
             "control_assignment_id": f"assignment-{control_key}",
             "control_id": f"control-{control_key}",
             "control_key": control_key,
             "control_family": "support_triage",
-            "control_statement": "Workflow control must be implemented and evidenced.",
-            "implementation_status": "implemented",
-            "evidence_status": evidence_status,
-            "owner": "Head of Support",
             "workflow_id": "wf_support_triage",
-            "required_evidence_types": ["audit_log", "decision_record"],
+            "workflow_ref": {
+                "contract_version": "proofhouse-shared-contracts/v0.1",
+                "contract_name": "WorkflowRef",
+                "producer_capability": "workflow_context",
+                "producer_system": "proofhouse-workflow-context",
+                "canonical_owner": "workflow_context",
+                "issued_at": "2026-04-25T12:00:00Z",
+                "cache_policy": "summary_snapshot",
+                "ref": {
+                    "ref_id": "workflow:dev-tenant:wf_support_triage",
+                    "ref_type": "workflow",
+                    "source_capability": "workflow_context",
+                    "organization_id": "dev-tenant",
+                    "environment_id": "production",
+                    "external_uri": "/api/workflows/wf_support_triage",
+                    "snapshot_id": "snapshot-support-triage-1",
+                    "workflow_id": "wf_support_triage",
+                },
+            },
+            "implementation_state": implementation_state,
+            "linkage_state": linkage_state,
         },
     }
+
+
+def _legacy_control_ref_payload() -> dict[str, object]:
+    payload = _control_ref_payload()
+    ref = payload["ref"]
+    assert isinstance(ref, dict)
+    ref.pop("workflow_ref")
+    ref.pop("implementation_state")
+    ref.pop("linkage_state")
+    ref.update(
+        {
+            "updated_at": "2026-04-25T12:00:00Z",
+            "control_statement": "Historical compatibility statement.",
+            "implementation_status": "implemented",
+            "evidence_status": "complete",
+            "owner": "Historical owner",
+            "required_evidence_types": ["audit_log"],
+        }
+    )
+    return payload
 
 
 def _workflow_evidence_payload() -> dict[str, object]:
@@ -379,7 +416,7 @@ def _claims_document_operations_workflow_context_payload() -> dict[str, object]:
 
 def _mila_workflow_assessment_payload(**overrides: object) -> dict[str, object]:
     payload: dict[str, object] = {
-        "org_id": "tenant_default",
+        "org_id": "dev-tenant",
         "org_name": "Default Tenant",
         "workflow_context": _workflow_context_payload(),
         "workflow_ref": _workflow_ref_payload(),
@@ -398,6 +435,14 @@ def _mila_workflow_assessment_payload(**overrides: object) -> dict[str, object]:
     }
     payload.update(overrides)
     return payload
+
+
+def _mila_workflow_assessment_payload_for_org(org_id: str) -> dict[str, object]:
+    workflow_ref = _workflow_ref_payload()
+    ref = workflow_ref["ref"]
+    assert isinstance(ref, dict)
+    ref["organization_id"] = org_id
+    return _mila_workflow_assessment_payload(org_id=org_id, workflow_ref=workflow_ref)
 
 
 def _issue_opsorchestra_token(
@@ -506,7 +551,7 @@ def test_create_workflow_assessment(tmp_path: Path) -> None:
     assert payload["top_trust_gaps"]
 
 
-def test_create_mila_workflow_assessment_direct() -> None:
+def test_create_mila_workflow_assessment_legacy_endpoint_returns_full_report() -> None:
     response = client.post(
         "/api/v1/assessments/mila/workflow",
         json=_mila_workflow_assessment_payload(),
@@ -516,7 +561,7 @@ def test_create_mila_workflow_assessment_direct() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["assessment_mode"] == "workflow"
-    assert payload["org_id"] == "tenant_default"
+    assert payload["org_id"] == "dev-tenant"
     assert payload["org_name"] == "Default Tenant"
     assert payload["workflow_context"]["workflow_id"] == "wf_support_triage"
     assert payload["workflow_ref"]["contract_name"] == "WorkflowRef"
@@ -524,15 +569,41 @@ def test_create_mila_workflow_assessment_direct() -> None:
     assert payload["assessment_ref"]["contract_name"] == "AssessmentRef"
     assert payload["assessment_ref"]["producer_capability"] == "readiness"
     assert payload["assessment_ref"]["ref"]["assessment_id"] == payload["report_id"]
-    assert payload["assessment_ref"]["ref"]["workflow_id"] == "wf_support_triage"
-    assert (
-        payload["assessment_ref"]["ref"]["workflow_ref"]["ref"]["workflow_id"]
-        == "wf_support_triage"
+    assessment_summary = payload["assessment_ref"]["ref"]
+    assert assessment_summary["external_uri"] == f"/api/v1/assessments/{payload['report_id']}"
+    assert assessment_summary["workflow_ref"]["ref"]["ref_id"] == (
+        "workflow:dev-tenant:wf_support_triage"
     )
-    assert payload["assessment_ref"]["ref"]["score"] == payload["workflow_readiness_score"]
-    assert payload["assessment_ref"]["ref"]["report_uri"] == (
-        f"/api/v1/assessments/{payload['report_id']}"
-    )
+    assert set(assessment_summary) == {
+        "ref_id",
+        "ref_type",
+        "source_capability",
+        "organization_id",
+        "environment_id",
+        "external_uri",
+        "snapshot_id",
+        "version",
+        "created_at",
+        "summary",
+        "assessment_id",
+        "workflow_ref",
+        "assessment_type",
+        "score",
+        "grade",
+        "status",
+        "top_blockers",
+        "top_reasons",
+    }
+    assert set(assessment_summary["workflow_ref"]["ref"]) == {
+        "ref_id",
+        "ref_type",
+        "source_capability",
+        "organization_id",
+        "environment_id",
+        "external_uri",
+        "snapshot_id",
+        "version",
+    }
     assert payload["workflow_readiness_score"] is not None
     assert payload["overall_score"] == payload["workflow_readiness_score"]
     assert payload["operational_learning_suitability"] is not None
@@ -569,37 +640,307 @@ def test_create_mila_workflow_assessment_direct() -> None:
     assert stored_payload["assessment_ref"]["ref"]["assessment_id"] == payload["report_id"]
 
 
-def test_create_mila_workflow_assessment_accepts_control_refs_as_fallback_evidence() -> None:
+def test_create_mila_workflow_assessment_ref_returns_exact_compact_envelope() -> None:
+    response = client.post(
+        "/api/v1/assessments/mila/workflow/assessment-ref",
+        json=_mila_workflow_assessment_payload_for_org("dev-tenant"),
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert set(payload) == {
+        "contract_version",
+        "contract_name",
+        "producer_capability",
+        "producer_system",
+        "canonical_owner",
+        "issued_at",
+        "cache_policy",
+        "ref",
+    }
+    assert set(payload["ref"]) == {
+        "ref_id",
+        "ref_type",
+        "source_capability",
+        "organization_id",
+        "environment_id",
+        "external_uri",
+        "snapshot_id",
+        "version",
+        "created_at",
+        "summary",
+        "assessment_id",
+        "workflow_ref",
+        "assessment_type",
+        "score",
+        "grade",
+        "status",
+        "top_blockers",
+        "top_reasons",
+    }
+    assert set(payload["ref"]["workflow_ref"]) == {
+        "contract_version",
+        "contract_name",
+        "producer_capability",
+        "producer_system",
+        "canonical_owner",
+        "issued_at",
+        "cache_policy",
+        "ref",
+    }
+    assert set(payload["ref"]["workflow_ref"]["ref"]) == {
+        "ref_id",
+        "ref_type",
+        "source_capability",
+        "organization_id",
+        "environment_id",
+        "external_uri",
+        "snapshot_id",
+        "version",
+    }
+    prohibited_fields = {
+        "report_id",
+        "assessment_mode",
+        "workflow_context",
+        "workflow_pillar_scores",
+        "top_trust_gaps",
+        "prioritized_remediation_actions",
+        "operational_learning_suitability",
+        "source_findings",
+        "notes",
+    }
+    assert prohibited_fields.isdisjoint(payload)
+    assert prohibited_fields.isdisjoint(payload["ref"])
+
+
+@pytest.mark.parametrize("workflow_ref_value", ["missing", "null"])
+def test_create_mila_workflow_assessment_ref_requires_workflow_ref_before_persistence(
+    workflow_ref_value: str,
+) -> None:
+    headers = _signup_and_auth_headers()
+    before_response = client.get("/api/v1/assessments", headers=headers)
+    assert before_response.status_code == 200
+    before_count = len(before_response.json())
+    request_payload = _mila_workflow_assessment_payload()
+    if workflow_ref_value == "missing":
+        request_payload.pop("workflow_ref")
+    else:
+        request_payload["workflow_ref"] = None
+
+    response = client.post(
+        "/api/v1/assessments/mila/workflow/assessment-ref",
+        json=request_payload,
+        headers=headers,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "WORKFLOW_REF_REQUIRED"
+    after_response = client.get("/api/v1/assessments", headers=headers)
+    assert after_response.status_code == 200
+    assert len(after_response.json()) == before_count
+
+
+@pytest.mark.parametrize(
+    ("invalid_case", "expected_status"),
+    [
+        ("noncanonical_cache_policy", 422),
+        ("missing_canonical_owner", 422),
+        ("malformed_issued_at", 422),
+        ("timezone_less_issued_at", 422),
+        ("malformed_created_at", 422),
+        ("timezone_less_updated_at", 422),
+        ("missing_external_uri", 422),
+        ("empty_external_uri", 422),
+        ("missing_snapshot_id", 422),
+        ("missing_environment_id", 422),
+        ("empty_environment_id", 422),
+        ("missing_version", 422),
+        ("unknown_envelope_property", 422),
+        ("unknown_nested_ref_property", 422),
+        ("unknown_top_level_request_property", 422),
+        ("payload_ref_organization_mismatch", 422),
+        ("authenticated_tenant_mismatch", 403),
+    ],
+)
+def test_create_mila_workflow_assessment_ref_rejects_noncanonical_input_without_side_effects(
+    invalid_case: str,
+    expected_status: int,
+    monkeypatch,
+) -> None:
+    tenant_id = f"tenant-compact-{uuid4().hex[:8]}"
+    headers = _signup_and_auth_headers(tenant_id=tenant_id)
+    request_payload = _mila_workflow_assessment_payload_for_org(tenant_id)
+    workflow_ref = request_payload["workflow_ref"]
+    assert isinstance(workflow_ref, dict)
+    ref = workflow_ref["ref"]
+    assert isinstance(ref, dict)
+
+    if invalid_case == "noncanonical_cache_policy":
+        workflow_ref["cache_policy"] = "ref_only"
+    elif invalid_case == "missing_canonical_owner":
+        workflow_ref.pop("canonical_owner")
+    elif invalid_case == "malformed_issued_at":
+        workflow_ref["issued_at"] = "not-a-timestamp"
+    elif invalid_case == "timezone_less_issued_at":
+        workflow_ref["issued_at"] = "2026-07-18T07:17:27"
+    elif invalid_case == "malformed_created_at":
+        ref["created_at"] = "not-a-timestamp"
+    elif invalid_case == "timezone_less_updated_at":
+        ref["updated_at"] = "2026-07-18T07:17:27"
+    elif invalid_case == "missing_external_uri":
+        ref.pop("external_uri")
+    elif invalid_case == "empty_external_uri":
+        ref["external_uri"] = ""
+    elif invalid_case == "missing_environment_id":
+        ref.pop("environment_id")
+    elif invalid_case == "empty_environment_id":
+        ref["environment_id"] = ""
+    elif invalid_case == "missing_snapshot_id":
+        ref.pop("snapshot_id")
+    elif invalid_case == "missing_version":
+        ref.pop("version")
+    elif invalid_case == "unknown_envelope_property":
+        workflow_ref["unexpected"] = "rejected"
+    elif invalid_case == "unknown_nested_ref_property":
+        ref["unexpected"] = "rejected"
+    elif invalid_case == "unknown_top_level_request_property":
+        request_payload["unexpected"] = "rejected"
+    elif invalid_case == "payload_ref_organization_mismatch":
+        ref["organization_id"] = f"{tenant_id}-other"
+    elif invalid_case == "authenticated_tenant_mismatch":
+        request_payload = _mila_workflow_assessment_payload_for_org(f"{tenant_id}-other")
+    else:
+        raise AssertionError(f"Unhandled invalid case: {invalid_case}")
+
+    scoring_calls = 0
+    audit_calls = 0
+
+    def fail_scoring(**kwargs):
+        nonlocal scoring_calls
+        del kwargs
+        scoring_calls += 1
+        pytest.fail("invalid compact request reached scoring")
+
+    def fail_audit(**kwargs):
+        nonlocal audit_calls
+        del kwargs
+        audit_calls += 1
+        pytest.fail("invalid compact request reached audit")
+
+    monkeypatch.setattr(api_main, "run_workflow_assessment", fail_scoring)
+    monkeypatch.setattr(api_main, "audit_assessment_created", fail_audit)
+    before_response = client.get("/api/v1/assessments", headers=headers)
+    assert before_response.status_code == 200
+    before_count = len(before_response.json())
+
+    response = client.post(
+        "/api/v1/assessments/mila/workflow/assessment-ref",
+        json=request_payload,
+        headers=headers,
+    )
+
+    assert response.status_code == expected_status
+    assert scoring_calls == 0
+    assert audit_calls == 0
+    after_response = client.get("/api/v1/assessments", headers=headers)
+    assert after_response.status_code == 200
+    assert len(after_response.json()) == before_count
+
+
+def test_create_mila_workflow_assessment_ref_persists_tenant_scoped_full_report() -> None:
+    tenant_a_id = f"tenant-a-{uuid4().hex[:8]}"
+    tenant_b_id = f"tenant-b-{uuid4().hex[:8]}"
+    tenant_a_headers = _signup_and_auth_headers(tenant_id=tenant_a_id)
+    tenant_b_headers = _signup_and_auth_headers(tenant_id=tenant_b_id)
+
+    create_response = client.post(
+        "/api/v1/assessments/mila/workflow/assessment-ref",
+        json=_mila_workflow_assessment_payload_for_org(tenant_a_id),
+        headers=tenant_a_headers,
+    )
+
+    assert create_response.status_code == 200
+    assessment_ref = create_response.json()
+    assessment_id = assessment_ref["ref"]["assessment_id"]
+    owner_response = client.get(
+        f"/api/v1/assessments/{assessment_id}",
+        headers=tenant_a_headers,
+    )
+    cross_tenant_response = client.get(
+        f"/api/v1/assessments/{assessment_id}",
+        headers=tenant_b_headers,
+    )
+
+    assert owner_response.status_code == 200
+    stored_report = owner_response.json()
+    assert stored_report["report_id"] == assessment_id
+    assert stored_report["assessment_ref"] == assessment_ref
+    assert stored_report["workflow_pillar_scores"]
+    assert stored_report["operational_learning_suitability"] is not None
+    assert cross_tenant_response.status_code == 404
+    assert cross_tenant_response.json()["error"]["code"] == "SCALE_2000"
+
+
+def test_assessment_dereference_isolated_by_authenticated_tenant() -> None:
+    tenant_a_id = f"tenant-a-{uuid4().hex[:8]}"
+    tenant_a_headers = _signup_and_auth_headers(tenant_id=tenant_a_id)
+    tenant_b_headers = _signup_and_auth_headers(tenant_id=f"tenant-b-{uuid4().hex[:8]}")
+    create_response = client.post(
+        "/api/v1/assessments/mila/workflow",
+        json=_mila_workflow_assessment_payload_for_org(tenant_a_id),
+        headers=tenant_a_headers,
+    )
+    assert create_response.status_code == 200
+    assessment_id = create_response.json()["report_id"]
+
+    owner_response = client.get(
+        f"/api/v1/assessments/{assessment_id}",
+        headers=tenant_a_headers,
+    )
+    cross_tenant_response = client.get(
+        f"/api/v1/assessments/{assessment_id}",
+        headers=tenant_b_headers,
+    )
+
+    assert owner_response.status_code == 200
+    assert cross_tenant_response.status_code == 404
+    assert cross_tenant_response.json()["error"]["code"] == "SCALE_2000"
+
+
+def test_create_mila_workflow_assessment_preserves_diagnostic_control_refs() -> None:
+    control_refs = [
+        _control_ref_payload(control_key="approval_gate"),
+        _control_ref_payload(control_key="decision_logging"),
+        _control_ref_payload(control_key="evidence_retention"),
+        _control_ref_payload(control_key="exception_handling"),
+        _control_ref_payload(control_key="periodic_review"),
+    ]
     response = client.post(
         "/api/v1/assessments/mila/workflow",
         json=_mila_workflow_assessment_payload(
             workflow_evidence=None,
-            control_refs=[
-                _control_ref_payload(control_key="approval_gate"),
-                _control_ref_payload(control_key="decision_logging"),
-                _control_ref_payload(control_key="evidence_retention"),
-                _control_ref_payload(control_key="exception_handling"),
-                _control_ref_payload(control_key="periodic_review"),
-            ],
+            control_refs=control_refs,
         ),
         headers=_auth_headers(),
     )
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["control_refs"][0]["contract_name"] == "ControlRef"
-    assert payload["control_refs"][0]["ref"]["control_key"] == "approval_gate"
+    assert payload["control_refs"] == control_refs
+    assert "version" not in payload["control_refs"][0]["ref"]
+    assert "version" not in payload["control_refs"][0]["ref"]["workflow_ref"]["ref"]
     control_pillar = next(
         pillar
         for pillar in payload["workflow_pillar_scores"]
         if pillar["pillar"] == "control_and_evidence_readiness"
     )
-    assert any(
+    assert not any(
         "verified by source evidence" in strength for strength in control_pillar["strengths"]
     )
     assert (
         "Source evidence coverage for mapped workflow controls is high."
-        in control_pillar["rationale"]
+        not in control_pillar["rationale"]
     )
 
     get_response = client.get(
@@ -607,14 +948,120 @@ def test_create_mila_workflow_assessment_accepts_control_refs_as_fallback_eviden
         headers=_auth_headers(),
     )
     assert get_response.status_code == 200
-    stored_payload = get_response.json()
-    assert stored_payload["control_refs"][0]["ref"]["control_key"] == "approval_gate"
+    assert get_response.json()["control_refs"] == control_refs
+
+
+def test_exact_legacy_control_ref_remains_exact_through_api_readback() -> None:
+    legacy_control_ref = _legacy_control_ref_payload()
+    response = client.post(
+        "/api/v1/assessments/mila/workflow",
+        json=_mila_workflow_assessment_payload(
+            workflow_evidence=None,
+            control_refs=[legacy_control_ref],
+        ),
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["control_refs"] == [legacy_control_ref]
+    assert "implementation_state" not in payload["control_refs"][0]["ref"]
+    assert "workflow_ref" not in payload["control_refs"][0]["ref"]
+
+    get_response = client.get(
+        f"/api/v1/assessments/{payload['report_id']}",
+        headers=_auth_headers(),
+    )
+    assert get_response.status_code == 200
+    assert get_response.json()["control_refs"] == [legacy_control_ref]
+
+
+def test_control_ref_tenant_mismatch_fails_before_persistence() -> None:
+    headers = _signup_and_auth_headers()
+    before = client.get("/api/v1/assessments", headers=headers)
+    control_ref = _control_ref_payload()
+    ref = control_ref["ref"]
+    assert isinstance(ref, dict)
+    ref["organization_id"] = "tenant_other"
+    owning_envelope = ref["workflow_ref"]
+    assert isinstance(owning_envelope, dict)
+    owning_ref = owning_envelope["ref"]
+    assert isinstance(owning_ref, dict)
+    owning_ref["organization_id"] = "tenant_other"
+
+    response = client.post(
+        "/api/v1/assessments/mila/workflow",
+        json=_mila_workflow_assessment_payload(control_refs=[control_ref]),
+        headers=headers,
+    )
+    after = client.get("/api/v1/assessments", headers=headers)
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "TENANT_SCOPE_MISMATCH"
+    assert len(after.json()) == len(before.json())
+
+
+def test_control_ref_workflow_mismatch_fails_before_scoring() -> None:
+    control_ref = _control_ref_payload()
+    ref = control_ref["ref"]
+    assert isinstance(ref, dict)
+    ref["workflow_id"] = "wf_other"
+    owning_envelope = ref["workflow_ref"]
+    assert isinstance(owning_envelope, dict)
+    owning_ref = owning_envelope["ref"]
+    assert isinstance(owning_ref, dict)
+    owning_ref["workflow_id"] = "wf_other"
+
+    response = client.post(
+        "/api/v1/assessments/mila/workflow",
+        json=_mila_workflow_assessment_payload(control_refs=[control_ref]),
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "CONTROL_WORKFLOW_MISMATCH"
+
+
+def test_control_ref_environment_mismatch_fails_before_scoring() -> None:
+    control_ref = _control_ref_payload()
+    ref = control_ref["ref"]
+    assert isinstance(ref, dict)
+    ref["environment_id"] = "staging"
+    owning_envelope = ref["workflow_ref"]
+    assert isinstance(owning_envelope, dict)
+    owning_ref = owning_envelope["ref"]
+    assert isinstance(owning_ref, dict)
+    owning_ref["environment_id"] = "staging"
+
+    response = client.post(
+        "/api/v1/assessments/mila/workflow",
+        json=_mila_workflow_assessment_payload(control_refs=[control_ref]),
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "CONTROL_ENVIRONMENT_MISMATCH"
+
+
+def test_control_ref_explicit_null_pin_is_rejected_at_request_boundary() -> None:
+    control_ref = _control_ref_payload()
+    ref = control_ref["ref"]
+    assert isinstance(ref, dict)
+    ref["version"] = None
+
+    response = client.post(
+        "/api/v1/assessments/mila/workflow",
+        json=_mila_workflow_assessment_payload(control_refs=[control_ref]),
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 422
 
 
 def test_create_mila_workflow_assessment_rejects_source_findings_raw_payload_before_persistence() -> (
     None
 ):
-    headers = _signup_and_auth_headers()
+    headers = _auth_headers()
     before_response = client.get("/api/v1/assessments", headers=headers)
     assert before_response.status_code == 200
     before_count = len(before_response.json())
@@ -635,7 +1082,7 @@ def test_create_mila_workflow_assessment_rejects_source_findings_raw_payload_bef
 
 
 def test_create_mila_workflow_assessment_rejects_notes_raw_payload_before_persistence() -> None:
-    headers = _signup_and_auth_headers()
+    headers = _auth_headers()
     before_response = client.get("/api/v1/assessments", headers=headers)
     assert before_response.status_code == 200
     before_count = len(before_response.json())
@@ -658,7 +1105,7 @@ def test_create_mila_workflow_assessment_rejects_notes_raw_payload_before_persis
 def test_create_mila_workflow_assessment_rejects_document_operations_profile_raw_fields_before_persistence() -> (
     None
 ):
-    headers = _signup_and_auth_headers()
+    headers = _auth_headers()
     before_response = client.get("/api/v1/assessments", headers=headers)
     assert before_response.status_code == 200
     before_count = len(before_response.json())
@@ -692,6 +1139,7 @@ def test_create_mila_workflow_assessment_rejects_document_operations_profile_raw
             "/api/v1/assessments/mila/workflow",
             json=_mila_workflow_assessment_payload(
                 workflow_context=_claims_document_operations_workflow_context_payload(),
+                workflow_ref=None,
                 document_operations_profile=document_operations_profile,
             ),
             headers=headers,
@@ -708,7 +1156,7 @@ def test_create_mila_workflow_assessment_rejects_document_operations_profile_raw
 
 
 def test_mila_workflow_pdf_export_remains_summary_only_after_guarded_rejection() -> None:
-    headers = _signup_and_auth_headers()
+    headers = _auth_headers()
     rejected_source_text = "REJECTED_RAW_SOURCE_SENTINEL"
     rejected_note_text = "REJECTED_RAW_NOTE_SENTINEL"
 
@@ -752,7 +1200,7 @@ def test_create_mila_workflow_assessment_accepts_document_operations_profile() -
     response = client.post(
         "/api/v1/assessments/mila/workflow",
         json={
-            "org_id": "tenant_default",
+            "org_id": "dev-tenant",
             "org_name": "Default Tenant",
             "workflow_context": {
                 "workflow_id": "document_ops_regulated_review_v0",
@@ -780,7 +1228,7 @@ def test_create_mila_workflow_assessment_accepts_document_operations_profile() -
                 **_workflow_ref_payload(),
                 "ref": {
                     **_workflow_ref_payload()["ref"],
-                    "ref_id": "workflow:tenant_default:document_ops_regulated_review_v0",
+                    "ref_id": "workflow:dev-tenant:document_ops_regulated_review_v0",
                     "workflow_id": "document_ops_regulated_review_v0",
                     "title": "Claims and Benefits Packet Review",
                     "subject_type": "document_packet",
@@ -803,10 +1251,10 @@ def test_create_mila_workflow_assessment_accepts_document_operations_profile() -
     assert payload["workflow_readiness_score"] is not None
     assert len(payload["workflow_pillar_scores"]) == 5
     assert payload["assessment_ref"]["contract_version"] == "proofhouse-shared-contracts/v0.1"
-    assert payload["assessment_ref"]["ref"]["workflow_id"] == "document_ops_regulated_review_v0"
-    assert (
-        payload["assessment_ref"]["ref"]["workflow_ref"]["ref"]["subject_type"] == "document_packet"
+    assert payload["assessment_ref"]["ref"]["workflow_ref"]["ref"]["ref_id"] == (
+        "workflow:dev-tenant:document_ops_regulated_review_v0"
     )
+    assert payload["workflow_ref"]["ref"]["subject_type"] == "document_packet"
     assert payload["operational_learning_suitability"]["status"] == "training_candidate"
     assert payload["claims_suitability"] is None
     assert any("document_ops_regulated_review_v0" in finding for finding in payload["key_findings"])
@@ -821,7 +1269,7 @@ def test_create_mila_workflow_assessment_accepts_claims_profile_through_document
     response = client.post(
         "/api/v1/assessments/mila/workflow",
         json={
-            "org_id": "tenant_default",
+            "org_id": "dev-tenant",
             "org_name": "Default Tenant",
             "workflow_context": {
                 "workflow_id": "document_ops_regulated_review_v0",
@@ -880,7 +1328,7 @@ def test_blocked_claims_profile_survives_mila_retrieval_and_pdf_export() -> None
     create_response = client.post(
         "/api/v1/assessments/mila/workflow",
         json={
-            "org_id": "tenant_default",
+            "org_id": "dev-tenant",
             "org_name": "Default Tenant",
             "workflow_context": _claims_document_operations_workflow_context_payload(),
             "document_operations_profile": document_operations_profile,
@@ -931,7 +1379,7 @@ def test_weak_claims_profile_survives_mila_retrieval_and_pdf_export() -> None:
     create_response = client.post(
         "/api/v1/assessments/mila/workflow",
         json={
-            "org_id": "tenant_default",
+            "org_id": "dev-tenant",
             "org_name": "Default Tenant",
             "workflow_context": _claims_document_operations_workflow_context_payload(),
             "document_operations_profile": document_operations_profile,

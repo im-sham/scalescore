@@ -36,16 +36,15 @@ dependencies = [
     "fastapi>=0.100.0",
     "uvicorn>=0.23.0",
     "httpx>=0.24.0",
+    "jsonschema>=4.0.0",
+    "rfc3339-validator>=0.1.4",
     "networkx>=3.0",
     "pandas>=2.0.0",
-    "streamlit>=1.28.0",
-    "plotly>=5.18.0",
     "structlog>=24.0.0",
     "PyJWT>=2.8.0",
     "cryptography>=46.0.5",
-    "pillow>=12.1.1",
-    "protobuf>=6.33.5",
     "reportlab>=4.4.0",
+    "pillow>=12.1.1",
     "python-multipart>=0.0.6",
     "redis>=5.0",
 ]
@@ -59,6 +58,13 @@ dev = [
     "mypy>=1.0.0",
     "pip-tools>=7.5.3",
     "pip-audit>=2.10.1",
+]
+
+frontend = [
+    "plotly>=5.18.0",
+    "protobuf>=6.33.5",
+    "requests>=2.31.0",
+    "streamlit>=1.28.0",
 ]
 
 # The Workflow Context integration is HTTP/JWT based. Keep this extra empty so

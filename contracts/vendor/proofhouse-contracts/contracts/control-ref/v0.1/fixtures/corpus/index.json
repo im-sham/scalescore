@@ -1,0 +1,246 @@
+{
+  "cases": [
+    {
+      "coverage": "canonical synthetic diagnostic reference",
+      "expected_valid": true,
+      "file": "valid-canonical-synthetic.json",
+      "name": "valid-canonical-synthetic"
+    },
+    {
+      "coverage": "immutable control version pin",
+      "expected_valid": true,
+      "file": "valid-control-version-pin-only.json",
+      "name": "valid-control-version-pin-only"
+    },
+    {
+      "coverage": "immutable control snapshot pin",
+      "expected_valid": true,
+      "file": "valid-control-snapshot-pin-only.json",
+      "name": "valid-control-snapshot-pin-only"
+    },
+    {
+      "coverage": "immutable owning workflow version pin",
+      "expected_valid": true,
+      "file": "valid-workflow-version-pin-only.json",
+      "name": "valid-workflow-version-pin-only"
+    },
+    {
+      "coverage": "planned diagnostic implementation state",
+      "expected_valid": true,
+      "file": "valid-implementation-planned.json",
+      "name": "valid-implementation-planned"
+    },
+    {
+      "coverage": "in-progress diagnostic implementation state",
+      "expected_valid": true,
+      "file": "valid-implementation-in-progress.json",
+      "name": "valid-implementation-in-progress"
+    },
+    {
+      "coverage": "implemented diagnostic implementation state",
+      "expected_valid": true,
+      "file": "valid-implementation-implemented.json",
+      "name": "valid-implementation-implemented"
+    },
+    {
+      "coverage": "waived diagnostic implementation state",
+      "expected_valid": true,
+      "file": "valid-implementation-waived.json",
+      "name": "valid-implementation-waived"
+    },
+    {
+      "coverage": "missing diagnostic linkage state",
+      "expected_valid": true,
+      "file": "valid-linkage-missing.json",
+      "name": "valid-linkage-missing"
+    },
+    {
+      "coverage": "linked diagnostic linkage state",
+      "expected_valid": true,
+      "file": "valid-linkage-linked.json",
+      "name": "valid-linkage-linked"
+    },
+    {
+      "coverage": "verified diagnostic linkage state",
+      "expected_valid": true,
+      "file": "valid-linkage-verified.json",
+      "name": "valid-linkage-verified"
+    },
+    {
+      "coverage": "not-applicable diagnostic linkage state",
+      "expected_valid": true,
+      "file": "valid-linkage-not-applicable.json",
+      "name": "valid-linkage-not-applicable"
+    },
+    {
+      "coverage": "Workflow Context sole producer",
+      "expected_valid": false,
+      "file": "invalid-readiness-producer.json",
+      "name": "invalid-readiness-producer"
+    },
+    {
+      "coverage": "Governance is never a producer",
+      "expected_valid": false,
+      "file": "invalid-governance-producer.json",
+      "name": "invalid-governance-producer"
+    },
+    {
+      "coverage": "Workflow Context semantic owner",
+      "expected_valid": false,
+      "file": "invalid-governance-owner.json",
+      "name": "invalid-governance-owner"
+    },
+    {
+      "coverage": "summary snapshot cache policy only",
+      "expected_valid": false,
+      "file": "invalid-cache-policy.json",
+      "name": "invalid-cache-policy"
+    },
+    {
+      "coverage": "exact diagnostic implementation states",
+      "expected_valid": false,
+      "file": "invalid-arbitrary-implementation-state.json",
+      "name": "invalid-arbitrary-implementation-state"
+    },
+    {
+      "coverage": "exact diagnostic linkage states",
+      "expected_valid": false,
+      "file": "invalid-arbitrary-linkage-state.json",
+      "name": "invalid-arbitrary-linkage-state"
+    },
+    {
+      "coverage": "control snapshot or version pin required",
+      "expected_valid": false,
+      "file": "invalid-missing-control-immutable-identity.json",
+      "name": "invalid-missing-control-immutable-identity"
+    },
+    {
+      "coverage": "owning WorkflowRef snapshot or version pin required",
+      "expected_valid": false,
+      "file": "invalid-missing-workflow-immutable-identity.json",
+      "name": "invalid-missing-workflow-immutable-identity"
+    },
+    {
+      "coverage": "owning workflow tenant alignment",
+      "expected_valid": false,
+      "file": "invalid-workflow-tenant-mismatch.json",
+      "name": "invalid-workflow-tenant-mismatch"
+    },
+    {
+      "coverage": "owning workflow environment alignment",
+      "expected_valid": false,
+      "file": "invalid-workflow-environment-mismatch.json",
+      "name": "invalid-workflow-environment-mismatch"
+    },
+    {
+      "coverage": "owning workflow identity alignment",
+      "expected_valid": false,
+      "file": "invalid-workflow-id-mismatch.json",
+      "name": "invalid-workflow-id-mismatch"
+    },
+    {
+      "coverage": "full control statement prohibited",
+      "expected_valid": false,
+      "file": "invalid-full-control-statement.json",
+      "name": "invalid-full-control-statement"
+    },
+    {
+      "coverage": "raw source payload prohibited",
+      "expected_valid": false,
+      "file": "invalid-raw-source-payload.json",
+      "name": "invalid-raw-source-payload"
+    },
+    {
+      "coverage": "source payload prohibited",
+      "expected_valid": false,
+      "file": "invalid-source-payload.json",
+      "name": "invalid-source-payload"
+    },
+    {
+      "coverage": "customer payload prohibited",
+      "expected_valid": false,
+      "file": "invalid-customer-payload.json",
+      "name": "invalid-customer-payload"
+    },
+    {
+      "coverage": "customer data prohibited",
+      "expected_valid": false,
+      "file": "invalid-customer-data.json",
+      "name": "invalid-customer-data"
+    },
+    {
+      "coverage": "canonical Workflow Context control truth prohibited",
+      "expected_valid": false,
+      "file": "invalid-canonical-control-truth.json",
+      "name": "invalid-canonical-control-truth"
+    },
+    {
+      "coverage": "policy authority truth prohibited",
+      "expected_valid": false,
+      "file": "invalid-policy-decision-truth.json",
+      "name": "invalid-policy-decision-truth"
+    },
+    {
+      "coverage": "use approval truth prohibited",
+      "expected_valid": false,
+      "file": "invalid-use-approval-truth.json",
+      "name": "invalid-use-approval-truth"
+    },
+    {
+      "coverage": "credentials prohibited",
+      "expected_valid": false,
+      "file": "invalid-credentials.json",
+      "name": "invalid-credentials"
+    },
+    {
+      "coverage": "closed envelope",
+      "expected_valid": false,
+      "file": "invalid-extra-envelope-field.json",
+      "name": "invalid-extra-envelope-field"
+    },
+    {
+      "coverage": "closed reference metadata",
+      "expected_valid": false,
+      "file": "invalid-extra-ref-field.json",
+      "name": "invalid-extra-ref-field"
+    },
+    {
+      "coverage": "bounded control identity syntax",
+      "expected_valid": false,
+      "file": "invalid-malformed-ref-id.json",
+      "name": "invalid-malformed-ref-id"
+    },
+    {
+      "coverage": "bounded tenant identity syntax",
+      "expected_valid": false,
+      "file": "invalid-malformed-organization-id.json",
+      "name": "invalid-malformed-organization-id"
+    },
+    {
+      "coverage": "RFC 3339 envelope timestamp",
+      "expected_valid": false,
+      "file": "invalid-malformed-issued-at.json",
+      "name": "invalid-malformed-issued-at"
+    },
+    {
+      "coverage": "RFC 3339 reference timestamp",
+      "expected_valid": false,
+      "file": "invalid-malformed-created-at.json",
+      "name": "invalid-malformed-created-at"
+    },
+    {
+      "coverage": "bounded WorkflowRef identity syntax",
+      "expected_valid": false,
+      "file": "invalid-malformed-workflow-ref-id.json",
+      "name": "invalid-malformed-workflow-ref-id"
+    },
+    {
+      "coverage": "family-specific envelope required",
+      "expected_valid": false,
+      "file": "invalid-generic-envelope.json",
+      "name": "invalid-generic-envelope"
+    }
+  ],
+  "fixture_notice": "All values are synthetic and test-only. References and diagnostic states are not canonical control detail, findings, approvals, authority, or permission to act.",
+  "format_version": 1
+}

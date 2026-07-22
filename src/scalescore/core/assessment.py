@@ -3,6 +3,20 @@ from pathlib import Path
 from uuid import uuid4
 
 from scalescore.connectors.csv_connector import CSVConnector
+from scalescore.contracts.assessment_ref import (
+    AssessmentRef,
+    AssessmentRefEnvelope,
+)
+from scalescore.contracts.assessment_ref import (
+    WorkflowRefEnvelope as ContractWorkflowRefEnvelope,
+)
+from scalescore.contracts.assessment_ref import (
+    WorkflowRefMetadata as ContractWorkflowRefMetadata,
+)
+from scalescore.contracts.control_ref_consumer import (
+    CanonicalControlRefEnvelope,
+    ControlRefEnvelope,
+)
 from scalescore.core.document_operations import derive_document_operations_readiness_inputs
 from scalescore.core.exceptions import (
     MultipleOrganizationsError,
@@ -17,10 +31,7 @@ from scalescore.core.workflow_readiness import (
 from scalescore.models.core import Facility, Organization, System, Team, Vendor
 from scalescore.models.scaling import (
     AssessmentMode,
-    AssessmentRef,
-    AssessmentRefEnvelope,
     CapacityConstraint,
-    ControlRefEnvelope,
     DocumentOperationsReadinessProfile,
     FunctionalArea,
     OperationalLearningInputs,
@@ -255,26 +266,33 @@ def _workflow_evidence_from_control_refs(
     control_refs: list[ControlRefEnvelope],
 ) -> WorkflowEvidenceInput:
     coverage_values: dict[str, WorkflowControlStatus] = {}
-    complete_evidence_count = 0
+    verified_linkage_count = 0
+    linked_control_count = 0
     for envelope in control_refs:
         ref = envelope.ref
         field_name = _control_coverage_field(ref.control_key)
         if field_name is not None and field_name not in coverage_values:
             coverage_values[field_name] = _control_status_from_ref(envelope)
-        if _control_ref_has_complete_evidence(envelope):
-            complete_evidence_count += 1
+        if isinstance(envelope, CanonicalControlRefEnvelope):
+            if envelope.ref.linkage_state in {"linked", "verified"}:
+                linked_control_count += 1
+            if envelope.ref.linkage_state == "verified":
+                verified_linkage_count += 1
 
-    coverage_percent = round((complete_evidence_count / len(control_refs)) * 100.0, 1)
+    coverage_percent = round(
+        (verified_linkage_count / len(control_refs)) * 100.0,
+        1,
+    )
     return WorkflowEvidenceInput(
         control_coverage=WorkflowControlCoverageInput(**coverage_values),
         evidence_posture=WorkflowEvidencePostureInput(
             control_evidence_coverage_percent=coverage_percent,
-            audit_trail_complete=complete_evidence_count == len(control_refs),
-            linked_artifacts=True,
+            audit_trail_complete=False,
+            linked_artifacts=linked_control_count > 0,
         ),
-        owner_confirmed=any(envelope.ref.owner for envelope in control_refs),
-        approval_evidence_count=complete_evidence_count,
-        decision_log_count=complete_evidence_count,
+        owner_confirmed=False,
+        approval_evidence_count=0,
+        decision_log_count=0,
     )
 
 
@@ -294,25 +312,17 @@ def _control_coverage_field(control_key: str) -> str | None:
 
 
 def _control_status_from_ref(envelope: ControlRefEnvelope) -> WorkflowControlStatus:
-    implementation = envelope.ref.implementation_status.lower().replace("-", "_")
-    if _control_ref_has_complete_evidence(envelope):
-        return WorkflowControlStatus.VERIFIED
-    if implementation in {"implemented", "operating", "active"}:
+    if not isinstance(envelope, CanonicalControlRefEnvelope):
+        return WorkflowControlStatus.MISSING
+
+    implementation = envelope.ref.implementation_state
+    if implementation == "implemented":
+        if envelope.ref.linkage_state == "verified":
+            return WorkflowControlStatus.VERIFIED
         return WorkflowControlStatus.OPERATING
-    if implementation in {"documented", "planned"}:
+    if implementation == "in_progress":
         return WorkflowControlStatus.DOCUMENTED
     return WorkflowControlStatus.MISSING
-
-
-def _control_ref_has_complete_evidence(envelope: ControlRefEnvelope) -> bool:
-    evidence = envelope.ref.evidence_status.lower().replace("-", "_")
-    implementation = envelope.ref.implementation_status.lower().replace("-", "_")
-    return evidence in {"complete", "verified", "reviewed", "current"} and implementation in {
-        "implemented",
-        "operating",
-        "active",
-        "verified",
-    }
 
 
 def apply_assessment_ref(
@@ -320,11 +330,10 @@ def apply_assessment_ref(
     *,
     workflow_ref: WorkflowRefEnvelope | None = None,
 ) -> ScaleScoreReport:
-    """Attach the compact Readiness-owned ref for workflow reports."""
+    """Attach a canonical compact Readiness ref when Workflow Context supplied one."""
 
     upstream_workflow_ref = workflow_ref or report.workflow_ref
-    workflow_context = report.workflow_context
-    if workflow_context is None and upstream_workflow_ref is None:
+    if upstream_workflow_ref is None:
         return report
 
     score = (
@@ -332,46 +341,70 @@ def apply_assessment_ref(
         if report.workflow_readiness_score is not None
         else report.overall_score
     )
-    grade = report.workflow_readiness_grade or report.overall_grade
-    workflow_id = (
-        workflow_context.workflow_id
-        if workflow_context is not None
-        else upstream_workflow_ref.ref.workflow_id
-        if upstream_workflow_ref is not None
-        else None
-    )
+    grade = _grade_for_score(score)
     workflow_name = (
-        workflow_context.name
-        if workflow_context is not None
+        report.workflow_context.name
+        if report.workflow_context is not None
         else upstream_workflow_ref.ref.title
-        if upstream_workflow_ref is not None
-        else "workflow"
     )
     report_uri = f"/api/v1/assessments/{report.report_id}"
-    top_blockers = _assessment_ref_top_blockers(report)
-    top_reasons = _assessment_ref_top_reasons(report)
-    assessment_ref = AssessmentRefEnvelope(
-        issued_at=report.generated_at,
-        ref=AssessmentRef(
-            ref_id=f"assessment:{report.org_id}:{report.report_id}",
-            organization_id=report.org_id,
-            external_uri=report_uri,
-            version=report.report_version,
-            created_at=report.generated_at,
-            summary=(
-                f"Workflow readiness assessment for {workflow_name}: "
-                f"{score:.1f} ({grade or 'ungraded'})"
+    bounded_workflow_ref = ContractWorkflowRefEnvelope.model_validate(
+        {
+            "contract_version": upstream_workflow_ref.contract_version,
+            "contract_name": upstream_workflow_ref.contract_name,
+            "producer_capability": upstream_workflow_ref.producer_capability,
+            "producer_system": upstream_workflow_ref.producer_system,
+            "canonical_owner": upstream_workflow_ref.canonical_owner,
+            "issued_at": _contract_datetime(upstream_workflow_ref.issued_at),
+            "cache_policy": "summary_snapshot",
+            "ref": ContractWorkflowRefMetadata.model_validate(
+                {
+                    "ref_id": upstream_workflow_ref.ref.ref_id,
+                    "ref_type": upstream_workflow_ref.ref.ref_type,
+                    "source_capability": upstream_workflow_ref.ref.source_capability,
+                    "organization_id": upstream_workflow_ref.ref.organization_id,
+                    "environment_id": upstream_workflow_ref.ref.environment_id,
+                    "external_uri": upstream_workflow_ref.ref.external_uri,
+                    "snapshot_id": upstream_workflow_ref.ref.snapshot_id,
+                    "version": upstream_workflow_ref.ref.version,
+                }
             ),
-            assessment_id=report.report_id,
-            workflow_id=workflow_id,
-            workflow_ref=upstream_workflow_ref,
-            score=score,
-            grade=grade,
-            status=_assessment_ref_status(score),
-            top_blockers=top_blockers,
-            top_reasons=top_reasons,
-            report_uri=report_uri,
-        ),
+        }
+    )
+    assessment_ref = AssessmentRefEnvelope.model_validate(
+        {
+            "contract_version": "proofhouse-shared-contracts/v0.1",
+            "contract_name": "AssessmentRef",
+            "producer_capability": "readiness",
+            "producer_system": "proofhouse-readiness",
+            "canonical_owner": "readiness",
+            "issued_at": _contract_datetime(report.generated_at),
+            "cache_policy": "summary_snapshot",
+            "ref": AssessmentRef.model_validate(
+                {
+                    "ref_id": f"assessment:{report.org_id}:{report.report_id}",
+                    "ref_type": "assessment",
+                    "source_capability": "readiness",
+                    "organization_id": report.org_id,
+                    "environment_id": "production",
+                    "external_uri": report_uri,
+                    "snapshot_id": report.report_id,
+                    "version": report.report_version,
+                    "created_at": _contract_datetime(report.generated_at),
+                    "summary": (
+                        f"Workflow readiness assessment for {workflow_name}: {score:.1f} ({grade})"
+                    ),
+                    "assessment_id": report.report_id,
+                    "workflow_ref": bounded_workflow_ref,
+                    "assessment_type": "workflow_readiness",
+                    "score": score,
+                    "grade": grade,
+                    "status": _assessment_ref_status(score),
+                    "top_blockers": _assessment_ref_top_blockers(report),
+                    "top_reasons": _assessment_ref_top_reasons(report),
+                }
+            ),
+        }
     )
     return report.model_copy(
         update={
@@ -379,6 +412,10 @@ def apply_assessment_ref(
             "assessment_ref": assessment_ref,
         }
     )
+
+
+def _contract_datetime(value: datetime | str) -> str:
+    return value.isoformat() if isinstance(value, datetime) else value
 
 
 def _assessment_ref_status(score: float) -> str:

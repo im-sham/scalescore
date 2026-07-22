@@ -11,6 +11,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from scalescore.contracts.assessment_ref import AssessmentRefEnvelope
+from scalescore.contracts.control_ref_consumer import ControlRefEnvelope
+
 
 class RiskLevel(StrEnum):
     """Risk severity levels."""
@@ -120,56 +123,11 @@ class WorkflowRefEnvelope(BaseModel):
     )
     contract_name: Literal["WorkflowRef"] = "WorkflowRef"
     producer_capability: Literal["workflow_context"] = "workflow_context"
-    producer_system: Literal["proofhouse-workflow-context"] = (
-        "proofhouse-workflow-context"
-    )
+    producer_system: Literal["proofhouse-workflow-context"] = "proofhouse-workflow-context"
     canonical_owner: Literal["workflow_context"] = "workflow_context"
     issued_at: datetime | str
     cache_policy: ProofhouseCachePolicy = "summary_snapshot"
     ref: WorkflowRef
-
-
-class ControlRef(BaseModel):
-    """Workflow Context-owned workflow control reference consumed by Readiness."""
-
-    ref_id: str
-    ref_type: Literal["control"] = "control"
-    source_capability: Literal["workflow_context"] = "workflow_context"
-    organization_id: str
-    environment_id: str = "production"
-    external_uri: str | None = None
-    snapshot_id: str | None = None
-    version: str | None = None
-    created_at: datetime | str
-    updated_at: datetime | str
-    summary: str
-    control_assignment_id: str
-    control_id: str
-    control_key: str
-    control_family: str
-    control_statement: str
-    implementation_status: str
-    evidence_status: str
-    owner: str | None = None
-    workflow_id: str
-    required_evidence_types: list[str] = Field(default_factory=list)
-
-
-class ControlRefEnvelope(BaseModel):
-    """Proofhouse V0.1 envelope for Workflow Context control refs."""
-
-    contract_version: Literal["proofhouse-shared-contracts/v0.1"] = (
-        "proofhouse-shared-contracts/v0.1"
-    )
-    contract_name: Literal["ControlRef"] = "ControlRef"
-    producer_capability: Literal["workflow_context"] = "workflow_context"
-    producer_system: Literal["proofhouse-workflow-context"] = (
-        "proofhouse-workflow-context"
-    )
-    canonical_owner: Literal["workflow_context"] = "workflow_context"
-    issued_at: datetime | str
-    cache_policy: ProofhouseCachePolicy = "summary_snapshot"
-    ref: ControlRef
 
 
 class WorkflowAssessmentContext(BaseModel):
@@ -454,49 +412,6 @@ class OrgWorkflowRollup(BaseModel):
     note: str = ""
 
 
-class AssessmentRef(BaseModel):
-    """Compact Readiness-owned reference for downstream consumers."""
-
-    ref_id: str
-    ref_type: Literal["assessment"] = "assessment"
-    source_capability: Literal["readiness"] = "readiness"
-    organization_id: str
-    environment_id: str = "production"
-    external_uri: str | None = None
-    snapshot_id: str | None = None
-    version: str | None = None
-    created_at: datetime
-    summary: str
-    assessment_id: str
-    workflow_id: str | None = None
-    workflow_ref: WorkflowRefEnvelope | None = None
-    assessment_type: Literal[
-        "workflow_readiness",
-        "operational_learning_suitability",
-    ] = "workflow_readiness"
-    score: float | None = None
-    grade: str | None = None
-    status: str
-    top_blockers: list[str] = Field(default_factory=list)
-    top_reasons: list[str] = Field(default_factory=list)
-    report_uri: str | None = None
-
-
-class AssessmentRefEnvelope(BaseModel):
-    """Proofhouse V0.1 envelope for Readiness assessment refs."""
-
-    contract_version: Literal["proofhouse-shared-contracts/v0.1"] = (
-        "proofhouse-shared-contracts/v0.1"
-    )
-    contract_name: Literal["AssessmentRef"] = "AssessmentRef"
-    producer_capability: Literal["readiness"] = "readiness"
-    producer_system: Literal["proofhouse-readiness"] = "proofhouse-readiness"
-    canonical_owner: Literal["readiness"] = "readiness"
-    issued_at: datetime
-    cache_policy: ProofhouseCachePolicy = "summary_snapshot"
-    ref: AssessmentRef
-
-
 class GrowthSignal(BaseModel):
     """
     Indicator of planned growth that drives capacity requirements.
@@ -758,9 +673,15 @@ class ScoreHistoryResponse(BaseModel):
     org_id: str
     points: list[ScoreHistoryPoint] = Field(default_factory=list)
     count: int = 0
-    trend_7d: ScoreHistoryTrendWindow = Field(default_factory=lambda: ScoreHistoryTrendWindow(days=7))
-    trend_30d: ScoreHistoryTrendWindow = Field(default_factory=lambda: ScoreHistoryTrendWindow(days=30))
-    trend_90d: ScoreHistoryTrendWindow = Field(default_factory=lambda: ScoreHistoryTrendWindow(days=90))
+    trend_7d: ScoreHistoryTrendWindow = Field(
+        default_factory=lambda: ScoreHistoryTrendWindow(days=7)
+    )
+    trend_30d: ScoreHistoryTrendWindow = Field(
+        default_factory=lambda: ScoreHistoryTrendWindow(days=30)
+    )
+    trend_90d: ScoreHistoryTrendWindow = Field(
+        default_factory=lambda: ScoreHistoryTrendWindow(days=90)
+    )
     comparison: ScoreHistoryComparison = Field(default_factory=ScoreHistoryComparison)
 
 

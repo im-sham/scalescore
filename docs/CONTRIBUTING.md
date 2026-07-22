@@ -51,6 +51,9 @@ source .venv/bin/activate
 # Python 3.11 users must select python3.11 and the matching Python 3.11 target file.
 python -m pip install --constraint constraints/darwin-arm64-python3.12-dev.txt -e ".[dev]"
 
+# Optional: install the separately constrained dashboard graph before launching it.
+python -m pip install --constraint constraints/darwin-arm64-python3.12-frontend.txt -e ".[frontend]"
+
 # Verify "Editable project location" is this checkout, then run tests.
 python -m pip show scalescore
 python scripts/run_tests.py -q --ignore=tests/integration/test_redis_rate_limit.py
@@ -69,6 +72,12 @@ The standard test entrypoint is `python scripts/run_tests.py`. It imports `scale
 with the active interpreter and fails before importing or collecting pytest if the package
 comes from another checkout. The diagnostic reports the interpreter, expected source,
 imported path, and safe commands for rebuilding only the current checkout's `.venv`.
+
+Runtime, development, and frontend dependencies are separate application graphs.
+Select the exact constraint matching the active target and Python minor:
+`-e .` with `runtime`, `-e ".[dev]"` with `dev`, or `-e ".[frontend]"` with
+`frontend`. The frontend graph is optional and must not be used to audit the
+core service dependency surface.
 
 Use current technical identifiers in code, tooling, and tests until the repo-root rename wave is explicitly started.
 
@@ -411,7 +420,7 @@ image.
 After changing dependency metadata or accepting dependency updates, generate
 and check each supported graph inside a matching Darwin arm64 or Linux x86_64
 Python environment with the corresponding supported minor. Each invocation
-handles only that target and minor's runtime/development pair:
+handles that target and minor's three runtime, development, and frontend graphs:
 
 ```bash
 # Run these on Darwin arm64.
@@ -425,9 +434,9 @@ python3.11 scripts/compile_dependency_constraints.py
 python3.12 scripts/compile_dependency_constraints.py
 ```
 
-Generation upgrades accepted pins. Check mode seeds temporary copies of the
-tracked active-target pair and byte-compares regenerated output without
-creating checkout paths or mutating tracked files:
+Generation upgrades accepted pins. Check mode seeds temporary copies of all
+three tracked files for the active target and minor, then byte-compares
+regenerated output without creating checkout paths or mutating tracked files:
 
 ```bash
 python3.11 scripts/compile_dependency_constraints.py --check
@@ -438,10 +447,9 @@ The compiler rejects unsupported platform/architecture combinations and Python
 minors. Do not generate one target's files from another target environment or
 hand-edit a partial transitive graph.
 
-Dependabot dependency PRs must include all eight regenerated target/minor
-runtime/development constraints, pass target-specific drift checks and
-`pip check`, and audit all eight exact files. Do not add an advisory ignore or
-exception to make CI pass.
+Dependabot dependency PRs must include all 12 regenerated target/minor/kind
+constraints, pass target-specific drift checks and `pip check`, and audit all
+12 exact files. Do not add an advisory ignore or exception to make CI pass.
 
 ---
 
