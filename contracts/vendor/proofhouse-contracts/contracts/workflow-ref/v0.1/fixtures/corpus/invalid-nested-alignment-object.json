@@ -1,0 +1,8 @@
+{
+  "environment_id": "test",
+  "organization_id": "org_synthetic",
+  "ref_id": "workflow:wf_synthetic_001",
+  "ref_type": "workflow",
+  "source_capability": "workflow_context",
+  "workflow_id": "wf_synthetic_001"
+}

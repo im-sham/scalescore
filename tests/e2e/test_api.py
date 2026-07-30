@@ -208,6 +208,33 @@ def _workflow_ref_payload() -> dict[str, object]:
     }
 
 
+def _canonical_workflow_ref_payload() -> dict[str, object]:
+    return {
+        "contract_version": "proofhouse-shared-contracts/v0.1",
+        "contract_name": "WorkflowRef",
+        "producer_capability": "workflow_context",
+        "producer_system": "proofhouse-workflow-context",
+        "canonical_owner": "workflow_context",
+        "issued_at": "2026-07-30T12:00:00.123456Z",
+        "cache_policy": "ref_only",
+        "ref": {
+            "ref_id": "workflow:wf_support_triage",
+            "ref_type": "workflow",
+            "source_capability": "workflow_context",
+            "organization_id": "dev-tenant",
+            "environment_id": "production",
+            "external_uri": (
+                "workflow-context://organizations/dev-tenant/environments/production/"
+                "workflows/wf_support_triage/snapshots/snapshot-support-triage-1"
+            ),
+            "snapshot_id": "snapshot-support-triage-1",
+            "version": "version-support-triage-7",
+            "created_at": "2026-07-30T11:45:00.654321Z",
+            "workflow_id": "wf_support_triage",
+        },
+    }
+
+
 def _control_ref_payload(
     *,
     control_key: str = "approval_gate",
@@ -445,6 +472,18 @@ def _mila_workflow_assessment_payload_for_org(org_id: str) -> dict[str, object]:
     return _mila_workflow_assessment_payload(org_id=org_id, workflow_ref=workflow_ref)
 
 
+def _compact_mila_workflow_assessment_payload_for_org(org_id: str) -> dict[str, object]:
+    workflow_ref = _canonical_workflow_ref_payload()
+    ref = workflow_ref["ref"]
+    assert isinstance(ref, dict)
+    ref["organization_id"] = org_id
+    ref["external_uri"] = (
+        f"workflow-context://organizations/{org_id}/environments/production/"
+        "workflows/wf_support_triage/snapshots/snapshot-support-triage-1"
+    )
+    return _mila_workflow_assessment_payload(org_id=org_id, workflow_ref=workflow_ref)
+
+
 def _issue_opsorchestra_token(
     *,
     private_key: rsa.RSAPrivateKey,
@@ -640,10 +679,30 @@ def test_create_mila_workflow_assessment_legacy_endpoint_returns_full_report() -
     assert stored_payload["assessment_ref"]["ref"]["assessment_id"] == payload["report_id"]
 
 
+def test_legacy_workflow_route_rejects_canonical_shape_without_persistence() -> None:
+    headers = _auth_headers()
+    before_response = client.get("/api/v1/assessments", headers=headers)
+    assert before_response.status_code == 200
+    request_payload = _mila_workflow_assessment_payload(
+        workflow_ref=_canonical_workflow_ref_payload()
+    )
+
+    response = client.post(
+        "/api/v1/assessments/mila/workflow",
+        json=request_payload,
+        headers=headers,
+    )
+
+    assert response.status_code == 422
+    after_response = client.get("/api/v1/assessments", headers=headers)
+    assert after_response.status_code == 200
+    assert len(after_response.json()) == len(before_response.json())
+
+
 def test_create_mila_workflow_assessment_ref_returns_exact_compact_envelope() -> None:
     response = client.post(
         "/api/v1/assessments/mila/workflow/assessment-ref",
-        json=_mila_workflow_assessment_payload_for_org("dev-tenant"),
+        json=_compact_mila_workflow_assessment_payload_for_org("dev-tenant"),
         headers=_auth_headers(),
     )
 
@@ -699,6 +758,20 @@ def test_create_mila_workflow_assessment_ref_returns_exact_compact_envelope() ->
         "snapshot_id",
         "version",
     }
+    workflow_alignment = payload["ref"]["workflow_ref"]
+    assert workflow_alignment["issued_at"] == "2026-07-30T12:00:00.123456Z"
+    assert workflow_alignment["cache_policy"] == "summary_snapshot"
+    assert workflow_alignment["ref"]["ref_id"] == "workflow:wf_support_triage"
+    assert workflow_alignment["ref"]["snapshot_id"] == "snapshot-support-triage-1"
+    assert workflow_alignment["ref"]["version"] == "version-support-triage-7"
+    assert "created_at" not in workflow_alignment["ref"]
+    report_response = client.get(
+        f"/api/v1/assessments/{payload['ref']['assessment_id']}",
+        headers=_auth_headers(),
+    )
+    assert report_response.status_code == 200
+    stored_workflow_ref = report_response.json()["workflow_ref"]
+    assert stored_workflow_ref == _canonical_workflow_ref_payload()
     prohibited_fields = {
         "report_id",
         "assessment_mode",
@@ -749,7 +822,7 @@ def test_create_mila_workflow_assessment_ref_requires_workflow_ref_before_persis
         ("malformed_issued_at", 422),
         ("timezone_less_issued_at", 422),
         ("malformed_created_at", 422),
-        ("timezone_less_updated_at", 422),
+        ("timezone_less_created_at", 422),
         ("missing_external_uri", 422),
         ("empty_external_uri", 422),
         ("missing_snapshot_id", 422),
@@ -761,6 +834,16 @@ def test_create_mila_workflow_assessment_ref_requires_workflow_ref_before_persis
         ("unknown_top_level_request_property", 422),
         ("payload_ref_organization_mismatch", 422),
         ("authenticated_tenant_mismatch", 403),
+        ("legacy_shape", 422),
+        ("forbidden_updated_at", 422),
+        ("forbidden_summary", 422),
+        ("forbidden_title", 422),
+        ("explicit_null_legacy_field", 422),
+        ("placeholder_organization", 422),
+        ("mutable_snapshot", 422),
+        ("workflow_ref_id_mismatch", 422),
+        ("workflow_context_mismatch", 422),
+        ("environment_mismatch", 422),
     ],
 )
 def test_create_mila_workflow_assessment_ref_rejects_noncanonical_input_without_side_effects(
@@ -768,16 +851,16 @@ def test_create_mila_workflow_assessment_ref_rejects_noncanonical_input_without_
     expected_status: int,
     monkeypatch,
 ) -> None:
-    tenant_id = f"tenant-compact-{uuid4().hex[:8]}"
-    headers = _signup_and_auth_headers(tenant_id=tenant_id)
-    request_payload = _mila_workflow_assessment_payload_for_org(tenant_id)
+    tenant_id = "dev-tenant"
+    headers = _auth_headers()
+    request_payload = _compact_mila_workflow_assessment_payload_for_org(tenant_id)
     workflow_ref = request_payload["workflow_ref"]
     assert isinstance(workflow_ref, dict)
     ref = workflow_ref["ref"]
     assert isinstance(ref, dict)
 
     if invalid_case == "noncanonical_cache_policy":
-        workflow_ref["cache_policy"] = "ref_only"
+        workflow_ref["cache_policy"] = "summary_snapshot"
     elif invalid_case == "missing_canonical_owner":
         workflow_ref.pop("canonical_owner")
     elif invalid_case == "malformed_issued_at":
@@ -786,8 +869,8 @@ def test_create_mila_workflow_assessment_ref_rejects_noncanonical_input_without_
         workflow_ref["issued_at"] = "2026-07-18T07:17:27"
     elif invalid_case == "malformed_created_at":
         ref["created_at"] = "not-a-timestamp"
-    elif invalid_case == "timezone_less_updated_at":
-        ref["updated_at"] = "2026-07-18T07:17:27"
+    elif invalid_case == "timezone_less_created_at":
+        ref["created_at"] = "2026-07-18T07:17:27"
     elif invalid_case == "missing_external_uri":
         ref.pop("external_uri")
     elif invalid_case == "empty_external_uri":
@@ -809,7 +892,39 @@ def test_create_mila_workflow_assessment_ref_rejects_noncanonical_input_without_
     elif invalid_case == "payload_ref_organization_mismatch":
         ref["organization_id"] = f"{tenant_id}-other"
     elif invalid_case == "authenticated_tenant_mismatch":
-        request_payload = _mila_workflow_assessment_payload_for_org(f"{tenant_id}-other")
+        request_payload = _compact_mila_workflow_assessment_payload_for_org(f"{tenant_id}-other")
+    elif invalid_case == "legacy_shape":
+        request_payload["workflow_ref"] = _workflow_ref_payload()
+    elif invalid_case == "forbidden_updated_at":
+        ref["updated_at"] = "2026-07-30T11:50:00Z"
+    elif invalid_case == "forbidden_summary":
+        ref["summary"] = "mutable workflow summary"
+    elif invalid_case == "forbidden_title":
+        ref["title"] = "Mutable workflow title"
+    elif invalid_case == "explicit_null_legacy_field":
+        ref["owner"] = None
+    elif invalid_case == "placeholder_organization":
+        ref["organization_id"] = "default"
+    elif invalid_case == "mutable_snapshot":
+        ref["snapshot_id"] = "latest"
+    elif invalid_case == "workflow_ref_id_mismatch":
+        ref["ref_id"] = "workflow:other_workflow"
+    elif invalid_case == "workflow_context_mismatch":
+        workflow_context = request_payload["workflow_context"]
+        assert isinstance(workflow_context, dict)
+        workflow_context["workflow_id"] = "other_workflow"
+    elif invalid_case == "environment_mismatch":
+        control_ref = _control_ref_payload()
+        control = control_ref["ref"]
+        assert isinstance(control, dict)
+        control["organization_id"] = tenant_id
+        control["environment_id"] = "test"
+        owning_envelope = control["workflow_ref"]
+        assert isinstance(owning_envelope, dict)
+        owning_workflow = owning_envelope["ref"]
+        assert isinstance(owning_workflow, dict)
+        owning_workflow["organization_id"] = tenant_id
+        request_payload["control_refs"] = [control_ref]
     else:
         raise AssertionError(f"Unhandled invalid case: {invalid_case}")
 
@@ -856,7 +971,7 @@ def test_create_mila_workflow_assessment_ref_persists_tenant_scoped_full_report(
 
     create_response = client.post(
         "/api/v1/assessments/mila/workflow/assessment-ref",
-        json=_mila_workflow_assessment_payload_for_org(tenant_a_id),
+        json=_compact_mila_workflow_assessment_payload_for_org(tenant_a_id),
         headers=tenant_a_headers,
     )
 

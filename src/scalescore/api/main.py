@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 from uuid import uuid4
 
 from fastapi import (
@@ -33,13 +33,13 @@ from scalescore.connectors.opsorchestra_connector import (
     OpsOrchestraConnector,
     get_opsorchestra_connector,
 )
-from scalescore.contracts.assessment_ref import AssessmentRefEnvelope, DateTimeString
-from scalescore.contracts.assessment_ref import (
-    WorkflowRefEnvelope as ContractWorkflowRefEnvelope,
-)
+from scalescore.contracts.assessment_ref import AssessmentRefEnvelope
 from scalescore.contracts.control_ref_consumer import (
     CanonicalControlRefEnvelope,
     ControlRefEnvelope,
+)
+from scalescore.contracts.workflow_ref import (
+    WorkflowRefEnvelope as CanonicalWorkflowRefEnvelope,
 )
 from scalescore.core.assessment import run_assessment_from_csv, run_workflow_assessment
 from scalescore.core.async_assessment import AsyncAssessmentWorker
@@ -72,6 +72,7 @@ from scalescore.models.core import (
 )
 from scalescore.models.scaling import (
     DocumentOperationsReadinessProfile,
+    LegacyWorkflowRefEnvelope,
     OperationalLearningInputs,
     ScaleScoreReport,
     ScoreHistoryComparison,
@@ -80,7 +81,6 @@ from scalescore.models.scaling import (
     ScoreHistoryTrendWindow,
     WorkflowAssessmentContext,
     WorkflowEvidenceInput,
-    WorkflowRefEnvelope,
 )
 from scalescore.storage.assessment_repository import (
     AssessmentRepository,
@@ -302,7 +302,7 @@ class CreateMilaWorkflowAssessmentRequest(BaseModel):
     org_id: str = Field(min_length=1)
     org_name: str = Field(min_length=1)
     workflow_context: WorkflowAssessmentContext
-    workflow_ref: WorkflowRefEnvelope | None = None
+    workflow_ref: LegacyWorkflowRefEnvelope | None = None
     control_refs: list[ControlRefEnvelope] = Field(default_factory=list)
     workflow_evidence: WorkflowEvidenceInput | None = None
     operational_learning_inputs: OperationalLearningInputs | None = None
@@ -316,48 +316,13 @@ class CreateMilaWorkflowAssessmentRequest(BaseModel):
     notes: str | None = None
 
 
-class CompactWorkflowRef(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    ref_id: str = Field(min_length=1)
-    ref_type: Literal["workflow"]
-    source_capability: Literal["workflow_context"]
-    organization_id: str = Field(min_length=1)
-    environment_id: str = Field(min_length=1)
-    external_uri: str = Field(min_length=1)
-    snapshot_id: str = Field(min_length=1)
-    version: str = Field(min_length=1)
-    created_at: DateTimeString
-    updated_at: DateTimeString
-    summary: str
-    workflow_id: str
-    title: str
-    subject_type: str
-    subject_key: str | None = None
-    owner: str | None = None
-    review_status: str
-
-
-class CompactWorkflowRefEnvelope(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    contract_version: Literal["proofhouse-shared-contracts/v0.1"]
-    contract_name: Literal["WorkflowRef"]
-    producer_capability: Literal["workflow_context"]
-    producer_system: Literal["proofhouse-workflow-context"]
-    canonical_owner: Literal["workflow_context"]
-    issued_at: DateTimeString
-    cache_policy: Literal["summary_snapshot"]
-    ref: CompactWorkflowRef
-
-
 class CreateMilaWorkflowAssessmentRefRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     org_id: str = Field(min_length=1)
     org_name: str = Field(min_length=1)
     workflow_context: WorkflowAssessmentContext
-    workflow_ref: CompactWorkflowRefEnvelope | None = None
+    workflow_ref: CanonicalWorkflowRefEnvelope | None = None
     control_refs: list[ControlRefEnvelope] = Field(default_factory=list)
     workflow_evidence: WorkflowEvidenceInput | None = None
     operational_learning_inputs: OperationalLearningInputs | None = None
@@ -746,7 +711,7 @@ async def create_workflow_assessment(
 
 
 def _validate_control_ref_alignment(
-    payload: CreateMilaWorkflowAssessmentRequest,
+    payload: CreateMilaWorkflowAssessmentRequest | CreateMilaWorkflowAssessmentRefRequest,
     *,
     tenant_id: str,
 ) -> None:
@@ -809,7 +774,7 @@ def _validate_control_ref_alignment(
 
 
 def _run_and_persist_mila_workflow_assessment(
-    payload: CreateMilaWorkflowAssessmentRequest,
+    payload: CreateMilaWorkflowAssessmentRequest | CreateMilaWorkflowAssessmentRefRequest,
     current_user: TokenPayload,
     repository: AssessmentRepository,
 ) -> ScaleScoreReport:
@@ -856,34 +821,6 @@ async def create_mila_workflow_assessment(
     return _run_and_persist_mila_workflow_assessment(payload, current_user, repository)
 
 
-def _validate_compact_workflow_ref(
-    workflow_ref: CompactWorkflowRefEnvelope,
-) -> ContractWorkflowRefEnvelope:
-    issued_at = workflow_ref.issued_at
-    ref = workflow_ref.ref
-    return ContractWorkflowRefEnvelope.model_validate(
-        {
-            "contract_version": workflow_ref.contract_version,
-            "contract_name": workflow_ref.contract_name,
-            "producer_capability": workflow_ref.producer_capability,
-            "producer_system": workflow_ref.producer_system,
-            "canonical_owner": workflow_ref.canonical_owner,
-            "issued_at": issued_at,
-            "cache_policy": workflow_ref.cache_policy,
-            "ref": {
-                "ref_id": ref.ref_id,
-                "ref_type": ref.ref_type,
-                "source_capability": ref.source_capability,
-                "organization_id": ref.organization_id,
-                "environment_id": ref.environment_id,
-                "external_uri": ref.external_uri,
-                "snapshot_id": ref.snapshot_id,
-                "version": ref.version,
-            },
-        }
-    )
-
-
 @app.post(
     "/api/v1/assessments/mila/workflow/assessment-ref",
     response_model=AssessmentRefEnvelope,
@@ -901,8 +838,8 @@ async def create_mila_workflow_assessment_ref(
                 "message": "A canonical workflow_ref is required for compact AssessmentRef transport.",
             },
         )
-    _ = _validate_compact_workflow_ref(payload.workflow_ref)
-    workflow_organization_id = payload.workflow_ref.ref.organization_id
+    canonical_workflow_ref = payload.workflow_ref
+    workflow_organization_id = canonical_workflow_ref.ref.organization_id
     if payload.org_id != workflow_organization_id:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -923,14 +860,15 @@ async def create_mila_workflow_assessment_ref(
             },
         )
 
-    legacy_payload = CreateMilaWorkflowAssessmentRequest.model_validate(payload.model_dump())
-    report = _run_and_persist_mila_workflow_assessment(legacy_payload, current_user, repository)
+    report = _run_and_persist_mila_workflow_assessment(payload, current_user, repository)
     if report.assessment_ref is None:
         raise RuntimeError("Workflow assessment did not produce an AssessmentRef")
     return report.assessment_ref
 
 
-def _validate_mila_workflow_summary_text(payload: CreateMilaWorkflowAssessmentRequest) -> None:
+def _validate_mila_workflow_summary_text(
+    payload: CreateMilaWorkflowAssessmentRequest | CreateMilaWorkflowAssessmentRefRequest,
+) -> None:
     summary_fields: dict[str, str | list[str] | None] = {
         "source_findings": payload.source_findings,
         "notes": payload.notes,

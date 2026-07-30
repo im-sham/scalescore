@@ -1,0 +1,40 @@
+{
+  "contract_name": "WorkflowRef",
+  "contract_version": "proofhouse-shared-contracts/v0.1",
+  "distribution_authority": "metadata_distribution_only",
+  "authority_boundary": "Workflow Context is sole semantic owner, sensitivity authority, and canonical producer. Readiness is the sole initial strict consumer. Contracts distributes immutable metadata-only artifacts and receives no workflow truth, producer, runtime, access, use, policy, approval, rights, release, export, readiness, remediation, claim, gate, or permission-to-act authority.",
+  "accepted_sources": {
+    "usmi_commit": "af1cf7e87e2848a84048a27335cdff533d2d6e36",
+    "d12_authority": {
+      "repository": "USMI",
+      "commit": "af1cf7e87e2848a84048a27335cdff533d2d6e36",
+      "path": "decisions/2026-07-29-wp-ri-03-workflow-ref-d12-authority-candidate.md",
+      "git_blob": "ab3bf3f1e7d306f0086e0658fe79ea5bd72dfa49"
+    },
+    "scaffold_clarification": {
+      "repository": "USMI",
+      "commit": "af1cf7e87e2848a84048a27335cdff533d2d6e36",
+      "path": "decisions/2026-07-30-scaffold-product-role-and-workflow-ref-d12-clarification.md",
+      "git_blob": "efea7d79778529e1100bc6b940cd7f2cf6d45daf",
+      "role": "additive product-role and immutable AttestedSpecRef nested workflow_ref clarification"
+    },
+    "contracts_baseline": {
+      "repository": "Contracts",
+      "commit": "1b0c4c7fea1fa6f20b82556acae1e6cf9c509f99"
+    }
+  },
+  "distributed_artifacts": {
+    "schema": {
+      "path": "contracts/workflow-ref/v0.1/schema.json",
+      "sha256": "18ad1178598eea77c5f160afd5f0329ca3c3d388ada7593c18a1d7d4aeecc9cd"
+    },
+    "synthetic_fixture": {
+      "path": "contracts/workflow-ref/v0.1/fixtures/synthetic-workflow.json",
+      "sha256": "6d56ba77613dd598aa16b2860db4a3e829467f46fc41b138e2b63523fad89609"
+    },
+    "source_mapping": {
+      "path": "contracts/workflow-ref/v0.1/README.md",
+      "sha256": "d8cb2a4c621e3d73bc4b6e57ac5adba98a320f6a4a912f2043bf1a7098e92d59"
+    }
+  }
+}
