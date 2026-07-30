@@ -18,6 +18,9 @@ class CanonicalControlRefEnvelope(GeneratedControlRefEnvelope):
     The generated binding models optional pins as nullable Python fields. JSON Schema
     permits omission but not explicit null, so this consumer boundary closes that
     transport-only gap and preserves the producer's omission shape.
+
+    Its nested ``workflow_ref`` is immutable historical ControlRef alignment
+    metadata, not the standalone canonical WorkflowRef V0.1 envelope.
     """
 
     @model_validator(mode="after")

@@ -8,14 +8,17 @@ from scalescore.contracts.assessment_ref import (
     AssessmentRefEnvelope,
 )
 from scalescore.contracts.assessment_ref import (
-    WorkflowRefEnvelope as ContractWorkflowRefEnvelope,
+    WorkflowRefEnvelope as HistoricalAssessmentWorkflowAlignmentEnvelope,
 )
 from scalescore.contracts.assessment_ref import (
-    WorkflowRefMetadata as ContractWorkflowRefMetadata,
+    WorkflowRefMetadata as HistoricalAssessmentWorkflowAlignment,
 )
 from scalescore.contracts.control_ref_consumer import (
     CanonicalControlRefEnvelope,
     ControlRefEnvelope,
+)
+from scalescore.contracts.workflow_ref import (
+    WorkflowRefEnvelope as CanonicalWorkflowRefEnvelope,
 )
 from scalescore.core.document_operations import derive_document_operations_readiness_inputs
 from scalescore.core.exceptions import (
@@ -34,6 +37,7 @@ from scalescore.models.scaling import (
     CapacityConstraint,
     DocumentOperationsReadinessProfile,
     FunctionalArea,
+    LegacyWorkflowRefEnvelope,
     OperationalLearningInputs,
     RiskIndicator,
     RiskLevel,
@@ -44,11 +48,12 @@ from scalescore.models.scaling import (
     WorkflowControlStatus,
     WorkflowEvidenceInput,
     WorkflowEvidencePostureInput,
-    WorkflowRefEnvelope,
 )
 from scalescore.scoring.bottleneck_detector import BottleneckDetector
 from scalescore.scoring.engine import ScoringConfig, ScoringEngine
 from scalescore.scoring.recommender import RecommendationEngine
+
+WorkflowRefInput = CanonicalWorkflowRefEnvelope | LegacyWorkflowRefEnvelope
 
 
 def run_assessment_from_csv(
@@ -174,7 +179,7 @@ def run_workflow_assessment(
     org_id: str,
     org_name: str,
     workflow_context: WorkflowAssessmentContext,
-    workflow_ref: WorkflowRefEnvelope | None = None,
+    workflow_ref: WorkflowRefInput | None = None,
     control_refs: list[ControlRefEnvelope] | None = None,
     baseline_operational_score: float | None = None,
     workflow_evidence: WorkflowEvidenceInput | None = None,
@@ -328,9 +333,9 @@ def _control_status_from_ref(envelope: ControlRefEnvelope) -> WorkflowControlSta
 def apply_assessment_ref(
     report: ScaleScoreReport,
     *,
-    workflow_ref: WorkflowRefEnvelope | None = None,
+    workflow_ref: WorkflowRefInput | None = None,
 ) -> ScaleScoreReport:
-    """Attach a canonical compact Readiness ref when Workflow Context supplied one."""
+    """Attach compact AssessmentRef output using historical workflow alignment."""
 
     upstream_workflow_ref = workflow_ref or report.workflow_ref
     if upstream_workflow_ref is None:
@@ -342,13 +347,14 @@ def apply_assessment_ref(
         else report.overall_score
     )
     grade = _grade_for_score(score)
-    workflow_name = (
-        report.workflow_context.name
-        if report.workflow_context is not None
-        else upstream_workflow_ref.ref.title
-    )
+    if report.workflow_context is not None:
+        workflow_name = report.workflow_context.name
+    elif isinstance(upstream_workflow_ref, LegacyWorkflowRefEnvelope):
+        workflow_name = upstream_workflow_ref.ref.title
+    else:
+        workflow_name = upstream_workflow_ref.ref.workflow_id
     report_uri = f"/api/v1/assessments/{report.report_id}"
-    bounded_workflow_ref = ContractWorkflowRefEnvelope.model_validate(
+    bounded_workflow_ref = HistoricalAssessmentWorkflowAlignmentEnvelope.model_validate(
         {
             "contract_version": upstream_workflow_ref.contract_version,
             "contract_name": upstream_workflow_ref.contract_name,
@@ -357,7 +363,7 @@ def apply_assessment_ref(
             "canonical_owner": upstream_workflow_ref.canonical_owner,
             "issued_at": _contract_datetime(upstream_workflow_ref.issued_at),
             "cache_policy": "summary_snapshot",
-            "ref": ContractWorkflowRefMetadata.model_validate(
+            "ref": HistoricalAssessmentWorkflowAlignment.model_validate(
                 {
                     "ref_id": upstream_workflow_ref.ref.ref_id,
                     "ref_type": upstream_workflow_ref.ref.ref_type,
@@ -386,7 +392,7 @@ def apply_assessment_ref(
                     "ref_type": "assessment",
                     "source_capability": "readiness",
                     "organization_id": report.org_id,
-                    "environment_id": "production",
+                    "environment_id": upstream_workflow_ref.ref.environment_id,
                     "external_uri": report_uri,
                     "snapshot_id": report.report_id,
                     "version": report.report_version,

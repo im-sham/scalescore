@@ -13,6 +13,9 @@ from pydantic import BaseModel, Field
 
 from scalescore.contracts.assessment_ref import AssessmentRefEnvelope
 from scalescore.contracts.control_ref_consumer import ControlRefEnvelope
+from scalescore.contracts.workflow_ref import (
+    WorkflowRefEnvelope as CanonicalWorkflowRefEnvelope,
+)
 
 
 class RiskLevel(StrEnum):
@@ -93,8 +96,8 @@ ProofhouseCachePolicy = Literal[
 ]
 
 
-class WorkflowRef(BaseModel):
-    """Canonical workflow reference emitted by Workflow Context."""
+class LegacyWorkflowRef(BaseModel):
+    """One-release noncanonical summary-snapshot compatibility reference."""
 
     ref_id: str
     ref_type: Literal["workflow"] = "workflow"
@@ -115,8 +118,8 @@ class WorkflowRef(BaseModel):
     review_status: str
 
 
-class WorkflowRefEnvelope(BaseModel):
-    """Proofhouse V0.1 envelope for Workflow Context refs."""
+class LegacyWorkflowRefEnvelope(BaseModel):
+    """One-release noncanonical envelope for the broad compatibility route."""
 
     contract_version: Literal["proofhouse-shared-contracts/v0.1"] = (
         "proofhouse-shared-contracts/v0.1"
@@ -127,7 +130,7 @@ class WorkflowRefEnvelope(BaseModel):
     canonical_owner: Literal["workflow_context"] = "workflow_context"
     issued_at: datetime | str
     cache_policy: ProofhouseCachePolicy = "summary_snapshot"
-    ref: WorkflowRef
+    ref: LegacyWorkflowRef
 
 
 class WorkflowAssessmentContext(BaseModel):
@@ -715,7 +718,7 @@ class ScaleScoreReport(BaseModel):
 
     # Workflow-first assessment context
     workflow_context: WorkflowAssessmentContext | None = None
-    workflow_ref: WorkflowRefEnvelope | None = None
+    workflow_ref: CanonicalWorkflowRefEnvelope | LegacyWorkflowRefEnvelope | None = None
     control_refs: list[ControlRefEnvelope] = Field(default_factory=list)
     assessment_ref: AssessmentRefEnvelope | None = None
     workflow_readiness_score: float | None = None

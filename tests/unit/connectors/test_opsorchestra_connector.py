@@ -13,6 +13,8 @@ from scalescore.models.core import Team
 from scalescore.models.scaling import (
     ClaimsSuitabilityStatus,
     ClaimsSuitabilitySummary,
+    LegacyWorkflowRef,
+    LegacyWorkflowRefEnvelope,
     OperationalLearningAssessmentResult,
     OperationalLearningCompletenessState,
     OperationalLearningGovernanceDependencyState,
@@ -24,8 +26,6 @@ from scalescore.models.scaling import (
     ScaleScoreReport,
     WorkflowAssessmentContext,
     WorkflowBlastRadius,
-    WorkflowRef,
-    WorkflowRefEnvelope,
 )
 
 
@@ -72,11 +72,11 @@ def _sample_report() -> ScaleScoreReport:
     )
 
 
-def _workflow_ref() -> WorkflowRefEnvelope:
+def _workflow_ref() -> LegacyWorkflowRefEnvelope:
     issued_at = datetime(2026, 2, 22, tzinfo=UTC)
-    return WorkflowRefEnvelope(
+    return LegacyWorkflowRefEnvelope(
         issued_at=issued_at,
-        ref=WorkflowRef(
+        ref=LegacyWorkflowRef(
             ref_id="workflow:org_1:document_ops_regulated_review_v0",
             organization_id="org_1",
             environment_id="test",

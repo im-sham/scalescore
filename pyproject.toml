@@ -108,6 +108,14 @@ ignore = [
     "E501",  # line too long (handled by formatter)
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# Preserve the independently reviewed generated candidate byte-for-byte.
+"src/scalescore/contracts/generated/workflow_ref.py" = ["F401", "I001"]
+
+[tool.ruff.format]
+# Formatting this one generated file would invalidate the pinned binding digest.
+exclude = ["src/scalescore/contracts/generated/workflow_ref.py"]
+
 [tool.mypy]
 python_version = "3.11"
 warn_return_any = true

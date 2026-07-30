@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.proofhouse.local/workflow-ref/v0.1/schema.json",
+  "title": "Proofhouse WorkflowRef V0.1",
+  "description": "Workflow Context-owned closed metadata-only immutable workflow reference for private neutral distribution. Possession or validation grants no access, use, policy, release, export, readiness, remediation, or other authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "contract_name",
+    "producer_capability",
+    "producer_system",
+    "canonical_owner",
+    "issued_at",
+    "cache_policy",
+    "ref"
+  ],
+  "properties": {
+    "contract_version": { "const": "proofhouse-shared-contracts/v0.1" },
+    "contract_name": { "const": "WorkflowRef" },
+    "producer_capability": { "const": "workflow_context" },
+    "producer_system": { "const": "proofhouse-workflow-context" },
+    "canonical_owner": { "const": "workflow_context" },
+    "issued_at": { "type": "string", "format": "date-time" },
+    "cache_policy": { "const": "ref_only" },
+    "ref": { "$ref": "#/$defs/workflow_ref" }
+  },
+  "$defs": {
+    "workflow_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref_id",
+        "ref_type",
+        "source_capability",
+        "organization_id",
+        "environment_id",
+        "external_uri",
+        "snapshot_id",
+        "version",
+        "created_at",
+        "workflow_id"
+      ],
+      "properties": {
+        "ref_id": {
+          "type": "string",
+          "pattern": "^workflow:[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "ref_type": { "const": "workflow" },
+        "source_capability": { "const": "workflow_context" },
+        "organization_id": { "$ref": "#/$defs/scope_identity" },
+        "environment_id": { "$ref": "#/$defs/scope_identity" },
+        "external_uri": { "type": "string", "minLength": 1, "maxLength": 2048, "pattern": "\\S" },
+        "snapshot_id": { "$ref": "#/$defs/immutable_pin" },
+        "version": { "$ref": "#/$defs/immutable_pin" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "workflow_id": { "$ref": "#/$defs/identity" }
+      }
+    },
+    "identity": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+      "maxLength": 256
+    },
+    "scope_identity": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+      "maxLength": 256,
+      "not": {
+        "pattern": "^(?:[Dd][Ee][Ff][Aa][Uu][Ll][Tt]|[Ee][Nn][Vv][Ii][Rr][Oo][Nn][Mm][Ee][Nn][Tt][-_][Dd][Ee][Ff][Aa][Uu][Ll][Tt]|[Gg][Ll][Oo][Bb][Aa][Ll]|[Nn]/[Aa]|[Nn][Aa]|[Nn][Oo][Nn][Ee]|[Nn][Uu][Ll][Ll]|[Oo][Rr][Gg][-_][Dd][Ee][Ff][Aa][Uu][Ll][Tt]|[Oo][Rr][Gg][Aa][Nn][Ii][Zz][Aa][Tt][Ii][Oo][Nn][-_][Dd][Ee][Ff][Aa][Uu][Ll][Tt]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Pp][Rr][Oo][Jj][Ee][Cc][Tt]|[Pp][Rr][Oo][Jj][Ee][Cc][Tt][-_][Dd][Ee][Ff][Aa][Uu][Ll][Tt]|[Tt][Ee][Nn][Aa][Nn][Tt][-_][Dd][Ee][Ff][Aa][Uu][Ll][Tt]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Uu][Nn][Ss][Cc][Oo][Pp][Ee][Dd])$"
+      }
+    },
+    "immutable_pin": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+-]*$",
+      "maxLength": 256,
+      "not": {
+        "anyOf": [
+          { "enum": ["current", "default", "head", "latest", "mutable"] },
+          {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|[+-]\\d{2}:\\d{2})$"
+          }
+        ]
+      }
+    }
+  }
+}

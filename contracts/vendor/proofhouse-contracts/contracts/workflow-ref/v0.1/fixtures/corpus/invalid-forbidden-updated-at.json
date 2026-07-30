@@ -1,0 +1,22 @@
+{
+  "cache_policy": "ref_only",
+  "canonical_owner": "workflow_context",
+  "contract_name": "WorkflowRef",
+  "contract_version": "proofhouse-shared-contracts/v0.1",
+  "issued_at": "2026-07-30T12:00:00Z",
+  "producer_capability": "workflow_context",
+  "producer_system": "proofhouse-workflow-context",
+  "ref": {
+    "created_at": "2026-07-30T11:45:00Z",
+    "environment_id": "test",
+    "external_uri": "workflow-context://organizations/org_synthetic/environments/test/workflows/wf_synthetic_001/snapshots/snap_synthetic_001",
+    "organization_id": "org_synthetic",
+    "ref_id": "workflow:wf_synthetic_001",
+    "ref_type": "workflow",
+    "snapshot_id": "snap_synthetic_001",
+    "source_capability": "workflow_context",
+    "updated_at": "2026-07-30T12:00:00Z",
+    "version": "version_synthetic_001",
+    "workflow_id": "wf_synthetic_001"
+  }
+}

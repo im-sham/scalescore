@@ -1,0 +1,46 @@
+{
+  "contract": "WorkflowRef",
+  "contract_version": "proofhouse-shared-contracts/v0.1",
+  "status": "reviewed_candidate_prepublication",
+  "published": false,
+  "repository": "im-sham/proofhouse-contracts",
+  "source": {
+    "base": "1b0c4c7fea1fa6f20b82556acae1e6cf9c509f99",
+    "head": "148549e8f117e0cc9b2d3725f9039720ae34b2e3",
+    "draft_pull_request": 15,
+    "contracts_tree": "d67979a7681fb872f9c60fff741d036d1eb2e0b5",
+    "contract_tree": "7b100000c0d979e3c025c61c0e6b40f11c4aad02",
+    "binding_blob": "5c3e6e9f04c01837f7e34d9fd588c6586fef7d4b"
+  },
+  "authority": {
+    "usmi_commit": "af1cf7e87e2848a84048a27335cdff533d2d6e36",
+    "decision": "decisions/2026-07-29-wp-ri-03-workflow-ref-d12-authority-candidate.md",
+    "clarification": "decisions/2026-07-30-scaffold-product-role-and-workflow-ref-d12-clarification.md"
+  },
+  "vendor_root": "contracts/vendor/proofhouse-contracts",
+  "binding": "src/scalescore/contracts/generated/workflow_ref.py",
+  "vendored_binding": "contracts/vendor/proofhouse-contracts/bindings/python/workflow_ref.py",
+  "sha256": {
+    "schema": "18ad1178598eea77c5f160afd5f0329ca3c3d388ada7593c18a1d7d4aeecc9cd",
+    "corpus_index": "d8016551d1eb0246a09c1907a55cde63ac60e07989c9b04205666f8e6b65abcc",
+    "corpus": "1e206ca9601fba7d177e1fd920c41f9585d8c603424dc1898eb79a4cc376e2bc",
+    "artifact_manifest": "bea2e1ad16a36db9a8ef35e110257ea6442d47e9b36a1c267ee9f83daa652e6a",
+    "artifact_set": "a093722cbbd236d0ba10f85da77a84ab0b9effa5a0a0d7952fcaa9e3e5781b4f",
+    "generated_bindings": "6794e22f4c70f1931ee49d5ecae8db5a087b1c57bc5861315e4f43a4b490ce2c",
+    "python_binding": "5be783ce419b59b7b3e439b6d970afc78f9953ad60a767c639507bdea5a86247"
+  },
+  "compatibility": {
+    "surface": "LegacyWorkflowRefEnvelope summary_snapshot",
+    "route": "/api/v1/assessments/mila/workflow",
+    "window": "one_release",
+    "canonical_fallback": false
+  },
+  "rollback": {
+    "readiness_base": "47388ddfab0a1cc5eea7807f8de819f0753f2825",
+    "strategy": "revert the candidate consumer branch and restore the explicitly noncanonical legacy summary_snapshot route and stored-report readback; never route malformed canonical input to legacy or relabel nested alignment as canonical"
+  },
+  "follow_up": {
+    "required_after_contracts_publication": true,
+    "action": "replace this reviewed candidate provenance with the exact immutable protected-main Contracts publication pin while preserving unchanged artifact digests"
+  }
+}

@@ -1,0 +1,576 @@
+{
+  "cases": [
+    {
+      "coverage": "exact closed metadata-only envelope; Workflow Context asserts snapshot_id and version identify the same immutable workflow state",
+      "expected_valid": true,
+      "file": "valid-canonical-synthetic.json",
+      "name": "valid-canonical-synthetic"
+    },
+    {
+      "coverage": "exact V0.1 contract version",
+      "expected_valid": false,
+      "file": "invalid-wrong-contract-version.json",
+      "name": "invalid-wrong-contract-version"
+    },
+    {
+      "coverage": "exact WorkflowRef family",
+      "expected_valid": false,
+      "file": "invalid-wrong-contract-name.json",
+      "name": "invalid-wrong-contract-name"
+    },
+    {
+      "coverage": "Workflow Context sole producer capability",
+      "expected_valid": false,
+      "file": "invalid-wrong-producer-capability.json",
+      "name": "invalid-wrong-producer-capability"
+    },
+    {
+      "coverage": "Workflow Context producer system",
+      "expected_valid": false,
+      "file": "invalid-wrong-producer-system.json",
+      "name": "invalid-wrong-producer-system"
+    },
+    {
+      "coverage": "Workflow Context sole semantic and sensitivity owner",
+      "expected_valid": false,
+      "file": "invalid-wrong-owner.json",
+      "name": "invalid-wrong-owner"
+    },
+    {
+      "coverage": "reference-only cache posture",
+      "expected_valid": false,
+      "file": "invalid-wrong-cache-policy.json",
+      "name": "invalid-wrong-cache-policy"
+    },
+    {
+      "coverage": "workflow ref type constant",
+      "expected_valid": false,
+      "file": "invalid-wrong-ref-type.json",
+      "name": "invalid-wrong-ref-type"
+    },
+    {
+      "coverage": "Workflow Context source constant",
+      "expected_valid": false,
+      "file": "invalid-wrong-source-capability.json",
+      "name": "invalid-wrong-source-capability"
+    },
+    {
+      "coverage": "closed eight-field envelope",
+      "expected_valid": false,
+      "file": "invalid-unknown-envelope-field.json",
+      "name": "invalid-unknown-envelope-field"
+    },
+    {
+      "coverage": "closed ten-field core",
+      "expected_valid": false,
+      "file": "invalid-unknown-core-field.json",
+      "name": "invalid-unknown-core-field"
+    },
+    {
+      "coverage": "explicit organization scope",
+      "expected_valid": false,
+      "file": "invalid-blank-organization.json",
+      "name": "invalid-blank-organization"
+    },
+    {
+      "coverage": "no default organization scope",
+      "expected_valid": false,
+      "file": "invalid-placeholder-organization-default.json",
+      "name": "invalid-placeholder-organization-default"
+    },
+    {
+      "coverage": "no unscoped organization",
+      "expected_valid": false,
+      "file": "invalid-placeholder-organization-unscoped.json",
+      "name": "invalid-placeholder-organization-unscoped"
+    },
+    {
+      "coverage": "no tenant-default organization",
+      "expected_valid": false,
+      "file": "invalid-placeholder-organization-tenant-default.json",
+      "name": "invalid-placeholder-organization-tenant-default"
+    },
+    {
+      "coverage": "placeholder rejection is case-insensitive",
+      "expected_valid": false,
+      "file": "invalid-placeholder-organization-uppercase.json",
+      "name": "invalid-placeholder-organization-uppercase"
+    },
+    {
+      "coverage": "hyphen separator equivalent of tenant_default is a placeholder",
+      "expected_valid": false,
+      "file": "invalid-placeholder-organization-tenant-hyphen.json",
+      "name": "invalid-placeholder-organization-tenant-hyphen"
+    },
+    {
+      "coverage": "no default environment scope",
+      "expected_valid": false,
+      "file": "invalid-placeholder-environment-default.json",
+      "name": "invalid-placeholder-environment-default"
+    },
+    {
+      "coverage": "no global environment scope",
+      "expected_valid": false,
+      "file": "invalid-placeholder-environment-global.json",
+      "name": "invalid-placeholder-environment-global"
+    },
+    {
+      "coverage": "no inferred project scope",
+      "expected_valid": false,
+      "file": "invalid-inferred-project-environment.json",
+      "name": "invalid-inferred-project-environment"
+    },
+    {
+      "coverage": "case and hyphen separator equivalent of project_default is a placeholder",
+      "expected_valid": false,
+      "file": "invalid-placeholder-environment-project-uppercase-hyphen.json",
+      "name": "invalid-placeholder-environment-project-uppercase-hyphen"
+    },
+    {
+      "coverage": "ref_id and workflow_id identity alignment",
+      "expected_valid": false,
+      "file": "invalid-workflow-ref-id-mismatch.json",
+      "name": "invalid-workflow-ref-id-mismatch"
+    },
+    {
+      "coverage": "workflow ref prefix",
+      "expected_valid": false,
+      "file": "invalid-workflow-ref-prefix.json",
+      "name": "invalid-workflow-ref-prefix"
+    },
+    {
+      "coverage": "non-empty opaque owner locator",
+      "expected_valid": false,
+      "file": "invalid-empty-external-uri.json",
+      "name": "invalid-empty-external-uri"
+    },
+    {
+      "coverage": "whitespace-only external_uri is not a locator",
+      "expected_valid": false,
+      "file": "invalid-whitespace-external-uri.json",
+      "name": "invalid-whitespace-external-uri"
+    },
+    {
+      "coverage": "immutable snapshot identity",
+      "expected_valid": false,
+      "file": "invalid-mutable-snapshot-id.json",
+      "name": "invalid-mutable-snapshot-id"
+    },
+    {
+      "coverage": "immutable source version",
+      "expected_valid": false,
+      "file": "invalid-mutable-version.json",
+      "name": "invalid-mutable-version"
+    },
+    {
+      "coverage": "mutable-pin rejection is case-insensitive",
+      "expected_valid": false,
+      "file": "invalid-uppercase-mutable-version.json",
+      "name": "invalid-uppercase-mutable-version"
+    },
+    {
+      "coverage": "snapshot identity is not a timestamp surrogate",
+      "expected_valid": false,
+      "file": "invalid-timestamp-snapshot-id.json",
+      "name": "invalid-timestamp-snapshot-id"
+    },
+    {
+      "coverage": "source version is not an issuance timestamp",
+      "expected_valid": false,
+      "file": "invalid-timestamp-version.json",
+      "name": "invalid-timestamp-version"
+    },
+    {
+      "coverage": "RFC 3339 envelope issuance time",
+      "expected_valid": false,
+      "file": "invalid-malformed-issued-at.json",
+      "name": "invalid-malformed-issued-at"
+    },
+    {
+      "coverage": "RFC 3339 immutable-state creation time",
+      "expected_valid": false,
+      "file": "invalid-malformed-created-at.json",
+      "name": "invalid-malformed-created-at"
+    },
+    {
+      "coverage": "created_at and issued_at retain distinct field placement and meaning",
+      "expected_valid": false,
+      "file": "invalid-created-at-copied-from-issued-at-field.json",
+      "name": "invalid-created-at-copied-from-issued-at-field"
+    },
+    {
+      "coverage": "required timestamp cannot be null",
+      "expected_valid": false,
+      "file": "invalid-explicit-null-issued-at.json",
+      "name": "invalid-explicit-null-issued-at"
+    },
+    {
+      "coverage": "required snapshot cannot be null",
+      "expected_valid": false,
+      "file": "invalid-explicit-null-snapshot-id.json",
+      "name": "invalid-explicit-null-snapshot-id"
+    },
+    {
+      "coverage": "required version cannot be null",
+      "expected_valid": false,
+      "file": "invalid-explicit-null-version.json",
+      "name": "invalid-explicit-null-version"
+    },
+    {
+      "coverage": "no scalar coercion",
+      "expected_valid": false,
+      "file": "invalid-coerced-workflow-id.json",
+      "name": "invalid-coerced-workflow-id"
+    },
+    {
+      "coverage": "required envelope field contract_version",
+      "expected_valid": false,
+      "file": "invalid-missing-envelope-contract-version.json",
+      "name": "invalid-missing-envelope-contract-version"
+    },
+    {
+      "coverage": "required envelope field contract_name",
+      "expected_valid": false,
+      "file": "invalid-missing-envelope-contract-name.json",
+      "name": "invalid-missing-envelope-contract-name"
+    },
+    {
+      "coverage": "required envelope field producer_capability",
+      "expected_valid": false,
+      "file": "invalid-missing-envelope-producer-capability.json",
+      "name": "invalid-missing-envelope-producer-capability"
+    },
+    {
+      "coverage": "required envelope field producer_system",
+      "expected_valid": false,
+      "file": "invalid-missing-envelope-producer-system.json",
+      "name": "invalid-missing-envelope-producer-system"
+    },
+    {
+      "coverage": "required envelope field canonical_owner",
+      "expected_valid": false,
+      "file": "invalid-missing-envelope-canonical-owner.json",
+      "name": "invalid-missing-envelope-canonical-owner"
+    },
+    {
+      "coverage": "required envelope field issued_at",
+      "expected_valid": false,
+      "file": "invalid-missing-envelope-issued-at.json",
+      "name": "invalid-missing-envelope-issued-at"
+    },
+    {
+      "coverage": "required envelope field cache_policy",
+      "expected_valid": false,
+      "file": "invalid-missing-envelope-cache-policy.json",
+      "name": "invalid-missing-envelope-cache-policy"
+    },
+    {
+      "coverage": "required envelope field ref",
+      "expected_valid": false,
+      "file": "invalid-missing-envelope-ref.json",
+      "name": "invalid-missing-envelope-ref"
+    },
+    {
+      "coverage": "required core field ref_id",
+      "expected_valid": false,
+      "file": "invalid-missing-core-ref-id.json",
+      "name": "invalid-missing-core-ref-id"
+    },
+    {
+      "coverage": "required core field ref_type",
+      "expected_valid": false,
+      "file": "invalid-missing-core-ref-type.json",
+      "name": "invalid-missing-core-ref-type"
+    },
+    {
+      "coverage": "required core field source_capability",
+      "expected_valid": false,
+      "file": "invalid-missing-core-source-capability.json",
+      "name": "invalid-missing-core-source-capability"
+    },
+    {
+      "coverage": "required core field organization_id",
+      "expected_valid": false,
+      "file": "invalid-missing-core-organization-id.json",
+      "name": "invalid-missing-core-organization-id"
+    },
+    {
+      "coverage": "required core field environment_id",
+      "expected_valid": false,
+      "file": "invalid-missing-core-environment-id.json",
+      "name": "invalid-missing-core-environment-id"
+    },
+    {
+      "coverage": "required core field external_uri",
+      "expected_valid": false,
+      "file": "invalid-missing-core-external-uri.json",
+      "name": "invalid-missing-core-external-uri"
+    },
+    {
+      "coverage": "required core field snapshot_id",
+      "expected_valid": false,
+      "file": "invalid-missing-core-snapshot-id.json",
+      "name": "invalid-missing-core-snapshot-id"
+    },
+    {
+      "coverage": "required core field version",
+      "expected_valid": false,
+      "file": "invalid-missing-core-version.json",
+      "name": "invalid-missing-core-version"
+    },
+    {
+      "coverage": "required core field created_at",
+      "expected_valid": false,
+      "file": "invalid-missing-core-created-at.json",
+      "name": "invalid-missing-core-created-at"
+    },
+    {
+      "coverage": "required core field workflow_id",
+      "expected_valid": false,
+      "file": "invalid-missing-core-workflow-id.json",
+      "name": "invalid-missing-core-workflow-id"
+    },
+    {
+      "coverage": "required envelope field contract_version cannot be null",
+      "expected_valid": false,
+      "file": "invalid-null-envelope-contract-version.json",
+      "name": "invalid-null-envelope-contract-version"
+    },
+    {
+      "coverage": "required envelope field contract_name cannot be null",
+      "expected_valid": false,
+      "file": "invalid-null-envelope-contract-name.json",
+      "name": "invalid-null-envelope-contract-name"
+    },
+    {
+      "coverage": "required envelope field producer_capability cannot be null",
+      "expected_valid": false,
+      "file": "invalid-null-envelope-producer-capability.json",
+      "name": "invalid-null-envelope-producer-capability"
+    },
+    {
+      "coverage": "required envelope field producer_system cannot be null",
+      "expected_valid": false,
+      "file": "invalid-null-envelope-producer-system.json",
+      "name": "invalid-null-envelope-producer-system"
+    },
+    {
+      "coverage": "required envelope field canonical_owner cannot be null",
+      "expected_valid": false,
+      "file": "invalid-null-envelope-canonical-owner.json",
+      "name": "invalid-null-envelope-canonical-owner"
+    },
+    {
+      "coverage": "required envelope field cache_policy cannot be null",
+      "expected_valid": false,
+      "file": "invalid-null-envelope-cache-policy.json",
+      "name": "invalid-null-envelope-cache-policy"
+    },
+    {
+      "coverage": "required envelope field ref cannot be null",
+      "expected_valid": false,
+      "file": "invalid-null-envelope-ref.json",
+      "name": "invalid-null-envelope-ref"
+    },
+    {
+      "coverage": "required core field ref_id cannot be null",
+      "expected_valid": false,
+      "file": "invalid-null-core-ref-id.json",
+      "name": "invalid-null-core-ref-id"
+    },
+    {
+      "coverage": "required core field ref_type cannot be null",
+      "expected_valid": false,
+      "file": "invalid-null-core-ref-type.json",
+      "name": "invalid-null-core-ref-type"
+    },
+    {
+      "coverage": "required core field source_capability cannot be null",
+      "expected_valid": false,
+      "file": "invalid-null-core-source-capability.json",
+      "name": "invalid-null-core-source-capability"
+    },
+    {
+      "coverage": "required core field organization_id cannot be null",
+      "expected_valid": false,
+      "file": "invalid-null-core-organization-id.json",
+      "name": "invalid-null-core-organization-id"
+    },
+    {
+      "coverage": "required core field environment_id cannot be null",
+      "expected_valid": false,
+      "file": "invalid-null-core-environment-id.json",
+      "name": "invalid-null-core-environment-id"
+    },
+    {
+      "coverage": "required core field external_uri cannot be null",
+      "expected_valid": false,
+      "file": "invalid-null-core-external-uri.json",
+      "name": "invalid-null-core-external-uri"
+    },
+    {
+      "coverage": "required core field created_at cannot be null",
+      "expected_valid": false,
+      "file": "invalid-null-core-created-at.json",
+      "name": "invalid-null-core-created-at"
+    },
+    {
+      "coverage": "required core field workflow_id cannot be null",
+      "expected_valid": false,
+      "file": "invalid-null-core-workflow-id.json",
+      "name": "invalid-null-core-workflow-id"
+    },
+    {
+      "coverage": "canonical metadata-only core excludes updated_at",
+      "expected_valid": false,
+      "file": "invalid-forbidden-updated-at.json",
+      "name": "invalid-forbidden-updated-at"
+    },
+    {
+      "coverage": "canonical metadata-only core excludes summary",
+      "expected_valid": false,
+      "file": "invalid-forbidden-summary.json",
+      "name": "invalid-forbidden-summary"
+    },
+    {
+      "coverage": "canonical metadata-only core excludes title",
+      "expected_valid": false,
+      "file": "invalid-forbidden-title.json",
+      "name": "invalid-forbidden-title"
+    },
+    {
+      "coverage": "canonical metadata-only core excludes subject_type",
+      "expected_valid": false,
+      "file": "invalid-forbidden-subject-type.json",
+      "name": "invalid-forbidden-subject-type"
+    },
+    {
+      "coverage": "canonical metadata-only core excludes subject_key",
+      "expected_valid": false,
+      "file": "invalid-forbidden-subject-key.json",
+      "name": "invalid-forbidden-subject-key"
+    },
+    {
+      "coverage": "canonical metadata-only core excludes owner",
+      "expected_valid": false,
+      "file": "invalid-forbidden-owner.json",
+      "name": "invalid-forbidden-owner"
+    },
+    {
+      "coverage": "canonical metadata-only core excludes review_status",
+      "expected_valid": false,
+      "file": "invalid-forbidden-review-status.json",
+      "name": "invalid-forbidden-review-status"
+    },
+    {
+      "coverage": "canonical metadata-only core excludes status",
+      "expected_valid": false,
+      "file": "invalid-forbidden-status.json",
+      "name": "invalid-forbidden-status"
+    },
+    {
+      "coverage": "canonical metadata-only core excludes workflow_body",
+      "expected_valid": false,
+      "file": "invalid-forbidden-workflow-body.json",
+      "name": "invalid-forbidden-workflow-body"
+    },
+    {
+      "coverage": "canonical metadata-only core excludes step_definitions",
+      "expected_valid": false,
+      "file": "invalid-forbidden-step-definitions.json",
+      "name": "invalid-forbidden-step-definitions"
+    },
+    {
+      "coverage": "canonical metadata-only core excludes control_assignments",
+      "expected_valid": false,
+      "file": "invalid-forbidden-control-assignments.json",
+      "name": "invalid-forbidden-control-assignments"
+    },
+    {
+      "coverage": "canonical metadata-only core excludes evidence",
+      "expected_valid": false,
+      "file": "invalid-forbidden-evidence.json",
+      "name": "invalid-forbidden-evidence"
+    },
+    {
+      "coverage": "canonical metadata-only core excludes policy",
+      "expected_valid": false,
+      "file": "invalid-forbidden-policy.json",
+      "name": "invalid-forbidden-policy"
+    },
+    {
+      "coverage": "canonical metadata-only core excludes readiness_results",
+      "expected_valid": false,
+      "file": "invalid-forbidden-readiness-results.json",
+      "name": "invalid-forbidden-readiness-results"
+    },
+    {
+      "coverage": "canonical metadata-only core excludes incidents",
+      "expected_valid": false,
+      "file": "invalid-forbidden-incidents.json",
+      "name": "invalid-forbidden-incidents"
+    },
+    {
+      "coverage": "canonical metadata-only core excludes asset_lineage",
+      "expected_valid": false,
+      "file": "invalid-forbidden-asset-lineage.json",
+      "name": "invalid-forbidden-asset-lineage"
+    },
+    {
+      "coverage": "canonical metadata-only core excludes rights",
+      "expected_valid": false,
+      "file": "invalid-forbidden-rights.json",
+      "name": "invalid-forbidden-rights"
+    },
+    {
+      "coverage": "canonical metadata-only core excludes approvals",
+      "expected_valid": false,
+      "file": "invalid-forbidden-approvals.json",
+      "name": "invalid-forbidden-approvals"
+    },
+    {
+      "coverage": "canonical metadata-only core excludes payload",
+      "expected_valid": false,
+      "file": "invalid-forbidden-payload.json",
+      "name": "invalid-forbidden-payload"
+    },
+    {
+      "coverage": "canonical metadata-only core excludes display_state",
+      "expected_valid": false,
+      "file": "invalid-forbidden-display-state.json",
+      "name": "invalid-forbidden-display-state"
+    },
+    {
+      "coverage": "recursive raw source payload marker ban",
+      "expected_valid": false,
+      "file": "invalid-recursive-raw-source-payload.json",
+      "name": "invalid-recursive-raw-source-payload"
+    },
+    {
+      "coverage": "recursive customer and sensitive data marker ban",
+      "expected_valid": false,
+      "file": "invalid-recursive-customer-data.json",
+      "name": "invalid-recursive-customer-data"
+    },
+    {
+      "coverage": "credential and secret marker ban",
+      "expected_valid": false,
+      "file": "invalid-credentials.json",
+      "name": "invalid-credentials"
+    },
+    {
+      "coverage": "broad mutable Workflow Context summary_snapshot is noncanonical",
+      "expected_valid": false,
+      "file": "invalid-legacy-summary-snapshot.json",
+      "name": "invalid-legacy-summary-snapshot"
+    },
+    {
+      "coverage": "nested workflow alignment metadata is not a canonical WorkflowRef envelope",
+      "expected_valid": false,
+      "file": "invalid-nested-alignment-object.json",
+      "name": "invalid-nested-alignment-object"
+    }
+  ],
+  "fixture_notice": "All values are synthetic and test-only metadata. They contain no workflow body, source or customer text, steps, controls, evidence, policy, readiness result, incident, asset lineage, rights, approval, payload, credentials, secrets, personal data, or permission to act.",
+  "format_version": 1
+}
