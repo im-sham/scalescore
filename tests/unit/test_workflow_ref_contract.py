@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 from jsonschema import Draft202012Validator, FormatChecker
@@ -41,6 +42,45 @@ def _exporter_module():
     return module
 
 
+def _copy_digest_layout(
+    exporter: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> Path:
+    contracts_root = tmp_path / "contracts-root"
+    shutil.copytree(VENDORED_ROOT, contracts_root)
+    manifest_path = contracts_root / CONTRACT_RELATIVE_ROOT / "artifact-digests.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    artifacts = {
+        relative_path: expected_digest
+        for relative_path, expected_digest in manifest["artifacts"].items()
+        if (contracts_root / relative_path).is_file()
+    }
+    corpus_paths = [
+        relative_path
+        for relative_path in artifacts
+        if relative_path.startswith("contracts/workflow-ref/v0.1/fixtures/corpus/")
+    ]
+    binding_paths = [
+        relative_path for relative_path in artifacts if relative_path.startswith("bindings/")
+    ]
+    manifest["artifacts"] = artifacts
+    manifest["artifact_set_sha256"] = exporter._aggregate(contracts_root, list(artifacts))
+    manifest["corpus_sha256"] = exporter._aggregate(contracts_root, corpus_paths)
+    manifest["generated_binding_sha256"] = exporter._aggregate(contracts_root, binding_paths)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    lock = json.loads(LOCK_PATH.read_text(encoding="utf-8"))
+    lock["sha256"]["artifact_manifest"] = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+    lock["sha256"]["artifact_set"] = manifest["artifact_set_sha256"]
+    lock["sha256"]["corpus"] = manifest["corpus_sha256"]
+    lock["sha256"]["generated_bindings"] = manifest["generated_binding_sha256"]
+    lock_path = tmp_path / "workflow-ref-v0.1.lock.json"
+    lock_path.write_text(json.dumps(lock), encoding="utf-8")
+    monkeypatch.setattr(exporter, "LOCK_PATH", lock_path)
+    return contracts_root
+
+
 def test_broad_workflow_models_are_explicitly_legacy_only() -> None:
     scaling = importlib.import_module("scalescore.models.scaling")
 
@@ -60,6 +100,7 @@ def test_publication_lock_records_exact_provenance_digests_and_rollback() -> Non
     assert lock["root_tree"] == EXPECTED_ROOT_TREE
     assert lock["contracts_tree"] == EXPECTED_CONTRACTS_TREE
     assert lock["contract_tree"] == EXPECTED_CONTRACT_TREE
+    assert lock["binding_blob"] == "5c3e6e9f04c01837f7e34d9fd588c6586fef7d4b"
     assert lock["review"] == {
         "pull_request": 15,
         "head": "148549e8f117e0cc9b2d3725f9039720ae34b2e3",
@@ -133,6 +174,59 @@ def test_exporter_fails_closed_on_each_provenance_identity(
 
     with pytest.raises(SystemExit, match="must be"):
         exporter._verify_source(tmp_path)
+
+
+def test_exporter_fails_closed_on_path_keyed_artifact_digest_drift(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    exporter = _exporter_module()
+    contracts_root = _copy_digest_layout(exporter, monkeypatch, tmp_path)
+    relative_path = CONTRACT_RELATIVE_ROOT / "schema.json"
+    (contracts_root / relative_path).write_bytes(b"{}\n")
+
+    with pytest.raises(
+        SystemExit,
+        match=f"WorkflowRef artifact digest differs: {relative_path.as_posix()}",
+    ):
+        exporter._verify_digests(contracts_root)
+
+
+def test_exporter_fails_closed_on_recomputed_aggregate_digest_drift(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    exporter = _exporter_module()
+    contracts_root = _copy_digest_layout(exporter, monkeypatch, tmp_path)
+    aggregate = exporter._aggregate
+    aggregate_calls = 0
+
+    def drift_first_aggregate(root: Path, relative_paths: list[str]) -> str:
+        nonlocal aggregate_calls
+        aggregate_calls += 1
+        actual = aggregate(root, relative_paths)
+        return "0" * 64 if aggregate_calls == 1 else actual
+
+    monkeypatch.setattr(exporter, "_aggregate", drift_first_aggregate)
+
+    with pytest.raises(
+        SystemExit,
+        match="WorkflowRef artifact_set digest differs from publication lock",
+    ):
+        exporter._verify_digests(contracts_root)
+
+
+def test_exporter_fails_closed_on_manifest_digest_drift(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    exporter = _exporter_module()
+    contracts_root = _copy_digest_layout(exporter, monkeypatch, tmp_path)
+    manifest_path = contracts_root / CONTRACT_RELATIVE_ROOT / "artifact-digests.json"
+    manifest_path.write_bytes(manifest_path.read_bytes() + b"\n")
+
+    with pytest.raises(
+        SystemExit,
+        match="WorkflowRef artifact manifest digest differs from publication lock",
+    ):
+        exporter._verify_digests(contracts_root)
 
 
 @pytest.mark.parametrize("drift_target", ["vendored_binding", "runtime_binding"])
