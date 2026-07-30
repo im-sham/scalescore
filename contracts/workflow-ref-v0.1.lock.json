@@ -1,16 +1,22 @@
 {
   "contract": "WorkflowRef",
   "contract_version": "proofhouse-shared-contracts/v0.1",
-  "status": "reviewed_candidate_prepublication",
-  "published": false,
+  "status": "protected_main_publication",
+  "published": true,
   "repository": "im-sham/proofhouse-contracts",
-  "source": {
-    "base": "1b0c4c7fea1fa6f20b82556acae1e6cf9c509f99",
+  "protected_ref": "main",
+  "commit": "f9fae6c578cd0bbabf269933d6850ddb209b3c2e",
+  "root_tree": "ed2e4616d8680098aaa4f4e7ba83cfe5e07e966b",
+  "contracts_tree": "d67979a7681fb872f9c60fff741d036d1eb2e0b5",
+  "contract_tree": "7b100000c0d979e3c025c61c0e6b40f11c4aad02",
+  "binding_blob": "5c3e6e9f04c01837f7e34d9fd588c6586fef7d4b",
+  "review": {
+    "pull_request": 15,
     "head": "148549e8f117e0cc9b2d3725f9039720ae34b2e3",
-    "draft_pull_request": 15,
-    "contracts_tree": "d67979a7681fb872f9c60fff741d036d1eb2e0b5",
-    "contract_tree": "7b100000c0d979e3c025c61c0e6b40f11c4aad02",
-    "binding_blob": "5c3e6e9f04c01837f7e34d9fd588c6586fef7d4b"
+    "head_tree": "ed2e4616d8680098aaa4f4e7ba83cfe5e07e966b",
+    "base": "1b0c4c7fea1fa6f20b82556acae1e6cf9c509f99",
+    "ci_run": 30555945810,
+    "independent_review": "approved"
   },
   "authority": {
     "usmi_commit": "af1cf7e87e2848a84048a27335cdff533d2d6e36",
@@ -37,10 +43,11 @@
   },
   "rollback": {
     "readiness_base": "47388ddfab0a1cc5eea7807f8de819f0753f2825",
-    "strategy": "revert the candidate consumer branch and restore the explicitly noncanonical legacy summary_snapshot route and stored-report readback; never route malformed canonical input to legacy or relabel nested alignment as canonical"
+    "strategy": "revert the consumer branch and restore the explicitly noncanonical legacy summary_snapshot route and stored-report readback; never route malformed canonical input to legacy or relabel nested alignment as canonical"
   },
-  "follow_up": {
-    "required_after_contracts_publication": true,
-    "action": "replace this reviewed candidate provenance with the exact immutable protected-main Contracts publication pin while preserving unchanged artifact digests"
+  "publication": {
+    "protected_commit_verified": true,
+    "artifact_bytes_changed": false,
+    "artifact_digests_changed": false
   }
 }

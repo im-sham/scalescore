@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -13,19 +15,30 @@ from jsonschema import Draft202012Validator, FormatChecker
 from pydantic import ValidationError
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-LOCK_PATH = REPO_ROOT / "contracts" / "workflow-ref-v0.1-candidate.lock.json"
+LOCK_PATH = REPO_ROOT / "contracts" / "workflow-ref-v0.1.lock.json"
 CONTRACT_RELATIVE_ROOT = Path("contracts/workflow-ref/v0.1")
 VENDORED_ROOT = REPO_ROOT / "contracts" / "vendor" / "proofhouse-contracts"
 VENDORED_BINDING = VENDORED_ROOT / "bindings" / "python" / "workflow_ref.py"
 RUNTIME_BINDING = REPO_ROOT / "src" / "scalescore" / "contracts" / "generated" / "workflow_ref.py"
-EXPORTER = REPO_ROOT / "scripts" / "vendor_workflow_ref_candidate.py"
-EXPECTED_HEAD = "148549e8f117e0cc9b2d3725f9039720ae34b2e3"
+EXPORTER = REPO_ROOT / "scripts" / "vendor_workflow_ref_contract.py"
+EXPECTED_COMMIT = "f9fae6c578cd0bbabf269933d6850ddb209b3c2e"
+EXPECTED_ROOT_TREE = "ed2e4616d8680098aaa4f4e7ba83cfe5e07e966b"
+EXPECTED_CONTRACTS_TREE = "d67979a7681fb872f9c60fff741d036d1eb2e0b5"
 EXPECTED_CONTRACT_TREE = "7b100000c0d979e3c025c61c0e6b40f11c4aad02"
 EXPECTED_CORPUS_CASES = 95
 
 
 def _binding_module():
     return importlib.import_module("scalescore.contracts.workflow_ref")
+
+
+def _exporter_module():
+    spec = importlib.util.spec_from_file_location("vendor_workflow_ref_contract", EXPORTER)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_broad_workflow_models_are_explicitly_legacy_only() -> None:
@@ -37,18 +50,30 @@ def test_broad_workflow_models_are_explicitly_legacy_only() -> None:
     assert not hasattr(scaling, "WorkflowRefEnvelope")
 
 
-def test_candidate_lock_records_exact_provenance_digests_and_rollback() -> None:
+def test_publication_lock_records_exact_provenance_digests_and_rollback() -> None:
     lock = json.loads(LOCK_PATH.read_text(encoding="utf-8"))
 
-    assert lock["status"] == "reviewed_candidate_prepublication"
-    assert lock["published"] is False
-    assert lock["source"] == {
+    assert lock["status"] == "protected_main_publication"
+    assert lock["published"] is True
+    assert lock["protected_ref"] == "main"
+    assert lock["commit"] == EXPECTED_COMMIT
+    assert lock["root_tree"] == EXPECTED_ROOT_TREE
+    assert lock["contracts_tree"] == EXPECTED_CONTRACTS_TREE
+    assert lock["contract_tree"] == EXPECTED_CONTRACT_TREE
+    assert lock["review"] == {
+        "pull_request": 15,
+        "head": "148549e8f117e0cc9b2d3725f9039720ae34b2e3",
+        "head_tree": EXPECTED_ROOT_TREE,
         "base": "1b0c4c7fea1fa6f20b82556acae1e6cf9c509f99",
-        "head": EXPECTED_HEAD,
-        "draft_pull_request": 15,
-        "contracts_tree": "d67979a7681fb872f9c60fff741d036d1eb2e0b5",
-        "contract_tree": EXPECTED_CONTRACT_TREE,
-        "binding_blob": "5c3e6e9f04c01837f7e34d9fd588c6586fef7d4b",
+        "ci_run": 30555945810,
+        "independent_review": "approved",
+    }
+    assert lock["authority"] == {
+        "usmi_commit": "af1cf7e87e2848a84048a27335cdff533d2d6e36",
+        "decision": "decisions/2026-07-29-wp-ri-03-workflow-ref-d12-authority-candidate.md",
+        "clarification": (
+            "decisions/2026-07-30-scaffold-product-role-and-workflow-ref-d12-clarification.md"
+        ),
     }
     assert lock["sha256"] == {
         "schema": "18ad1178598eea77c5f160afd5f0329ca3c3d388ada7593c18a1d7d4aeecc9cd",
@@ -65,10 +90,104 @@ def test_candidate_lock_records_exact_provenance_digests_and_rollback() -> None:
         "window": "one_release",
         "canonical_fallback": False,
     }
-    assert lock["rollback"]["readiness_base"] == ("47388ddfab0a1cc5eea7807f8de819f0753f2825")
+    assert lock["rollback"] == {
+        "readiness_base": "47388ddfab0a1cc5eea7807f8de819f0753f2825",
+        "strategy": (
+            "revert the consumer branch and restore the explicitly noncanonical legacy "
+            "summary_snapshot route and stored-report readback; never route malformed "
+            "canonical input to legacy or relabel nested alignment as canonical"
+        ),
+    }
+    assert lock["publication"] == {
+        "protected_commit_verified": True,
+        "artifact_bytes_changed": False,
+        "artifact_digests_changed": False,
+    }
 
 
-def test_exact_95_case_candidate_corpus_matches_schema_and_binding() -> None:
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        (("rev-parse", "HEAD"), EXPECTED_COMMIT),
+        (("rev-parse", "HEAD^{tree}"), EXPECTED_ROOT_TREE),
+        (("rev-parse", "HEAD:contracts"), EXPECTED_CONTRACTS_TREE),
+        (("rev-parse", "HEAD:contracts/workflow-ref/v0.1"), EXPECTED_CONTRACT_TREE),
+    ],
+)
+def test_exporter_fails_closed_on_each_provenance_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    query: tuple[str, str],
+    expected: str,
+) -> None:
+    exporter = _exporter_module()
+    provenance = {
+        ("rev-parse", "HEAD"): EXPECTED_COMMIT,
+        ("rev-parse", "HEAD^{tree}"): EXPECTED_ROOT_TREE,
+        ("rev-parse", "HEAD:contracts"): EXPECTED_CONTRACTS_TREE,
+        ("rev-parse", "HEAD:contracts/workflow-ref/v0.1"): EXPECTED_CONTRACT_TREE,
+        ("status", "--porcelain"): "",
+    }
+    provenance[query] = f"{expected}-drift"
+    monkeypatch.setattr(exporter, "_git", lambda _root, *arguments: provenance[arguments])
+
+    with pytest.raises(SystemExit, match="must be"):
+        exporter._verify_source(tmp_path)
+
+
+@pytest.mark.parametrize("drift_target", ["vendored_binding", "runtime_binding"])
+def test_exporter_fails_closed_on_binding_byte_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    drift_target: str,
+) -> None:
+    exporter = _exporter_module()
+    source_contract = tmp_path / "source-contract"
+    source_binding = tmp_path / "source-workflow_ref.py"
+    destination_contract = tmp_path / "destination-contract"
+    destination_binding = tmp_path / "destination-workflow_ref.py"
+    runtime_binding = tmp_path / "runtime-workflow_ref.py"
+    shutil.copytree(VENDORED_ROOT / CONTRACT_RELATIVE_ROOT, source_contract)
+    shutil.copytree(source_contract, destination_contract)
+    source_binding.write_bytes(VENDORED_BINDING.read_bytes())
+    destination_binding.write_bytes(source_binding.read_bytes())
+    runtime_binding.write_bytes(source_binding.read_bytes())
+    if drift_target == "vendored_binding":
+        destination_binding.write_bytes(b"# drift\n")
+    else:
+        runtime_binding.write_bytes(b"# drift\n")
+    monkeypatch.setattr(exporter, "DESTINATION_CONTRACT", destination_contract)
+    monkeypatch.setattr(exporter, "DESTINATION_BINDING", destination_binding)
+    monkeypatch.setattr(exporter, "RUNTIME_BINDING", runtime_binding)
+
+    with pytest.raises(SystemExit, match="binding differs"):
+        exporter._check(source_contract, source_binding)
+
+
+def test_exporter_fails_closed_on_subtree_path_drift(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    exporter = _exporter_module()
+    source_contract = tmp_path / "source-contract"
+    destination_contract = tmp_path / "destination-contract"
+    source_binding = tmp_path / "source-workflow_ref.py"
+    destination_binding = tmp_path / "destination-workflow_ref.py"
+    runtime_binding = tmp_path / "runtime-workflow_ref.py"
+    shutil.copytree(VENDORED_ROOT / CONTRACT_RELATIVE_ROOT, source_contract)
+    shutil.copytree(source_contract, destination_contract)
+    (destination_contract / "unexpected.json").write_text("{}\n", encoding="utf-8")
+    source_binding.write_bytes(VENDORED_BINDING.read_bytes())
+    destination_binding.write_bytes(source_binding.read_bytes())
+    runtime_binding.write_bytes(source_binding.read_bytes())
+    monkeypatch.setattr(exporter, "DESTINATION_CONTRACT", destination_contract)
+    monkeypatch.setattr(exporter, "DESTINATION_BINDING", destination_binding)
+    monkeypatch.setattr(exporter, "RUNTIME_BINDING", runtime_binding)
+
+    with pytest.raises(SystemExit, match="subtree differs"):
+        exporter._check(source_contract, source_binding)
+
+
+def test_exact_95_case_published_corpus_matches_schema_and_binding() -> None:
     binding = _binding_module()
     contract_root = VENDORED_ROOT / CONTRACT_RELATIVE_ROOT
     schema = json.loads((contract_root / "schema.json").read_text(encoding="utf-8"))
@@ -88,7 +207,7 @@ def test_exact_95_case_candidate_corpus_matches_schema_and_binding() -> None:
                 binding.WorkflowRefEnvelope.model_validate(payload)
 
 
-def test_vendored_candidate_bytes_match_lock_and_manifest() -> None:
+def test_vendored_published_bytes_match_lock_and_manifest() -> None:
     lock = json.loads(LOCK_PATH.read_text(encoding="utf-8"))
     contract_root = VENDORED_ROOT / CONTRACT_RELATIVE_ROOT
     manifest_path = contract_root / "artifact-digests.json"
@@ -117,7 +236,7 @@ def test_vendored_candidate_bytes_match_lock_and_manifest() -> None:
         assert hashlib.sha256(artifact.read_bytes()).hexdigest() == expected_digest, relative_path
 
 
-def test_credential_free_exporter_check_accepts_exact_local_candidate() -> None:
+def test_credential_free_exporter_check_accepts_exact_local_publication() -> None:
     contracts_root_value = os.environ.get("PROOFHOUSE_CONTRACTS_ROOT")
     if contracts_root_value is None:
         return
