@@ -38,6 +38,7 @@ jobs:
       EXTERNAL_OIDC_BASE_URL: http://127.0.0.1:8001
       ENVIRONMENT: staging
       AUTH_SKIP_AUTH: "false"
+      RATE_LIMIT_BACKEND: redis
       FEATURE_ENABLE_ASYNC_ASSESSMENTS: "true"
       ASYNC_ASSESSMENT_MODE: poll
       INPUT_JOBS: ${{ github.event.inputs.jobs }}
@@ -115,6 +116,78 @@ jobs:
             --growth-signals-per-org 40 \
             --overwrite | tee "${VALIDATION_ROOT}/dataset_generation.log"
 
+      - name: Start ephemeral TLS Redis
+        run: |
+          set -euo pipefail
+          umask 077
+
+          REDIS_IMAGE="redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99"
+          REDIS_CONTAINER_NAME="staging-validation-redis-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          REDIS_TLS_DIR="${RUNNER_TEMP}/staging-redis/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          REDIS_TLS_CA_CERT_PATH="${REDIS_TLS_DIR}/ca.crt"
+
+          mkdir -p "${REDIS_TLS_DIR}"
+          echo "REDIS_CONTAINER_NAME=${REDIS_CONTAINER_NAME}" >>"${GITHUB_ENV}"
+          echo "REDIS_TLS_DIR=${REDIS_TLS_DIR}" >>"${GITHUB_ENV}"
+          echo "REDIS_TLS_CA_CERT_PATH=${REDIS_TLS_CA_CERT_PATH}" >>"${GITHUB_ENV}"
+
+          openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 1 \
+            -keyout "${REDIS_TLS_DIR}/ca.key" \
+            -out "${REDIS_TLS_CA_CERT_PATH}" \
+            -subj "/CN=Readiness Staging Validation CI CA" >/dev/null 2>&1
+          openssl req -newkey rsa:2048 -sha256 -nodes \
+            -keyout "${REDIS_TLS_DIR}/server.key" \
+            -out "${REDIS_TLS_DIR}/server.csr" \
+            -subj "/CN=localhost" >/dev/null 2>&1
+          printf '%s\n' \
+            'subjectAltName=DNS:localhost,IP:127.0.0.1' \
+            'extendedKeyUsage=serverAuth' \
+            >"${REDIS_TLS_DIR}/server.ext"
+          openssl x509 -req -sha256 -days 1 \
+            -in "${REDIS_TLS_DIR}/server.csr" \
+            -CA "${REDIS_TLS_CA_CERT_PATH}" \
+            -CAkey "${REDIS_TLS_DIR}/ca.key" \
+            -CAcreateserial \
+            -out "${REDIS_TLS_DIR}/server.crt" \
+            -extfile "${REDIS_TLS_DIR}/server.ext" >/dev/null 2>&1
+
+          docker run --detach \
+            --name "${REDIS_CONTAINER_NAME}" \
+            --user "$(id -u):$(id -g)" \
+            --publish 127.0.0.1:6380:6379 \
+            --volume "${REDIS_TLS_DIR}:/tls:ro" \
+            "${REDIS_IMAGE}" \
+            redis-server \
+            --bind 0.0.0.0 \
+            --protected-mode no \
+            --port 0 \
+            --tls-port 6379 \
+            --tls-cert-file /tls/server.crt \
+            --tls-key-file /tls/server.key \
+            --tls-ca-cert-file /tls/ca.crt \
+            --tls-auth-clients no \
+            --save "" \
+            --appendonly no
+
+          REDIS_HEALTHY="false"
+          for attempt in {1..30}; do
+            if docker exec "${REDIS_CONTAINER_NAME}" \
+              redis-cli --tls --cacert /tls/ca.crt -h localhost -p 6379 ping \
+              | tr -d '\r' | tr -d '\n' | grep -qx PONG; then
+              REDIS_HEALTHY="true"
+              break
+            fi
+            sleep 1
+          done
+          if [[ "${REDIS_HEALTHY}" != "true" ]]; then
+            docker logs "${REDIS_CONTAINER_NAME}" >"${VALIDATION_ROOT}/redis.log" 2>&1 || true
+            echo "TLS Redis did not become healthy." >&2
+            exit 1
+          fi
+
+          echo "RATE_LIMIT_URL=rediss://localhost:6380/0?ssl_ca_certs=${REDIS_TLS_CA_CERT_PATH}&ssl_cert_reqs=required" \
+            >>"${GITHUB_ENV}"
+
       - name: Run internal JWT smoke and async benchmark gate
         run: |
           set -uo pipefail
@@ -142,6 +215,10 @@ jobs:
           for attempt in {1..60}; do
             if curl -fsS "${BASE_URL}/api/v1/health" >"${SMOKE_DIR}/health_primary.json"; then
               HEALTHY="true"
+              break
+            fi
+            if ! kill -0 "${PRIMARY_API_PID}" 2>/dev/null; then
+              echo "Primary API exited before becoming healthy; see api-8000.log." >&2
               break
             fi
             sleep 1
@@ -239,6 +316,10 @@ jobs:
                 OIDC_HEALTHY="true"
                 break
               fi
+              if ! kill -0 "${SECONDARY_API_PID}" 2>/dev/null; then
+                echo "External OIDC API exited before becoming healthy; see api-8001.log." >&2
+                break
+              fi
               sleep 1
             done
 
@@ -303,6 +384,17 @@ jobs:
 
           if [[ "${OVERALL_STATUS}" != "PASS" ]]; then
             exit 1
+          fi
+
+      - name: Clean up ephemeral staging services
+        if: always()
+        run: |
+          set -euo pipefail
+          if [[ -n "${REDIS_CONTAINER_NAME:-}" ]]; then
+            docker rm --force "${REDIS_CONTAINER_NAME}" >/dev/null 2>&1 || true
+          fi
+          if [[ -n "${REDIS_TLS_DIR:-}" && "${REDIS_TLS_DIR}" == "${RUNNER_TEMP}/staging-redis/"* ]]; then
+            rm -rf "${REDIS_TLS_DIR}" "${AUTH_KEY_DIR}"
           fi
 
       - name: Upload staging validation artifacts

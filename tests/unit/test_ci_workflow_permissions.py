@@ -23,6 +23,56 @@ def test_staging_validation_gate_uses_least_privilege_permissions() -> None:
     assert "\npermissions:\n  contents: read\n" in workflow
 
 
+def test_staging_validation_gate_preserves_triggers_and_staging_security() -> None:
+    workflow = _workflow("staging-validation-gate.yml")
+
+    assert "  workflow_dispatch:" in workflow
+    assert '    - cron: "0 9 * * 1"' in workflow
+    assert "      ENVIRONMENT: staging" in workflow
+    assert "      RATE_LIMIT_BACKEND: redis" in workflow
+    assert "RATE_LIMIT_URL=rediss://localhost:6380/0?" in workflow
+    assert "ssl_ca_certs=${REDIS_TLS_CA_CERT_PATH}" in workflow
+    assert "ssl_cert_reqs=required" in workflow
+    assert "redis://localhost:6380" not in workflow
+
+
+def test_staging_validation_gate_bootstraps_pinned_tls_redis() -> None:
+    workflow = _workflow("staging-validation-gate.yml")
+    bootstrap = workflow.split("      - name: Start ephemeral TLS Redis", 1)[1].split(
+        "\n      - name:", 1
+    )[0]
+
+    redis_image = (
+        "redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99"
+    )
+    assert redis_image in bootstrap
+    assert "openssl req -x509" in bootstrap
+    assert "subjectAltName=DNS:localhost,IP:127.0.0.1" in bootstrap
+    assert "--publish 127.0.0.1:6380:6379" in bootstrap
+    assert "--tls-port 6379" in bootstrap
+    assert "--port 0" in bootstrap
+    assert "--tls-cert-file /tls/server.crt" in bootstrap
+    assert "--tls-key-file /tls/server.key" in bootstrap
+    assert "--tls-ca-cert-file /tls/ca.crt" in bootstrap
+    assert "redis-cli --tls --cacert /tls/ca.crt" in bootstrap
+
+
+def test_staging_validation_gate_always_cleans_tls_redis_secrets() -> None:
+    workflow = _workflow("staging-validation-gate.yml")
+    cleanup = workflow.split("      - name: Clean up ephemeral staging services", 1)[1].split(
+        "\n      - name:", 1
+    )[0]
+    upload = workflow.split("      - name: Upload staging validation artifacts", 1)[1]
+
+    assert "        if: always()" in cleanup
+    assert 'docker rm --force "${REDIS_CONTAINER_NAME}"' in cleanup
+    assert 'rm -rf "${REDIS_TLS_DIR}" "${AUTH_KEY_DIR}"' in cleanup
+    assert "        if: always()" in upload
+    assert "path: ${{ env.VALIDATION_ROOT }}" in upload
+    assert "REDIS_TLS_DIR" not in upload
+    assert "AUTH_KEY_DIR" not in upload
+
+
 def test_staging_validation_uses_constrained_editable_install_without_source_bypass() -> None:
     workflow = _workflow("staging-validation-gate.yml")
     install_block = workflow.split("      - name: Install constrained dependencies", 1)[1].split(
