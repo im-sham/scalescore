@@ -1,6 +1,6 @@
 # Proofhouse Readiness Roadmap
 
-> **Last Updated**: April 26, 2026
+> **Last Updated**: August 5, 2026
 > **Status**: Active Development  
 > **Owner**: Product & Engineering
 
@@ -96,6 +96,7 @@ The product is no longer optimized around a broad "scaling companies" category. 
 | Minimal Workflow Context integration path | ✅ Initial direct integration implemented |
 | Workflow Context-native submission contract | ✅ Initial direct contract implemented |
 | Operational Learning suitability lens | ✅ Initial additive slice implemented |
+| Canonical Operational Learning suitability `AssessmentRef` | ✅ Initial compact handoff implemented |
 | Regulated document-operations suitability profile | ✅ Initial additive slice implemented |
 | Operator-facing diagnostic/report surface | 🔄 Planned |
 | Compatibility guardrails for org-level flows | ✅ Preserved in current additive rollout |

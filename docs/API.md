@@ -236,6 +236,13 @@ Current compatibility rules:
   the response-model-enforced V0.1 `AssessmentRefEnvelope`. Full pillar,
   finding, suitability, and report-wrapper fields remain available only
   through authenticated tenant-scoped assessment dereference.
+  The optional `assessment_type` selector defaults to `workflow_readiness` for
+  backward compatibility. Selecting `operational_learning_suitability`
+  publishes the Readiness-owned eval-suitability result and requires either
+  explicit `operational_learning_inputs` or a `document_operations_profile`
+  from which those inputs can be derived. A hard-blocked result is capped below
+  the contract's `blocked` threshold in the compact reference; the full report
+  retains the uncapped diagnostic score and explicit hard-block state.
   The compact boundary requires all canonical envelope identity fields,
   `cache_policy: summary_snapshot`, and nonempty `external_uri`,
   `snapshot_id`, and `version`; rejects unknown envelope or nested-ref fields;
@@ -287,7 +294,7 @@ Current compatibility rules:
 | `POST` | `/api/v1/assessments` | `assessment:create` | Requires `dataset_path`; development-only path execution |
 | `POST` | `/api/v1/assessments/workflow` | `assessment:create` | JSON workflow submission (`dataset_path` + `workflow_context`); development-only dataset path execution |
 | `POST` | `/api/v1/assessments/mila/workflow` | `assessment:create` | Tenant-aligned Workflow Context compatibility submission (`org_id`, `org_name`, `workflow_context`, optional `workflow_ref`, optional canonical or one-release exact-legacy `control_refs`, optional `workflow_evidence`, optional `operational_learning_inputs`, optional baseline findings); no CSV dataset required |
-| `POST` | `/api/v1/assessments/mila/workflow/assessment-ref` | `assessment:create` | Compact Workflow-facing submission; requires canonical `workflow_ref`, persists the full report in Readiness, and returns only `AssessmentRefEnvelope` |
+| `POST` | `/api/v1/assessments/mila/workflow/assessment-ref` | `assessment:create` | Compact Proofhouse submission; requires canonical `workflow_ref`, defaults to `workflow_readiness`, optionally selects `operational_learning_suitability`, persists the aligned full report in Readiness, and returns only `AssessmentRefEnvelope` |
 | `POST` | `/api/v1/assessments/upload` | `assessment:create` | Multipart upload of six CSV files; optional `workflow_context_json` form field enables workflow scoring |
 | `POST` | `/api/v1/assessments/async/upload` | `assessment:create` | Queue async assessment job (`202 Accepted`); optional `workflow_context_json` enables workflow scoring |
 | `GET` | `/api/v1/assessments/async/{job_id}` | `assessment:read` | Poll queued/processing/completed async job status; echoes workflow context when present |
