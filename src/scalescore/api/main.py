@@ -41,7 +41,11 @@ from scalescore.contracts.control_ref_consumer import (
 from scalescore.contracts.workflow_ref import (
     WorkflowRefEnvelope as CanonicalWorkflowRefEnvelope,
 )
-from scalescore.core.assessment import run_assessment_from_csv, run_workflow_assessment
+from scalescore.core.assessment import (
+    AssessmentRefType,
+    run_assessment_from_csv,
+    run_workflow_assessment,
+)
 from scalescore.core.async_assessment import AsyncAssessmentWorker
 from scalescore.core.async_broker import AsyncAssessmentBrokerError, get_async_assessment_broker
 from scalescore.core.audit import (
@@ -334,6 +338,7 @@ class CreateMilaWorkflowAssessmentRefRequest(BaseModel):
     source_playbook_id: str | None = None
     source_findings: list[str] = Field(default_factory=list)
     notes: str | None = None
+    assessment_type: AssessmentRefType = "workflow_readiness"
 
 
 def _dataset_path_for_development(dataset_path: str) -> Path:
@@ -777,6 +782,8 @@ def _run_and_persist_mila_workflow_assessment(
     payload: CreateMilaWorkflowAssessmentRequest | CreateMilaWorkflowAssessmentRefRequest,
     current_user: TokenPayload,
     repository: AssessmentRepository,
+    *,
+    assessment_type: AssessmentRefType = "workflow_readiness",
 ) -> ScaleScoreReport:
     _validate_control_ref_alignment(payload, tenant_id=current_user.tenant_id)
     _validate_mila_workflow_summary_text(payload)
@@ -801,6 +808,7 @@ def _run_and_persist_mila_workflow_assessment(
         operational_learning_inputs=payload.operational_learning_inputs,
         document_operations_profile=payload.document_operations_profile,
         source_findings=source_findings,
+        assessment_type=assessment_type,
     )
     repository.save_report(report, tenant_id=current_user.tenant_id)
     audit_assessment_created(
@@ -860,7 +868,28 @@ async def create_mila_workflow_assessment_ref(
             },
         )
 
-    report = _run_and_persist_mila_workflow_assessment(payload, current_user, repository)
+    if (
+        payload.assessment_type == "operational_learning_suitability"
+        and payload.operational_learning_inputs is None
+        and payload.document_operations_profile is None
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "OPERATIONAL_LEARNING_NOT_ASSESSED",
+                "message": (
+                    "Operational Learning inputs or a document-operations profile are required "
+                    "before publishing an Operational Learning suitability AssessmentRef."
+                ),
+            },
+        )
+
+    report = _run_and_persist_mila_workflow_assessment(
+        payload,
+        current_user,
+        repository,
+        assessment_type=payload.assessment_type,
+    )
     if report.assessment_ref is None:
         raise RuntimeError("Workflow assessment did not produce an AssessmentRef")
     return report.assessment_ref

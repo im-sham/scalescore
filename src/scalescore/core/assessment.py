@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 from uuid import uuid4
 
 from scalescore.connectors.csv_connector import CSVConnector
@@ -54,6 +55,10 @@ from scalescore.scoring.engine import ScoringConfig, ScoringEngine
 from scalescore.scoring.recommender import RecommendationEngine
 
 WorkflowRefInput = CanonicalWorkflowRefEnvelope | LegacyWorkflowRefEnvelope
+AssessmentRefType = Literal[
+    "workflow_readiness",
+    "operational_learning_suitability",
+]
 
 
 def run_assessment_from_csv(
@@ -186,6 +191,7 @@ def run_workflow_assessment(
     operational_learning_inputs: OperationalLearningInputs | None = None,
     document_operations_profile: DocumentOperationsReadinessProfile | None = None,
     source_findings: list[str] | None = None,
+    assessment_type: AssessmentRefType = "workflow_readiness",
 ) -> ScaleScoreReport:
     """Build a workflow-first report from direct workflow metadata without CSV datasets."""
 
@@ -263,7 +269,11 @@ def run_workflow_assessment(
         }
     )
     report.executive_summary = generate_executive_summary(report)
-    report = apply_assessment_ref(report, workflow_ref=workflow_ref)
+    report = apply_assessment_ref(
+        report,
+        workflow_ref=workflow_ref,
+        assessment_type=assessment_type,
+    )
     return report
 
 
@@ -334,25 +344,54 @@ def apply_assessment_ref(
     report: ScaleScoreReport,
     *,
     workflow_ref: WorkflowRefInput | None = None,
+    assessment_type: AssessmentRefType = "workflow_readiness",
 ) -> ScaleScoreReport:
-    """Attach compact AssessmentRef output using historical workflow alignment."""
+    """Attach the selected compact AssessmentRef using historical workflow alignment."""
 
     upstream_workflow_ref = workflow_ref or report.workflow_ref
     if upstream_workflow_ref is None:
         return report
 
-    score = (
-        report.workflow_readiness_score
-        if report.workflow_readiness_score is not None
-        else report.overall_score
-    )
-    grade = _grade_for_score(score)
     if report.workflow_context is not None:
         workflow_name = report.workflow_context.name
     elif isinstance(upstream_workflow_ref, LegacyWorkflowRefEnvelope):
         workflow_name = upstream_workflow_ref.ref.title
     else:
         workflow_name = upstream_workflow_ref.ref.workflow_id
+
+    if assessment_type == "operational_learning_suitability":
+        suitability = report.operational_learning_suitability
+        if suitability is None:
+            raise ValueError(
+                "Operational Learning suitability must be assessed before its AssessmentRef "
+                "can be published"
+            )
+        eval_result = suitability.eval_suitability
+        raw_score = eval_result.score
+        score = min(raw_score, 49.0) if eval_result.hard_blocked else raw_score
+        grade = _grade_for_score(score)
+        summary = (
+            f"Operational Learning eval suitability for {workflow_name}: {score:.1f} ({grade})"
+        )
+        if eval_result.hard_blocked:
+            summary = f"{summary}; raw score {raw_score:.1f}, hard blocker gate applied"
+        top_blockers = list(
+            dict.fromkeys(blocker for blocker in suitability.top_blockers if blocker)
+        )[:5]
+        top_reasons = list(dict.fromkeys(reason for reason in suitability.top_reasons if reason))[
+            :5
+        ]
+    else:
+        score = (
+            report.workflow_readiness_score
+            if report.workflow_readiness_score is not None
+            else report.overall_score
+        )
+        grade = _grade_for_score(score)
+        summary = f"Workflow readiness assessment for {workflow_name}: {score:.1f} ({grade})"
+        top_blockers = _assessment_ref_top_blockers(report)
+        top_reasons = _assessment_ref_top_reasons(report)
+
     report_uri = f"/api/v1/assessments/{report.report_id}"
     bounded_workflow_ref = HistoricalAssessmentWorkflowAlignmentEnvelope.model_validate(
         {
@@ -397,17 +436,15 @@ def apply_assessment_ref(
                     "snapshot_id": report.report_id,
                     "version": report.report_version,
                     "created_at": _contract_datetime(report.generated_at),
-                    "summary": (
-                        f"Workflow readiness assessment for {workflow_name}: {score:.1f} ({grade})"
-                    ),
+                    "summary": summary,
                     "assessment_id": report.report_id,
                     "workflow_ref": bounded_workflow_ref,
-                    "assessment_type": "workflow_readiness",
+                    "assessment_type": assessment_type,
                     "score": score,
                     "grade": grade,
                     "status": _assessment_ref_status(score),
-                    "top_blockers": _assessment_ref_top_blockers(report),
-                    "top_reasons": _assessment_ref_top_reasons(report),
+                    "top_blockers": top_blockers,
+                    "top_reasons": top_reasons,
                 }
             ),
         }

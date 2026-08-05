@@ -213,6 +213,12 @@ Workflow reports now support:
 - optional summary/ref-only `document_operations_profile` input on the current Workflow Context compatibility route
 - `org_rollup`
 
+The compact Workflow-facing assessment endpoint defaults to a workflow-readiness
+`AssessmentRef` and can explicitly emit an Operational Learning suitability
+`AssessmentRef` when that lens was assessed. Both variants preserve the same
+canonical WorkflowRef and persisted report alignment; neither grants approval,
+training, export, promotion, or activation authority.
+
 ---
 
 ## Current Status

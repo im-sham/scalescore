@@ -115,6 +115,15 @@ Current HTTP API endpoints remain backward compatible and now support workflow s
 - `POST /api/v1/assessments/mila/workflow` is the current Workflow Context compatibility endpoint. The route name remains technical compatibility debt for now. It accepts direct workflow metadata plus optional Workflow Context-owned `workflow_ref` and `control_refs`. Readiness consumes canonical `ControlRef` through the generated, immutable Contracts binding and preserves field values and pin omission shape through report storage/readback. Authenticated tenant, request organization, workflow context, top-level workflow ref, controls, and embedded owning workflow refs must align across tenant, environment, and workflow before scoring or persistence.
 - Workflow Context remains the semantic owner, sensitivity authority, sole initial producer, and authenticated tenant-scoped canonical-detail dereference service for `ControlRef`. Readiness is consumer-only. Canonical implementation/linkage states are diagnostics and confer no owner confirmation, Governance approval, policy, use, release, external, gate, audit, or completion authority.
 - One release retains only the exact former repository-local `ControlRef` model on the existing inbound compatibility route and stored-report readback. Its objects remain observably legacy and are never repaired or converted into canonical `ControlRef` truth; malformed canonical input cannot fall through to it, and its historical authority-like fields do not affect scoring. Historical Pydantic behavior remains intact: omitted legacy fields with defaults are accepted and those defaults materialize during serialization and persistence/readback.
+- `POST /api/v1/assessments/mila/workflow/assessment-ref` emits a strict compact
+  `AssessmentRef`. Its optional selector defaults to `workflow_readiness` and
+  can publish `operational_learning_suitability` from the Readiness-owned eval
+  result when OL inputs were actually assessed. The reference preserves the
+  canonical WorkflowRef identity and the persisted report pin. Hard blockers
+  force the compact score/status into `blocked`; the full tenant-scoped report
+  retains the uncapped diagnostic score and hard-block state. This diagnostic
+  does not grant Governance approval, internal-eval use, training, promotion,
+  export, or activation authority.
 - The same Workflow Context compatibility endpoint also accepts optional `document_operations_profile` for the flagship `document_ops_regulated_review_v0` fixture. This profile is a Readiness-local projection of Workflow Context snapshot signals, not canonical workflow truth.
 - Direct workflow `source_findings` and `notes` are summary/ref-only inputs. The API rejects obvious raw payload-shaped JSON or sensitive/raw payload keys before report creation; this is a bounded contract guard, not DLP or PHI classification.
 - OpsOrchestra outbound sync includes compact Operational Learning suitability when present: suitability status, eval/internal-training status, top blockers/reasons/actions, and Governance dependency state. It does not include direct workflow findings, notes, source documents, or full report exports.
@@ -246,7 +255,9 @@ When workflow context is present, the report also includes:
 - prioritized remediation actions
 - optional `operational_learning_suitability`
 - optional `claims_suitability`
-- `assessment_ref` as the compact Readiness-owned `proofhouse-shared-contracts/v0.1` projection
+- `assessment_ref` as the selected compact Readiness-owned
+  `proofhouse-shared-contracts/v0.1` workflow-readiness or Operational Learning
+  suitability projection
 - org rollup metadata
 
 ### 5.3 Executive Narrative

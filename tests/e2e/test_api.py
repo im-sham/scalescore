@@ -764,6 +764,7 @@ def test_create_mila_workflow_assessment_ref_returns_exact_compact_envelope() ->
     assert workflow_alignment["ref"]["ref_id"] == "workflow:wf_support_triage"
     assert workflow_alignment["ref"]["snapshot_id"] == "snapshot-support-triage-1"
     assert workflow_alignment["ref"]["version"] == "version-support-triage-7"
+    assert payload["ref"]["assessment_type"] == "workflow_readiness"
     assert "created_at" not in workflow_alignment["ref"]
     report_response = client.get(
         f"/api/v1/assessments/{payload['ref']['assessment_id']}",
@@ -785,6 +786,140 @@ def test_create_mila_workflow_assessment_ref_returns_exact_compact_envelope() ->
     }
     assert prohibited_fields.isdisjoint(payload)
     assert prohibited_fields.isdisjoint(payload["ref"])
+
+
+def test_create_mila_workflow_assessment_ref_emits_operational_learning_suitability() -> None:
+    request_payload = _compact_mila_workflow_assessment_payload_for_org("dev-tenant")
+    request_payload["assessment_type"] = "operational_learning_suitability"
+
+    response = client.post(
+        "/api/v1/assessments/mila/workflow/assessment-ref",
+        json=request_payload,
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 200
+    assessment_ref = response.json()
+    assessment = assessment_ref["ref"]
+    assert assessment["assessment_type"] == "operational_learning_suitability"
+    assert assessment["workflow_ref"]["ref"] == {
+        "ref_id": "workflow:wf_support_triage",
+        "ref_type": "workflow",
+        "source_capability": "workflow_context",
+        "organization_id": "dev-tenant",
+        "environment_id": "production",
+        "external_uri": (
+            "workflow-context://organizations/dev-tenant/environments/production/"
+            "workflows/wf_support_triage/snapshots/snapshot-support-triage-1"
+        ),
+        "snapshot_id": "snapshot-support-triage-1",
+        "version": "version-support-triage-7",
+    }
+    assert assessment["summary"].startswith(
+        "Operational Learning eval suitability for Support Triage:"
+    )
+    assert "operational_learning_suitability" not in assessment
+    assert "workflow_pillar_scores" not in assessment
+
+    report_response = client.get(
+        f"/api/v1/assessments/{assessment['assessment_id']}",
+        headers=_auth_headers(),
+    )
+    assert report_response.status_code == 200
+    stored_report = report_response.json()
+    suitability = stored_report["operational_learning_suitability"]
+    assert suitability is not None
+    assert assessment["score"] == suitability["eval_suitability"]["score"]
+    assert assessment["top_blockers"] == suitability["top_blockers"][:5]
+    assert assessment["top_reasons"] == suitability["top_reasons"][:5]
+    assert stored_report["assessment_ref"] == assessment_ref
+
+
+def test_create_mila_workflow_assessment_ref_preserves_operational_learning_hard_block() -> None:
+    operational_learning_inputs = _operational_learning_payload()
+    operational_learning_inputs.pop("governance_dependency_state")
+    request_payload = _compact_mila_workflow_assessment_payload_for_org("dev-tenant")
+    request_payload.update(
+        {
+            "assessment_type": "operational_learning_suitability",
+            "operational_learning_inputs": operational_learning_inputs,
+        }
+    )
+
+    response = client.post(
+        "/api/v1/assessments/mila/workflow/assessment-ref",
+        json=request_payload,
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 200
+    assessment = response.json()["ref"]
+    assert assessment["assessment_type"] == "operational_learning_suitability"
+    assert assessment["score"] == 49.0
+    assert assessment["grade"] == "F"
+    assert assessment["status"] == "blocked"
+    assert any(
+        "Governance dependency state is missing" in blocker
+        for blocker in assessment["top_blockers"]
+    )
+    assert "hard blocker gate applied" in assessment["summary"]
+
+
+def test_create_mila_workflow_assessment_ref_requires_operational_learning_assessment_before_scoring(
+    monkeypatch,
+) -> None:
+    headers = _auth_headers()
+    request_payload = _compact_mila_workflow_assessment_payload_for_org("dev-tenant")
+    request_payload["assessment_type"] = "operational_learning_suitability"
+    request_payload.pop("operational_learning_inputs")
+    before_response = client.get("/api/v1/assessments", headers=headers)
+    assert before_response.status_code == 200
+    before_count = len(before_response.json())
+
+    def fail_scoring(**kwargs):
+        del kwargs
+        pytest.fail("missing Operational Learning inputs reached scoring")
+
+    def fail_audit(**kwargs):
+        del kwargs
+        pytest.fail("missing Operational Learning inputs reached audit")
+
+    monkeypatch.setattr(api_main, "run_workflow_assessment", fail_scoring)
+    monkeypatch.setattr(api_main, "audit_assessment_created", fail_audit)
+
+    response = client.post(
+        "/api/v1/assessments/mila/workflow/assessment-ref",
+        json=request_payload,
+        headers=headers,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "OPERATIONAL_LEARNING_NOT_ASSESSED"
+    after_response = client.get("/api/v1/assessments", headers=headers)
+    assert after_response.status_code == 200
+    assert len(after_response.json()) == before_count
+
+
+def test_create_mila_workflow_assessment_ref_rejects_unknown_assessment_type_before_scoring(
+    monkeypatch,
+) -> None:
+    request_payload = _compact_mila_workflow_assessment_payload_for_org("dev-tenant")
+    request_payload["assessment_type"] = "unknown_assessment"
+
+    def fail_scoring(**kwargs):
+        del kwargs
+        pytest.fail("unknown assessment type reached scoring")
+
+    monkeypatch.setattr(api_main, "run_workflow_assessment", fail_scoring)
+
+    response = client.post(
+        "/api/v1/assessments/mila/workflow/assessment-ref",
+        json=request_payload,
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "SCALE_1005"
 
 
 @pytest.mark.parametrize("workflow_ref_value", ["missing", "null"])
