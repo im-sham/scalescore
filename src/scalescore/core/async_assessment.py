@@ -22,6 +22,12 @@ class AsyncAssessmentQueueBroker(Protocol):
 
     def dequeue(self, *, timeout_seconds: int) -> str | None: ...
 
+    def acknowledge(self, job_id: str) -> None: ...
+
+    def requeue_reserved(self, job_id: str) -> None: ...
+
+    def recover_stale_reservations(self) -> int: ...
+
 
 class AsyncAssessmentWorker:
     """Background worker that processes queued async assessment jobs."""
@@ -188,6 +194,12 @@ class BrokerAsyncAssessmentWorker:
                 "async_assessment_jobs_requeued",
                 count=requeued,
             )
+        recovered = self._broker.recover_stale_reservations()
+        if recovered:
+            logger.warning(
+                "async_assessment_broker_reservations_recovered",
+                count=recovered,
+            )
         self._task = asyncio.create_task(
             self._run(),
             name="scalescore-broker-async-assessment-worker",
@@ -216,7 +228,12 @@ class BrokerAsyncAssessmentWorker:
         )
         if job_id is None:
             return False
-        await self._worker.process_job(job_id=job_id)
+        try:
+            await self._worker.process_job(job_id=job_id)
+        except Exception:
+            self._broker.requeue_reserved(job_id)
+            raise
+        self._broker.acknowledge(job_id)
         return True
 
     async def _run(self) -> None:
