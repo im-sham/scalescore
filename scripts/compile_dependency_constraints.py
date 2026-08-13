@@ -71,7 +71,14 @@ def _run(command: Sequence[str]) -> None:
     subprocess.run(command, check=True)
 
 
-def _compile_command(*, root: Path, output: Path, kind: str, upgrade: bool) -> list[str]:
+def _compile_command(
+    *,
+    root: Path,
+    output: Path,
+    kind: str,
+    upgrade: bool,
+    upgrade_package: str | None = None,
+) -> list[str]:
     command = [
         sys.executable,
         "-m",
@@ -87,7 +94,9 @@ def _compile_command(*, root: Path, output: Path, kind: str, upgrade: bool) -> l
         "--no-emit-trusted-host",
         f"--output-file={output}",
     ]
-    if upgrade:
+    if upgrade_package is not None:
+        command.append(f"--upgrade-package={upgrade_package}")
+    elif upgrade:
         command.append("--upgrade")
     if kind != "runtime":
         command.append(f"--extra={kind}")
@@ -102,6 +111,7 @@ def compile_constraints(
     system: str | None = None,
     machine: str | None = None,
     check: bool = False,
+    upgrade_package: str | None = None,
     runner: Runner = _run,
 ) -> None:
     """Compile or verify the active target environment and Python-minor pair."""
@@ -121,7 +131,8 @@ def compile_constraints(
                     root=root,
                     output=output,
                     kind=kind,
-                    upgrade=True,
+                    upgrade=upgrade_package is None,
+                    upgrade_package=upgrade_package,
                 )
             )
         return
@@ -157,15 +168,27 @@ def compile_constraints(
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--check",
         action="store_true",
         help="verify tracked pins without modifying or upgrading them",
     )
+    mode.add_argument(
+        "--upgrade-package",
+        metavar="REQUIREMENT",
+        help=(
+            "upgrade only one dependency requirement while preserving the tracked pins "
+            "for all three active-target graphs"
+        ),
+    )
     arguments = parser.parse_args(argv)
 
     try:
-        compile_constraints(check=arguments.check)
+        compile_constraints(
+            check=arguments.check,
+            upgrade_package=arguments.upgrade_package,
+        )
     except (ConstraintDriftError, UnsupportedTargetError) as error:
         parser.exit(1, f"error: {error}\n")
     return 0

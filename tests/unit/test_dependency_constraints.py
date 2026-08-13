@@ -163,6 +163,52 @@ def test_compiler_selects_the_requested_dependency_graph(
     assert extra_options == ([] if extra is None else [f"--extra={extra}"])
 
 
+def test_targeted_upgrade_seeds_and_compiles_all_dependency_graphs(tmp_path: Path) -> None:
+    compiler = _load_compiler()
+    root = tmp_path / "checkout"
+    constraints = root / "constraints"
+    constraints.mkdir(parents=True)
+    (root / "pyproject.toml").write_text(PYPROJECT.read_text(encoding="utf-8"), encoding="utf-8")
+    expected_outputs = {constraints / f"darwin-arm64-python3.12-{kind}.txt" for kind in KINDS}
+    for path in expected_outputs:
+        path.write_text(f"accepted-{path.stem}==1.0\n", encoding="utf-8")
+
+    commands: list[Sequence[str]] = []
+
+    def preserving_runner(command: Sequence[str]) -> None:
+        output_option = next(item for item in command if item.startswith("--output-file="))
+        output = Path(output_option.split("=", 1)[1])
+        assert output.read_text(encoding="utf-8").startswith("accepted-")
+        commands.append(command)
+
+    compiler.compile_constraints(
+        root=root,
+        version_info=(3, 12),
+        system="Darwin",
+        machine="arm64",
+        upgrade_package="gitpython==3.1.58",
+        runner=preserving_runner,
+    )
+
+    assert len(commands) == len(KINDS)
+    assert {
+        Path(next(item for item in command if item.startswith("--output-file=")).split("=", 1)[1])
+        for command in commands
+    } == expected_outputs
+    assert all("--upgrade-package=gitpython==3.1.58" in command for command in commands)
+    assert all("--upgrade" not in command for command in commands)
+
+
+def test_compiler_rejects_check_with_targeted_upgrade(capsys: pytest.CaptureFixture[str]) -> None:
+    compiler = _load_compiler()
+
+    with pytest.raises(SystemExit) as error:
+        compiler.main(["--check", "--upgrade-package=gitpython==3.1.58"])
+
+    assert error.value.code == 2
+    assert "not allowed with argument --check" in capsys.readouterr().err
+
+
 def test_compiler_rejects_unsupported_python_minor() -> None:
     compiler = _load_compiler()
 
