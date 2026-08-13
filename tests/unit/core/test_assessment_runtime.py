@@ -150,3 +150,74 @@ async def test_scheduled_dispatch_and_async_worker_preserve_workflow_context(
     assert report.workflow_context is not None
     assert report.workflow_context.workflow_id == workflow_context.workflow_id
     assert report.workflow_readiness_score is not None
+
+
+async def test_scheduled_dispatch_enqueue_failure_keeps_schedule_retryable(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    storage_db = tmp_path / "assessments.sqlite3"
+    monkeypatch.setattr(settings.storage, "assessments_db_path", str(storage_db))
+
+    job_repository = SQLiteAsyncAssessmentJobRepository(storage_db)
+    schedule_repository = SQLiteScheduledAssessmentRepository(storage_db)
+
+    source_dataset = tmp_path / "scheduled-dataset"
+    source_dataset.mkdir()
+    _write_dataset(source_dataset)
+
+    schedule = schedule_repository.create_schedule(
+        schedule_id="schedule_1",
+        tenant_id="tenant_1",
+        created_by="user_1",
+        name="Daily Support Workflow",
+        cadence=ScheduledAssessmentCadence.DAILY,
+        run_hour_utc=0,
+        run_minute_utc=0,
+        run_day_of_week=None,
+        dataset_path=str(source_dataset),
+        workflow_context=_workflow_context(),
+    )
+    due_time = datetime.now(UTC) - timedelta(minutes=1)
+    with sqlite3.connect(storage_db) as connection:
+        connection.execute(
+            """
+            UPDATE scheduled_assessments
+            SET next_run_at = ?
+            WHERE schedule_id = ?
+            """,
+            (due_time.isoformat(), schedule.schedule_id),
+        )
+        connection.commit()
+
+    def fail_enqueue(_: str) -> None:
+        raise RuntimeError("broker unavailable")
+
+    dispatcher = ScheduledAssessmentDispatcher(
+        schedule_repository=schedule_repository,
+        job_repository=job_repository,
+        enqueue_job=fail_enqueue,
+        dispatch_interval_seconds=0.1,
+        dispatch_batch_size=5,
+    )
+
+    dispatched = await dispatcher.dispatch_due_schedules_once()
+
+    assert dispatched == 0
+    refreshed_schedule = schedule_repository.get_schedule(
+        "schedule_1",
+        tenant_id="tenant_1",
+    )
+    assert refreshed_schedule is not None
+    assert refreshed_schedule.next_run_at == due_time
+    assert refreshed_schedule.last_run_at is None
+    assert refreshed_schedule.last_job_id is None
+    assert refreshed_schedule.last_error == "broker unavailable"
+
+    retryable = schedule_repository.claim_due_schedules(
+        now=datetime.now(UTC),
+        limit=5,
+        dispatcher_id="dispatcher-retry",
+        lease_seconds=60,
+    )
+    assert [schedule.schedule_id for schedule in retryable] == ["schedule_1"]

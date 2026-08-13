@@ -45,6 +45,9 @@ class ScheduledAssessment:
     last_run_at: datetime | None
     last_job_id: str | None
     last_error: str | None
+    dispatch_claimed_by: str | None
+    dispatch_claimed_at: datetime | None
+    dispatch_lease_expires_at: datetime | None
 
 
 class ScheduledAssessmentRepository(Protocol):
@@ -82,9 +85,23 @@ class ScheduledAssessmentRepository(Protocol):
         status: ScheduledAssessmentStatus,
     ) -> ScheduledAssessment | None: ...
 
-    def claim_due_schedules(self, *, now: datetime, limit: int = 20) -> list[ScheduledAssessment]: ...
+    def claim_due_schedules(
+        self,
+        *,
+        now: datetime,
+        limit: int = 20,
+        dispatcher_id: str = "dispatcher",
+        lease_seconds: int = 300,
+    ) -> list[ScheduledAssessment]: ...
 
-    def mark_run_dispatched(self, *, schedule_id: str, job_id: str) -> ScheduledAssessment | None: ...
+    def mark_run_dispatched(
+        self,
+        *,
+        schedule_id: str,
+        job_id: str,
+        dispatched_at: datetime | None = None,
+        dispatcher_id: str | None = None,
+    ) -> ScheduledAssessment | None: ...
 
     def mark_run_error(
         self,
@@ -128,7 +145,10 @@ class SQLiteScheduledAssessmentRepository:
                             updated_at TEXT NOT NULL,
                             last_run_at TEXT,
                             last_job_id TEXT,
-                            last_error TEXT
+                            last_error TEXT,
+                            dispatch_claimed_by TEXT,
+                            dispatch_claimed_at TEXT,
+                            dispatch_lease_expires_at TEXT
                         )
                         """
                     )
@@ -148,6 +168,24 @@ class SQLiteScheduledAssessmentRepository:
                         connection,
                         "scheduled_assessments",
                         "workflow_context_json",
+                        "TEXT",
+                    )
+                    self._ensure_column(
+                        connection,
+                        "scheduled_assessments",
+                        "dispatch_claimed_by",
+                        "TEXT",
+                    )
+                    self._ensure_column(
+                        connection,
+                        "scheduled_assessments",
+                        "dispatch_claimed_at",
+                        "TEXT",
+                    )
+                    self._ensure_column(
+                        connection,
+                        "scheduled_assessments",
+                        "dispatch_lease_expires_at",
                         "TEXT",
                     )
         except sqlite3.Error as err:
@@ -178,6 +216,11 @@ class SQLiteScheduledAssessmentRepository:
     @staticmethod
     def _clip_error(message: str) -> str:
         return message.strip()[:500]
+
+    @staticmethod
+    def _dispatcher_id_value(dispatcher_id: str) -> str:
+        normalized = dispatcher_id.strip()
+        return normalized[:255] if normalized else "dispatcher"
 
     @staticmethod
     def _serialize_workflow_context(
@@ -246,6 +289,11 @@ class SQLiteScheduledAssessmentRepository:
             last_run_at=self._parse_datetime(row["last_run_at"]),
             last_job_id=row["last_job_id"],
             last_error=row["last_error"],
+            dispatch_claimed_by=row["dispatch_claimed_by"],
+            dispatch_claimed_at=self._parse_datetime(row["dispatch_claimed_at"]),
+            dispatch_lease_expires_at=self._parse_datetime(
+                row["dispatch_lease_expires_at"]
+            ),
         )
 
     def create_schedule(
@@ -328,9 +376,12 @@ class SQLiteScheduledAssessmentRepository:
             with closing(self._connect()) as connection:
                 row = connection.execute(
                     """
-                    SELECT schedule_id, tenant_id, created_by, name, status, cadence, run_hour_utc,
-                           run_minute_utc, run_day_of_week, dataset_path, workflow_context_json,
-                           next_run_at, created_at, updated_at, last_run_at, last_job_id, last_error
+                    SELECT schedule_id, tenant_id, created_by, name, status, cadence,
+                           run_hour_utc, run_minute_utc, run_day_of_week,
+                           dataset_path, workflow_context_json, next_run_at,
+                           created_at, updated_at, last_run_at, last_job_id,
+                           last_error, dispatch_claimed_by, dispatch_claimed_at,
+                           dispatch_lease_expires_at
                     FROM scheduled_assessments
                     WHERE schedule_id = ? AND tenant_id = ?
                     """,
@@ -352,9 +403,11 @@ class SQLiteScheduledAssessmentRepository:
         offset: int = 0,
     ) -> list[ScheduledAssessment]:
         query = """
-            SELECT schedule_id, tenant_id, created_by, name, status, cadence, run_hour_utc,
-                   run_minute_utc, run_day_of_week, dataset_path, workflow_context_json,
-                   next_run_at, created_at, updated_at, last_run_at, last_job_id, last_error
+            SELECT schedule_id, tenant_id, created_by, name, status, cadence,
+                   run_hour_utc, run_minute_utc, run_day_of_week, dataset_path,
+                   workflow_context_json, next_run_at, created_at, updated_at,
+                   last_run_at, last_job_id, last_error, dispatch_claimed_by,
+                   dispatch_claimed_at, dispatch_lease_expires_at
             FROM scheduled_assessments
             WHERE tenant_id = ?
         """
@@ -427,9 +480,18 @@ class SQLiteScheduledAssessmentRepository:
 
         return self.get_schedule(schedule_id, tenant_id=tenant_id)
 
-    def claim_due_schedules(self, *, now: datetime, limit: int = 20) -> list[ScheduledAssessment]:
+    def claim_due_schedules(
+        self,
+        *,
+        now: datetime,
+        limit: int = 20,
+        dispatcher_id: str = "dispatcher",
+        lease_seconds: int = 300,
+    ) -> list[ScheduledAssessment]:
         now_utc = now.astimezone(UTC)
         now_iso = now_utc.isoformat()
+        lease_expires_at = (now_utc + timedelta(seconds=max(1, lease_seconds))).isoformat()
+        dispatcher = self._dispatcher_id_value(dispatcher_id)
         claimed: list[ScheduledAssessment] = []
         try:
             with closing(self._connect()) as connection:
@@ -439,44 +501,56 @@ class SQLiteScheduledAssessmentRepository:
                         SELECT schedule_id, cadence, run_hour_utc, run_minute_utc, run_day_of_week, next_run_at
                         FROM scheduled_assessments
                         WHERE status = ? AND next_run_at <= ?
+                          AND (
+                            dispatch_lease_expires_at IS NULL
+                            OR dispatch_lease_expires_at <= ?
+                          )
                         ORDER BY next_run_at ASC
                         LIMIT ?
                         """,
-                        (ScheduledAssessmentStatus.ACTIVE.value, now_iso, limit),
+                        (
+                            ScheduledAssessmentStatus.ACTIVE.value,
+                            now_iso,
+                            now_iso,
+                            limit,
+                        ),
                     ).fetchall()
 
                     for row in rows:
-                        row_next_run_at = datetime.fromisoformat(row["next_run_at"])
-                        reference = now_utc if now_utc > row_next_run_at else row_next_run_at
-                        next_run = self._compute_next_run_at(
-                            now=reference,
-                            cadence=ScheduledAssessmentCadence(row["cadence"]),
-                            run_hour_utc=int(row["run_hour_utc"]),
-                            run_minute_utc=int(row["run_minute_utc"]),
-                            run_day_of_week=row["run_day_of_week"],
-                        )
                         result = connection.execute(
                             """
                             UPDATE scheduled_assessments
-                            SET next_run_at = ?, last_run_at = ?, updated_at = ?, last_error = NULL
+                            SET dispatch_claimed_by = ?, dispatch_claimed_at = ?,
+                                dispatch_lease_expires_at = ?, updated_at = ?,
+                                last_error = NULL
                             WHERE schedule_id = ? AND status = ? AND next_run_at = ?
+                              AND (
+                                dispatch_lease_expires_at IS NULL
+                                OR dispatch_lease_expires_at <= ?
+                              )
                             """,
                             (
-                                next_run.isoformat(),
+                                dispatcher,
                                 now_iso,
+                                lease_expires_at,
                                 now_iso,
                                 row["schedule_id"],
                                 ScheduledAssessmentStatus.ACTIVE.value,
                                 row["next_run_at"],
+                                now_iso,
                             ),
                         )
                         if result.rowcount == 0:
                             continue
                         claimed_row = connection.execute(
                             """
-                            SELECT schedule_id, tenant_id, created_by, name, status, cadence, run_hour_utc,
-                                   run_minute_utc, run_day_of_week, dataset_path, workflow_context_json,
-                                   next_run_at, created_at, updated_at, last_run_at, last_job_id, last_error
+                            SELECT schedule_id, tenant_id, created_by, name, status,
+                                   cadence, run_hour_utc, run_minute_utc,
+                                   run_day_of_week, dataset_path,
+                                   workflow_context_json, next_run_at, created_at,
+                                   updated_at, last_run_at, last_job_id, last_error,
+                                   dispatch_claimed_by, dispatch_claimed_at,
+                                   dispatch_lease_expires_at
                             FROM scheduled_assessments
                             WHERE schedule_id = ?
                             """,
@@ -489,27 +563,65 @@ class SQLiteScheduledAssessmentRepository:
 
         return claimed
 
-    def mark_run_dispatched(self, *, schedule_id: str, job_id: str) -> ScheduledAssessment | None:
-        now_iso = datetime.now(UTC).isoformat()
+    def mark_run_dispatched(
+        self,
+        *,
+        schedule_id: str,
+        job_id: str,
+        dispatched_at: datetime | None = None,
+        dispatcher_id: str | None = None,
+    ) -> ScheduledAssessment | None:
+        dispatched_time = (dispatched_at or datetime.now(UTC)).astimezone(UTC)
+        dispatched_iso = dispatched_time.isoformat()
         try:
             with closing(self._connect()) as connection:
                 with connection:
                     row = connection.execute(
                         """
-                        SELECT tenant_id FROM scheduled_assessments WHERE schedule_id = ?
+                        SELECT tenant_id, cadence, run_hour_utc, run_minute_utc,
+                               run_day_of_week, next_run_at, dispatch_claimed_by
+                        FROM scheduled_assessments
+                        WHERE schedule_id = ?
                         """,
                         (schedule_id,),
                     ).fetchone()
                     if row is None:
                         return None
-                    connection.execute(
+                    dispatcher = (
+                        self._dispatcher_id_value(dispatcher_id)
+                        if dispatcher_id is not None
+                        else None
+                    )
+                    if dispatcher is not None and row["dispatch_claimed_by"] != dispatcher:
+                        return None
+
+                    row_next_run_at = datetime.fromisoformat(row["next_run_at"])
+                    reference = (
+                        dispatched_time
+                        if dispatched_time > row_next_run_at
+                        else row_next_run_at
+                    )
+                    next_run = self._compute_next_run_at(
+                        now=reference,
+                        cadence=ScheduledAssessmentCadence(row["cadence"]),
+                        run_hour_utc=int(row["run_hour_utc"]),
+                        run_minute_utc=int(row["run_minute_utc"]),
+                        run_day_of_week=row["run_day_of_week"],
+                    ).isoformat()
+
+                    result = connection.execute(
                         """
                         UPDATE scheduled_assessments
-                        SET last_job_id = ?, last_error = NULL, updated_at = ?
+                        SET next_run_at = ?, last_run_at = ?, last_job_id = ?,
+                            last_error = NULL, updated_at = ?,
+                            dispatch_claimed_by = NULL, dispatch_claimed_at = NULL,
+                            dispatch_lease_expires_at = NULL
                         WHERE schedule_id = ?
                         """,
-                        (job_id, now_iso, schedule_id),
+                        (next_run, dispatched_iso, job_id, dispatched_iso, schedule_id),
                     )
+                    if result.rowcount == 0:
+                        return None
         except sqlite3.Error as err:
             raise DatabaseError("Failed to persist scheduled assessment dispatch", cause=err) from err
 
@@ -537,7 +649,9 @@ class SQLiteScheduledAssessmentRepository:
                     connection.execute(
                         """
                         UPDATE scheduled_assessments
-                        SET last_error = ?, updated_at = ?
+                        SET last_error = ?, updated_at = ?,
+                            dispatch_claimed_by = NULL, dispatch_claimed_at = NULL,
+                            dispatch_lease_expires_at = NULL
                         WHERE schedule_id = ?
                         """,
                         (clipped, now_iso, schedule_id),

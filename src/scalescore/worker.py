@@ -50,6 +50,7 @@ def _build_scheduled_dispatcher() -> ScheduledAssessmentDispatcher | None:
         enqueue_job=enqueue_job,
         dispatch_interval_seconds=settings.async_assessment.scheduled_dispatch_poll_interval_seconds,
         dispatch_batch_size=settings.async_assessment.scheduled_dispatch_batch_size,
+        dispatch_lease_seconds=settings.async_assessment.scheduled_dispatch_lease_seconds,
     )
 
 

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
+import socket
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,6 +18,10 @@ from scalescore.storage.scheduled_assessment_repository import (
 )
 
 logger = get_logger(__name__)
+
+
+def _default_dispatcher_id() -> str:
+    return f"{socket.gethostname()}:{os.getpid()}:{uuid4().hex[:8]}"
 
 
 def async_assessment_dataset_directory(job_id: str) -> Path:
@@ -34,12 +40,16 @@ class ScheduledAssessmentDispatcher:
         enqueue_job: Callable[[str], None] | None = None,
         dispatch_interval_seconds: float = 30.0,
         dispatch_batch_size: int = 10,
+        dispatcher_id: str | None = None,
+        dispatch_lease_seconds: int = 300,
     ) -> None:
         self._schedule_repository = schedule_repository
         self._job_repository = job_repository
         self._enqueue_job = enqueue_job
         self._dispatch_interval_seconds = dispatch_interval_seconds
         self._dispatch_batch_size = dispatch_batch_size
+        self._dispatcher_id = dispatcher_id or _default_dispatcher_id()
+        self._dispatch_lease_seconds = dispatch_lease_seconds
         self._task: asyncio.Task[None] | None = None
 
     @property
@@ -77,6 +87,8 @@ class ScheduledAssessmentDispatcher:
             self._schedule_repository.claim_due_schedules,
             now=now,
             limit=self._dispatch_batch_size,
+            dispatcher_id=self._dispatcher_id,
+            lease_seconds=self._dispatch_lease_seconds,
         )
         if not schedules:
             return 0
@@ -154,6 +166,7 @@ class ScheduledAssessmentDispatcher:
                 self._schedule_repository.mark_run_dispatched,
                 schedule_id=schedule.schedule_id,
                 job_id=job.job_id,
+                dispatcher_id=self._dispatcher_id,
             )
             logger.info(
                 "scheduled_assessment_dispatched",
