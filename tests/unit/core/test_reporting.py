@@ -107,6 +107,8 @@ def test_generate_executive_summary_mentions_operational_learning_when_present()
             review_density_signal=78.0,
             redaction_manageability_signal=82.0,
             governance_dependency_state=OperationalLearningGovernanceDependencyInput(
+                evidence_basis="governance_owner_evidence",
+                evidence_ref_id="governance-evidence-executive-summary",
                 rights_completeness=OperationalLearningCompletenessState.COMPLETE,
                 provenance_completeness=OperationalLearningCompletenessState.COMPLETE,
                 redaction_readiness=OperationalLearningCompletenessState.COMPLETE,
@@ -120,6 +122,7 @@ def test_generate_executive_summary_mentions_operational_learning_when_present()
     assert "Operational Learning suitability" in summary
     assert "training candidate" in summary
     assert "not training approval" in summary
+    assert "Governance-owner evidence" in summary
 
 
 def test_render_report_pdf_labels_operational_learning_as_suitability_only(monkeypatch) -> None:
@@ -169,6 +172,8 @@ def test_render_report_pdf_labels_operational_learning_as_suitability_only(monke
             review_density_signal=78.0,
             redaction_manageability_signal=82.0,
             governance_dependency_state=OperationalLearningGovernanceDependencyInput(
+                evidence_basis="governance_owner_evidence",
+                evidence_ref_id="governance-evidence-pdf",
                 rights_completeness=OperationalLearningCompletenessState.COMPLETE,
                 provenance_completeness=OperationalLearningCompletenessState.COMPLETE,
                 redaction_readiness=OperationalLearningCompletenessState.COMPLETE,
@@ -184,6 +189,7 @@ def test_render_report_pdf_labels_operational_learning_as_suitability_only(monke
     assert "Eval suitability score" in pdf_text
     assert "Training suitability score" in pdf_text
     assert "not training approval" in pdf_text
+    assert "Governance-owner evidence" in pdf_text
 
 
 def test_render_report_pdf_draws_claims_suitability_section(monkeypatch) -> None:

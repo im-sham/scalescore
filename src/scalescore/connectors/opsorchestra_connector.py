@@ -466,6 +466,10 @@ class OpsOrchestraConnector:
             "recommended_next_actions": operational_learning.recommended_next_actions[:5],
             "governance_dependency_state": {
                 "status": governance.status.value,
+                "evidence_basis": (
+                    governance.evidence_basis.value if governance.evidence_basis else None
+                ),
+                "evidence_ref_id": governance.evidence_ref_id,
                 "rights_completeness": (
                     governance.rights_completeness.value
                     if governance.rights_completeness

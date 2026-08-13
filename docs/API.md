@@ -278,9 +278,19 @@ Current compatibility rules:
   `sop_reference_present`, `sop_clarity_signal`, `outcome_spec_present`,
   `outcome_observability_signal`, `run_frequency_per_week` or
   `repeatability_signal`, `review_path_present` or `review_density_signal`,
-  `redaction_manageability_signal`, and `governance_dependency_state`
-  (`rights_completeness`, `provenance_completeness`, `redaction_readiness`,
-  `residual_risk_band`)
+  `redaction_manageability_signal`, and `governance_dependency_state`.
+  Any supplied rights, provenance, redaction, or residual-risk posture requires
+  `evidence_basis` (`workflow_operator_review` or
+  `governance_owner_evidence`) and a non-empty `evidence_ref_id`; orphan,
+  incomplete, malformed, or unattributed pairs fail request validation.
+  Normalized report and compact outbound summaries preserve both attribution
+  fields and name the basis in their rationale. Complete, low-risk
+  `workflow_operator_review` evidence can satisfy pre-candidate completeness
+  for internal-eval suitability only. It is not Governance approval,
+  `UseApprovalRef`, training eligibility, export authority, or activation.
+  `governance_owner_evidence` identifies the owner of the evidence posture; it
+  also does not itself grant approval or use authority. An absent dependency
+  remains incomplete.
   Optional `document_operations_profile` can be supplied for the flagship `document_ops_regulated_review_v0` fixture. Readiness projects it into local `workflow_evidence` and `operational_learning_inputs` only when those explicit inputs are absent. This supports the claims/benefits packet workflow, including `normal-packet`, `exception-packet`, review density, evidence refs, and the redaction-review dependency before internal-eval use.
   Optional `document_operations_profile.claims_profile` can be supplied for the synthetic claims workflow profile. It accepts `profile_id`, `evidence_class_ids_present`, `phi_boundary_review_state`, `redaction_review_state`, `rate_source_review_state`, `downstream_consistency_state`, `downstream_action_approval_state`, `savings_recognition_state`, `governance_claims_control_state`, and `source_readiness_state`. Supported state values are `ready`, `reviewed`, `approved`, `review_required`, `unverified`, `missing`, and `blocked`.
 - `POST /api/v1/assessments/upload` still accepts the six CSV files and now supports optional `workflow_context_json` form data for workflow scoring
@@ -327,6 +337,16 @@ Current compatibility rules:
 | `GET` | `/api/v1/assessments/{assessment_id}/operator-summary` | `assessment:read` | Tenant-scoped, operator-safe workflow diagnostic allowlist; fails closed for organization-only or incomplete workflow assessments |
 | `GET` | `/api/v1/assessments/{assessment_id}/export/pdf` | `report:export` | Download PDF, including claims suitability when present |
 | `POST` | `/api/v1/assessments/{assessment_id}/sync/opsorchestra` | `report:export` | Push report, workflow, AssessmentRef, and suitability summaries to configured OpsOrchestra outbound URL |
+
+### Operational Learning suitability output
+
+The report and OpenAPI schemas expose `evidence_basis` and `evidence_ref_id`
+inside normalized `operational_learning_suitability.governance_dependency_state`.
+`workflow_operator_review` means Workflow-operator evidence was reviewed for a
+Readiness pre-candidate diagnostic. `governance_owner_evidence` means the
+posture comes from Governance-owned evidence. Neither value is a Governance
+approval or a use, training, export, or activation decision.
+
 
 ### Claims suitability output
 

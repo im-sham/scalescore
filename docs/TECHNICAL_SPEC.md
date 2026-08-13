@@ -208,7 +208,22 @@ It produces:
 - internal training candidacy
 - explicit `eval_suitable`, `training_candidate`, `weak_candidate`, `blocked`, or `unsuitable` statuses
 
-This lens is intended to score candidate quality for internal eval and internal training use. Governance remains the approval plane for rights, redaction, promotion, and export decisions.
+This lens scores candidate quality for internal eval and internal training use.
+Its governance-dependency posture is explicitly attributed with
+`evidence_basis` (`workflow_operator_review` or
+`governance_owner_evidence`) and a non-empty `evidence_ref_id`. Supplying any
+rights, provenance, redaction, or residual-risk field requires both;
+orphan/incomplete pairs and malformed attribution fail closed. The normalized
+result preserves both values and names the evidence basis in scoring rationale,
+blockers, reports, API serialization, and compact outbound summaries.
+
+Complete, low-risk Workflow-operator evidence can satisfy only pre-candidate
+completeness for internal-eval suitability. It cannot satisfy internal-training
+candidacy and is not Governance approval, a `UseApprovalRef`, export authority,
+or activation. Governance-owner evidence identifies the source of the posture,
+not an approval decision. An absent dependency remains incomplete. Governance
+remains the approval plane for rights, redaction, promotion, export, and use
+decisions.
 
 ### 4.7 Document-Operations Suitability Profile
 

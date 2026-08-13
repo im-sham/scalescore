@@ -6,7 +6,9 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from scalescore.connectors.opsorchestra_connector import OpsOrchestraConnector
 from scalescore.contracts.assessment_ref import AssessmentRefEnvelope
+from scalescore.core.reporting import render_report_pdf
 from scalescore.models.scaling import ScaleScoreReport
 from scalescore.storage.assessment_repository import SQLiteAssessmentRepository
 
@@ -49,6 +51,155 @@ def _persist_raw_report(db_path: Path, report_data: dict[str, object]) -> None:
                 json.dumps(report_data),
             ),
         )
+
+
+def _canonical_assessment_ref_payload() -> dict[str, object]:
+    fixture_path = (
+        Path(__file__).resolve().parents[3]
+        / "contracts"
+        / "vendor"
+        / "proofhouse-contracts"
+        / "contracts"
+        / "assessment-ref"
+        / "v0.1"
+        / "fixtures"
+        / "synthetic-assessment.json"
+    )
+    return json.loads(fixture_path.read_text())
+
+
+def _legacy_unattributed_operational_learning_report(
+    report_id: str,
+) -> dict[str, object]:
+    report_data = _report(report_id).model_dump(mode="json")
+    report_data["operational_learning_suitability"] = {
+        "status": "training_candidate",
+        "dimension_scores": [],
+        "eval_suitability": {
+            "score": 90.0,
+            "status": "eval_suitable",
+            "threshold": 70.0,
+            "threshold_met": True,
+            "hard_blocked": False,
+        },
+        "internal_training_candidacy": {
+            "score": 90.0,
+            "status": "training_candidate",
+            "threshold": 80.0,
+            "threshold_met": True,
+            "hard_blocked": False,
+        },
+        "top_blockers": [],
+        "top_reasons": ["Legacy dependency posture was complete."],
+        "recommended_next_actions": [],
+        "governance_dependency_state": {
+            "rights_completeness": "complete",
+            "provenance_completeness": "complete",
+            "redaction_readiness": "complete",
+            "residual_risk_band": "low",
+            "status": "ready",
+            "summary": "Legacy dependency posture was complete.",
+        },
+    }
+    report_data["executive_summary"] = (
+        "Operational Learning suitability is training candidate with score 90."
+    )
+    legacy_action = "Advance this workflow to internal training candidacy."
+    report_data["immediate_actions"] = [legacy_action]
+    suitability = report_data["operational_learning_suitability"]
+    assert isinstance(suitability, dict)
+    suitability["recommended_next_actions"] = [legacy_action]
+    return report_data
+
+
+def test_repository_suppresses_legacy_unattributed_operational_learning_results(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "reports.sqlite3"
+    drawn_strings: list[str] = []
+
+    class FakeCanvas:
+        def __init__(self, buffer, pagesize) -> None:
+            self._buffer = buffer
+            self._pagesize = pagesize
+
+        def setFont(self, font: str, size: int) -> None:
+            return None
+
+        def drawString(self, x: int, y: int, text: str) -> None:
+            drawn_strings.append(text)
+
+        def drawRightString(self, x: int, y: int, text: str) -> None:
+            drawn_strings.append(text)
+
+        def showPage(self) -> None:
+            return None
+
+        def save(self) -> None:
+            self._buffer.write(b"%PDF fake")
+
+    monkeypatch.setattr("scalescore.core.reporting.canvas.Canvas", FakeCanvas)
+    repository = SQLiteAssessmentRepository(db_path)
+    report_data = _legacy_unattributed_operational_learning_report("report_legacy_ol")
+    assessment_ref = _canonical_assessment_ref_payload()
+    assessment_ref["ref"]["assessment_type"] = "operational_learning_suitability"
+    assessment_ref["ref"]["summary"] = "Legacy Operational Learning eligibility summary."
+    report_data["assessment_ref"] = assessment_ref
+
+    with pytest.raises(ValidationError, match="evidence_basis"):
+        ScaleScoreReport.model_validate(report_data)
+
+    _persist_raw_report(db_path, report_data)
+    with sqlite3.connect(db_path) as connection:
+        stored_before_load = connection.execute(
+            "SELECT report_data FROM assessment_reports WHERE report_id = ?",
+            ("report_legacy_ol",),
+        ).fetchone()[0]
+
+    loaded = repository.get_report("report_legacy_ol", tenant_id="tenant_a")
+    reports = repository.list_reports("tenant_a", limit=10, offset=0)
+    history = repository.list_history("tenant_a", org_id="org_1", limit=10)
+    assert loaded is not None
+    assert loaded.operational_learning_suitability is None
+    assert loaded.assessment_ref is None
+    assert "training candidate" not in loaded.executive_summary
+    assert loaded.immediate_actions == []
+    assert [report.report_id for report in reports] == ["report_legacy_ol"]
+    assert reports[0].operational_learning_suitability is None
+    assert [report.report_id for report in history] == ["report_legacy_ol"]
+    assert history[0].operational_learning_suitability is None
+    assert OpsOrchestraConnector._operational_learning_suitability_summary(loaded) is None
+    assert render_report_pdf(loaded) == b"%PDF fake"
+    pdf_text = " ".join(drawn_strings)
+    assert "training candidate" not in pdf_text
+    assert "score 90" not in pdf_text
+    with sqlite3.connect(db_path) as connection:
+        stored_after_load = connection.execute(
+            "SELECT report_data FROM assessment_reports WHERE report_id = ?",
+            ("report_legacy_ol",),
+        ).fetchone()[0]
+    assert stored_after_load == stored_before_load
+
+
+def test_legacy_ol_suppression_preserves_workflow_readiness_assessment_ref(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "reports.sqlite3"
+    repository = SQLiteAssessmentRepository(db_path)
+    report_data = _legacy_unattributed_operational_learning_report("report_legacy_ol_workflow_ref")
+    report_data["assessment_ref"] = _canonical_assessment_ref_payload()
+    _persist_raw_report(db_path, report_data)
+
+    loaded = repository.get_report(
+        "report_legacy_ol_workflow_ref",
+        tenant_id="tenant_a",
+    )
+
+    assert loaded is not None
+    assert loaded.operational_learning_suitability is None
+    assert loaded.assessment_ref is not None
+    assert loaded.assessment_ref.ref.assessment_type == "workflow_readiness"
 
 
 def test_save_and_get_report(tmp_path) -> None:

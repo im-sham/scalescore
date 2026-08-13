@@ -7,9 +7,9 @@ and the readiness scores that are the primary outputs of ScaleScore.
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints, model_validator
 
 from scalescore.contracts.assessment_ref import AssessmentRefEnvelope
 from scalescore.contracts.control_ref_consumer import ControlRefEnvelope
@@ -224,13 +224,47 @@ class OperationalLearningGovernanceStateStatus(StrEnum):
     HIGH_RISK = "high_risk"
 
 
+class OperationalLearningEvidenceBasis(StrEnum):
+    """Ownership basis for evidence used in Operational Learning diagnostics."""
+
+    WORKFLOW_OPERATOR_REVIEW = "workflow_operator_review"
+    GOVERNANCE_OWNER_EVIDENCE = "governance_owner_evidence"
+
+
 class OperationalLearningGovernanceDependencyInput(BaseModel):
     """Optional governance dependency inputs from upstream workflow systems."""
 
+    evidence_basis: OperationalLearningEvidenceBasis | None = None
+    evidence_ref_id: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] | None
+    ) = None
     rights_completeness: OperationalLearningCompletenessState | None = None
     provenance_completeness: OperationalLearningCompletenessState | None = None
     redaction_readiness: OperationalLearningCompletenessState | None = None
     residual_risk_band: RiskLevel | None = None
+
+    @model_validator(mode="after")
+    def require_complete_evidence_attribution(self) -> Self:
+        if self.evidence_basis is not None and self.evidence_ref_id is None:
+            raise ValueError("evidence_ref_id is required when evidence_basis is supplied")
+        if self.evidence_ref_id is not None and self.evidence_basis is None:
+            raise ValueError("evidence_basis is required when evidence_ref_id is supplied")
+
+        dependency_fields_supplied = any(
+            value is not None
+            for value in (
+                self.rights_completeness,
+                self.provenance_completeness,
+                self.redaction_readiness,
+                self.residual_risk_band,
+            )
+        )
+        if dependency_fields_supplied and self.evidence_basis is None:
+            raise ValueError(
+                "evidence_basis and evidence_ref_id are required when governance dependency "
+                "fields are supplied"
+            )
+        return self
 
 
 class OperationalLearningInputs(BaseModel):
@@ -256,13 +290,11 @@ class OperationalLearningDimensionScore(BaseModel):
     rationale: str = ""
 
 
-class OperationalLearningGovernanceDependencyState(BaseModel):
-    """Normalized governance dependency posture for operational-learning use."""
+class OperationalLearningGovernanceDependencyState(
+    OperationalLearningGovernanceDependencyInput
+):
+    """Normalized attributed dependency posture for operational-learning use."""
 
-    rights_completeness: OperationalLearningCompletenessState | None = None
-    provenance_completeness: OperationalLearningCompletenessState | None = None
-    redaction_readiness: OperationalLearningCompletenessState | None = None
-    residual_risk_band: RiskLevel | None = None
     status: OperationalLearningGovernanceStateStatus = (
         OperationalLearningGovernanceStateStatus.INCOMPLETE
     )

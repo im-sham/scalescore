@@ -35,6 +35,8 @@ def _governance_state(
     risk: RiskLevel,
 ) -> OperationalLearningGovernanceDependencyInput:
     return OperationalLearningGovernanceDependencyInput(
+        evidence_basis="governance_owner_evidence",
+        evidence_ref_id="governance-evidence-document-operations",
         rights_completeness=rights,
         provenance_completeness=provenance,
         redaction_readiness=redaction,

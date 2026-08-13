@@ -346,6 +346,8 @@ def _operational_learning_payload() -> dict[str, object]:
         "review_density_signal": 78.0,
         "redaction_manageability_signal": 82.0,
         "governance_dependency_state": {
+            "evidence_basis": "governance_owner_evidence",
+            "evidence_ref_id": "governance-evidence-api",
             "rights_completeness": "complete",
             "provenance_completeness": "complete",
             "redaction_readiness": "complete",
@@ -380,6 +382,8 @@ def _document_operations_profile_payload() -> dict[str, object]:
         "control_evidence_coverage_percent": 96.0,
         "freshest_evidence_age_days": 6,
         "governance_dependency_state": {
+            "evidence_basis": "governance_owner_evidence",
+            "evidence_ref_id": "governance-evidence-document-operations",
             "rights_completeness": "complete",
             "provenance_completeness": "complete",
             "redaction_readiness": "complete",
@@ -833,6 +837,86 @@ def test_create_mila_workflow_assessment_ref_emits_operational_learning_suitabil
     assert assessment["top_blockers"] == suitability["top_blockers"][:5]
     assert assessment["top_reasons"] == suitability["top_reasons"][:5]
     assert stored_report["assessment_ref"] == assessment_ref
+
+
+def test_operational_learning_assessment_ref_preserves_partial_operator_evidence_basis() -> None:
+    request_payload = _compact_mila_workflow_assessment_payload_for_org("dev-tenant")
+    request_payload["assessment_type"] = "operational_learning_suitability"
+    operational_learning_inputs = request_payload["operational_learning_inputs"]
+    assert isinstance(operational_learning_inputs, dict)
+    operational_learning_inputs.update(
+        {
+            "sop_clarity_signal": 68.0,
+            "outcome_observability_signal": 68.0,
+            "repeatability_signal": 68.0,
+            "review_density_signal": 60.0,
+            "redaction_manageability_signal": 65.0,
+        }
+    )
+    operational_learning_inputs["governance_dependency_state"] = {
+        "evidence_basis": "workflow_operator_review",
+        "evidence_ref_id": "workflow-review-api-partial",
+        "rights_completeness": "partial",
+        "provenance_completeness": "partial",
+        "redaction_readiness": "partial",
+        "residual_risk_band": "medium",
+    }
+
+    response = client.post(
+        "/api/v1/assessments/mila/workflow/assessment-ref",
+        json=request_payload,
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 200
+    assessment = response.json()["ref"]
+    assert assessment["status"] == "watch"
+    assert "Workflow-operator review evidence" in assessment["summary"]
+    report_response = client.get(
+        f"/api/v1/assessments/{assessment['assessment_id']}",
+        headers=_auth_headers(),
+    )
+    assert report_response.status_code == 200
+    suitability = report_response.json()["operational_learning_suitability"]
+    governance_state = suitability["governance_dependency_state"]
+    assert governance_state["evidence_basis"] == "workflow_operator_review"
+    assert governance_state["evidence_ref_id"] == "workflow-review-api-partial"
+    assert governance_state["status"] == "partial"
+    assert "Workflow-operator review evidence" in governance_state["summary"]
+    assert suitability["internal_training_candidacy"]["threshold_met"] is False
+
+
+def test_openapi_names_operational_learning_evidence_attribution_contract() -> None:
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    schemas = response.json()["components"]["schemas"]
+    input_schema = schemas["OperationalLearningGovernanceDependencyInput"]
+    output_schema = schemas["OperationalLearningGovernanceDependencyState"]
+    assert set(input_schema["properties"]) >= {"evidence_basis", "evidence_ref_id"}
+    assert set(output_schema["properties"]) >= {"evidence_basis", "evidence_ref_id"}
+    assert schemas["OperationalLearningEvidenceBasis"]["enum"] == [
+        "workflow_operator_review",
+        "governance_owner_evidence",
+    ]
+
+
+def test_operational_learning_api_rejects_unattributed_dependency_posture() -> None:
+    request_payload = _compact_mila_workflow_assessment_payload_for_org("dev-tenant")
+    operational_learning_inputs = request_payload["operational_learning_inputs"]
+    assert isinstance(operational_learning_inputs, dict)
+    governance_state = operational_learning_inputs["governance_dependency_state"]
+    assert isinstance(governance_state, dict)
+    governance_state.pop("evidence_basis")
+
+    response = client.post(
+        "/api/v1/assessments/mila/workflow",
+        json=request_payload,
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 422
+    assert "evidence_basis" in response.text
 
 
 def test_create_mila_workflow_assessment_ref_preserves_operational_learning_hard_block() -> None:

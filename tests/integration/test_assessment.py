@@ -323,6 +323,8 @@ def test_run_workflow_assessment_adds_operational_learning_suitability() -> None
             review_density_signal=74.0,
             redaction_manageability_signal=80.0,
             governance_dependency_state=OperationalLearningGovernanceDependencyInput(
+                evidence_basis="governance_owner_evidence",
+                evidence_ref_id="governance-evidence-assessment",
                 rights_completeness=OperationalLearningCompletenessState.COMPLETE,
                 provenance_completeness=OperationalLearningCompletenessState.COMPLETE,
                 redaction_readiness=OperationalLearningCompletenessState.COMPLETE,
@@ -440,6 +442,8 @@ def test_run_workflow_assessment_scores_document_operations_profile() -> None:
             control_evidence_coverage_percent=96.0,
             freshest_evidence_age_days=6,
             governance_dependency_state=OperationalLearningGovernanceDependencyInput(
+                evidence_basis="governance_owner_evidence",
+                evidence_ref_id="governance-evidence-document-operations",
                 rights_completeness=OperationalLearningCompletenessState.COMPLETE,
                 provenance_completeness=OperationalLearningCompletenessState.COMPLETE,
                 redaction_readiness=OperationalLearningCompletenessState.COMPLETE,
@@ -508,6 +512,8 @@ def test_run_workflow_assessment_adds_claims_suitability_from_document_operation
             control_evidence_coverage_percent=96.0,
             freshest_evidence_age_days=6,
             governance_dependency_state=OperationalLearningGovernanceDependencyInput(
+                evidence_basis="governance_owner_evidence",
+                evidence_ref_id="governance-evidence-claims-profile",
                 rights_completeness=OperationalLearningCompletenessState.COMPLETE,
                 provenance_completeness=OperationalLearningCompletenessState.COMPLETE,
                 redaction_readiness=OperationalLearningCompletenessState.COMPLETE,

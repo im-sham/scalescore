@@ -175,12 +175,17 @@ def _operational_learning_workflow_report() -> ScaleScoreReport:
                 top_reasons=["Review density and SOP references are strong."],
                 recommended_next_actions=["Keep Governance dependency review current."],
                 governance_dependency_state=OperationalLearningGovernanceDependencyState(
+                    evidence_basis="governance_owner_evidence",
+                    evidence_ref_id="governance-evidence-connector",
                     rights_completeness=OperationalLearningCompletenessState.COMPLETE,
                     provenance_completeness=OperationalLearningCompletenessState.COMPLETE,
                     redaction_readiness=OperationalLearningCompletenessState.COMPLETE,
                     residual_risk_band="low",
                     status=OperationalLearningGovernanceStateStatus.READY,
-                    summary="Governance dependency summary is ready.",
+                    summary=(
+                        "Governance-owner evidence `governance-evidence-connector` is complete "
+                        "for Readiness diagnostics; this is not use approval."
+                    ),
                 ),
             ),
         }
@@ -248,11 +253,16 @@ def test_event_payload_includes_compact_operational_learning_suitability_summary
         "recommended_next_actions": ["Keep Governance dependency review current."],
         "governance_dependency_state": {
             "status": "ready",
+            "evidence_basis": "governance_owner_evidence",
+            "evidence_ref_id": "governance-evidence-connector",
             "rights_completeness": "complete",
             "provenance_completeness": "complete",
             "redaction_readiness": "complete",
             "residual_risk_band": "low",
-            "summary": "Governance dependency summary is ready.",
+            "summary": (
+                "Governance-owner evidence `governance-evidence-connector` is complete for "
+                "Readiness diagnostics; this is not use approval."
+            ),
         },
     }
 

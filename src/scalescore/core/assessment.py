@@ -373,6 +373,7 @@ def apply_assessment_ref(
         summary = (
             f"Operational Learning eval suitability for {workflow_name}: {score:.1f} ({grade})"
         )
+        summary = f"{summary}; {suitability.governance_dependency_state.summary}"
         if eval_result.hard_blocked:
             summary = f"{summary}; raw score {raw_score:.1f}, hard blocker gate applied"
         top_blockers = list(
