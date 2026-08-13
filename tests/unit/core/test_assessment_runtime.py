@@ -150,3 +150,40 @@ async def test_scheduled_dispatch_and_async_worker_preserve_workflow_context(
     assert report.workflow_context is not None
     assert report.workflow_context.workflow_id == workflow_context.workflow_id
     assert report.workflow_readiness_score is not None
+
+
+async def test_worker_startup_requeue_preserves_active_processing_lease(
+    tmp_path: Path,
+) -> None:
+    storage_db = tmp_path / "assessments.sqlite3"
+    assessment_repository = SQLiteAssessmentRepository(storage_db)
+    job_repository = SQLiteAsyncAssessmentJobRepository(storage_db)
+    claimed_at = datetime.now(UTC)
+
+    job_repository.create_job(
+        job_id="job_active",
+        tenant_id="tenant_1",
+        submitted_by="user_1",
+        dataset_path="/tmp/dataset",
+    )
+    worker_a_job = job_repository.claim_next_queued_job(
+        worker_id="worker-a",
+        lease_seconds=60,
+        now=claimed_at,
+    )
+    assert worker_a_job is not None
+    assert worker_a_job.status == AsyncAssessmentStatus.PROCESSING
+
+    worker_b = AsyncAssessmentWorker(
+        job_repository=job_repository,
+        assessment_repository=assessment_repository,
+        worker_id="worker-b",
+        lease_seconds=60,
+    )
+
+    assert worker_b.requeue_processing_jobs() == 0
+
+    reloaded = job_repository.get_job("job_active", tenant_id="tenant_1")
+    assert reloaded is not None
+    assert reloaded.status == AsyncAssessmentStatus.PROCESSING
+    assert reloaded.claimed_by == "worker-a"

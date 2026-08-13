@@ -194,6 +194,7 @@ class AsyncAssessmentSettings(BaseSettings):
 
     mode: Literal["poll", "background", "broker"] = "poll"
     worker_poll_interval_seconds: float = Field(default=0.25, ge=0.01, le=30.0)
+    worker_lease_seconds: int = Field(default=300, ge=5, le=86_400)
     broker_url: str | None = None
     broker_queue_name: str = Field(
         default="scalescore:async-assessment:jobs",

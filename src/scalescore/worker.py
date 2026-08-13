@@ -22,6 +22,7 @@ def _build_async_assessment_worker() -> AsyncAssessmentWorker:
         job_repository=get_async_assessment_job_repository(),
         assessment_repository=get_assessment_repository(),
         poll_interval_seconds=settings.async_assessment.worker_poll_interval_seconds,
+        lease_seconds=settings.async_assessment.worker_lease_seconds,
     )
 
 

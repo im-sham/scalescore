@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
+import socket
 from pathlib import Path
 from typing import Protocol
+from uuid import uuid4
 
 from scalescore.core.assessment import run_assessment_from_csv
 from scalescore.core.audit import audit_assessment_created
@@ -15,6 +18,10 @@ from scalescore.storage.async_assessment_repository import (
 )
 
 logger = get_logger(__name__)
+
+
+def _default_worker_id() -> str:
+    return f"{socket.gethostname()}:{os.getpid()}:{uuid4().hex[:8]}"
 
 
 class AsyncAssessmentQueueBroker(Protocol):
@@ -32,10 +39,14 @@ class AsyncAssessmentWorker:
         job_repository: AsyncAssessmentJobRepository,
         assessment_repository: AssessmentRepository,
         poll_interval_seconds: float = 0.25,
+        worker_id: str | None = None,
+        lease_seconds: int = 300,
     ) -> None:
         self._job_repository = job_repository
         self._assessment_repository = assessment_repository
         self._poll_interval_seconds = poll_interval_seconds
+        self._worker_id = worker_id or _default_worker_id()
+        self._lease_seconds = lease_seconds
         self._task: asyncio.Task[None] | None = None
 
     @property
@@ -79,14 +90,21 @@ class AsyncAssessmentWorker:
                 await asyncio.sleep(self._poll_interval_seconds)
 
     async def process_next_job(self) -> bool:
-        job = self._job_repository.claim_next_queued_job()
+        job = self._job_repository.claim_next_queued_job(
+            worker_id=self._worker_id,
+            lease_seconds=self._lease_seconds,
+        )
         if job is None:
             return False
         await self._process_job(job)
         return True
 
     async def process_job(self, *, job_id: str) -> bool:
-        job = self._job_repository.claim_job(job_id=job_id)
+        job = self._job_repository.claim_job(
+            job_id=job_id,
+            worker_id=self._worker_id,
+            lease_seconds=self._lease_seconds,
+        )
         if job is None:
             logger.info(
                 "async_assessment_job_not_claimed",
@@ -101,6 +119,7 @@ class AsyncAssessmentWorker:
 
     async def _process_job(self, job: AsyncAssessmentJob) -> None:
         dataset_path = Path(job.dataset_path)
+        cleanup_dataset = False
         logger.info(
             "async_assessment_job_started",
             job_id=job.job_id,
@@ -109,29 +128,56 @@ class AsyncAssessmentWorker:
         )
 
         try:
-            self._job_repository.update_progress(
+            progress = self._job_repository.update_progress(
                 job_id=job.job_id,
                 stage="processing",
                 percentage=30,
                 message="Running assessment engine",
+                worker_id=self._worker_id,
+                lease_seconds=self._lease_seconds,
             )
+            if progress is None:
+                logger.info(
+                    "async_assessment_job_lease_lost",
+                    job_id=job.job_id,
+                    worker_id=self._worker_id,
+                )
+                return
             report = await asyncio.to_thread(
                 run_assessment_from_csv,
                 dataset_path,
                 job.workflow_context,
             )
-            self._job_repository.update_progress(
+            progress = self._job_repository.update_progress(
                 job_id=job.job_id,
                 stage="processing",
                 percentage=85,
                 message="Persisting assessment report",
+                worker_id=self._worker_id,
+                lease_seconds=self._lease_seconds,
             )
+            if progress is None:
+                logger.info(
+                    "async_assessment_job_lease_lost",
+                    job_id=job.job_id,
+                    worker_id=self._worker_id,
+                )
+                return
             self._assessment_repository.save_report(report, tenant_id=job.tenant_id)
-            self._job_repository.mark_completed(
+            completed = self._job_repository.mark_completed(
                 job_id=job.job_id,
                 report_id=report.report_id,
                 org_id=report.org_id,
+                worker_id=self._worker_id,
             )
+            if completed is None:
+                logger.info(
+                    "async_assessment_job_completion_lost_lease",
+                    job_id=job.job_id,
+                    worker_id=self._worker_id,
+                )
+                return
+            cleanup_dataset = True
             audit_assessment_created(
                 user_id=job.submitted_by,
                 tenant_id=job.tenant_id,
@@ -146,7 +192,12 @@ class AsyncAssessmentWorker:
                 org_id=report.org_id,
             )
         except Exception as err:  # noqa: BLE001
-            self._job_repository.mark_failed(job_id=job.job_id, error_message=str(err))
+            failed = self._job_repository.mark_failed(
+                job_id=job.job_id,
+                error_message=str(err),
+                worker_id=self._worker_id,
+            )
+            cleanup_dataset = failed is not None
             logger.exception(
                 "async_assessment_job_failed",
                 job_id=job.job_id,
@@ -154,7 +205,7 @@ class AsyncAssessmentWorker:
                 error_type=type(err).__name__,
             )
         finally:
-            if dataset_path.exists():
+            if cleanup_dataset and dataset_path.exists():
                 shutil.rmtree(dataset_path, ignore_errors=True)
 
 
