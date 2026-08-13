@@ -434,6 +434,21 @@ python3.11 scripts/compile_dependency_constraints.py
 python3.12 scripts/compile_dependency_constraints.py
 ```
 
+For a bounded security update to one already-resolved transitive dependency,
+pass its exact safe requirement with `--upgrade-package`. The compiler seeds
+each tracked output and recompiles all three graphs for the active target/minor,
+allowing pip-tools to preserve unrelated accepted pins:
+
+```bash
+python3.11 scripts/compile_dependency_constraints.py \
+  --upgrade-package="gitpython==3.1.58"
+```
+
+Run the same explicit targeted command in every matching target/minor
+environment. Review the resulting diff and stop if pip-tools changes unrelated
+pins. Do not use this option to add an undeclared dependency or bypass the
+requirement to regenerate all supported graphs.
+
 Generation upgrades accepted pins. Check mode seeds temporary copies of all
 three tracked files for the active target and minor, then byte-compares
 regenerated output without creating checkout paths or mutating tracked files:
