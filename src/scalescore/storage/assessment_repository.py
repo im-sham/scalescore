@@ -9,6 +9,7 @@ from typing import Protocol
 
 from scalescore.config import settings
 from scalescore.core.exceptions import DatabaseError
+from scalescore.core.reporting import generate_executive_summary
 from scalescore.models.scaling import ScaleScoreReport
 
 _CANONICAL_ASSESSMENT_REF_MARKERS = frozenset(
@@ -21,15 +22,69 @@ _CANONICAL_ASSESSMENT_REF_MARKERS = frozenset(
     }
 )
 _LEGACY_ASSESSMENT_REF_FIELDS = frozenset({"workflow_id", "report_uri"})
+_OPERATIONAL_LEARNING_POSTURE_FIELDS = frozenset(
+    {
+        "rights_completeness",
+        "provenance_completeness",
+        "redaction_readiness",
+        "residual_risk_band",
+    }
+)
 
 
 def _load_report(report_data: str) -> ScaleScoreReport:
     payload = json.loads(report_data)
+    suppressed_legacy_operational_learning = False
     if isinstance(payload, dict):
         assessment_ref = payload.get("assessment_ref")
-        if _should_suppress_assessment_ref(assessment_ref):
+        if _has_legacy_unattributed_operational_learning_posture(payload):
+            suitability = payload.get("operational_learning_suitability")
+            if isinstance(suitability, dict):
+                recommended_actions = suitability.get("recommended_next_actions")
+                if (
+                    isinstance(recommended_actions, list)
+                    and payload.get("immediate_actions") == recommended_actions[:3]
+                ):
+                    payload["immediate_actions"] = []
+            payload.pop("operational_learning_suitability", None)
+            if _is_operational_learning_assessment_ref(assessment_ref):
+                payload.pop("assessment_ref", None)
+            suppressed_legacy_operational_learning = True
+        if _should_suppress_assessment_ref(payload.get("assessment_ref")):
             payload.pop("assessment_ref", None)
-    return ScaleScoreReport.model_validate(payload)
+
+    report = ScaleScoreReport.model_validate(payload)
+    if suppressed_legacy_operational_learning:
+        report.executive_summary = generate_executive_summary(report)
+    return report
+
+
+def _has_legacy_unattributed_operational_learning_posture(
+    payload: dict[str, object],
+) -> bool:
+    suitability = payload.get("operational_learning_suitability")
+    if not isinstance(suitability, dict):
+        return False
+    dependency_state = suitability.get("governance_dependency_state")
+    if not isinstance(dependency_state, dict):
+        return False
+    has_posture = any(
+        dependency_state.get(field) is not None for field in _OPERATIONAL_LEARNING_POSTURE_FIELDS
+    )
+    return (
+        has_posture
+        and "evidence_basis" not in dependency_state
+        and "evidence_ref_id" not in dependency_state
+    )
+
+
+def _is_operational_learning_assessment_ref(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    ref = value.get("ref")
+    return (
+        isinstance(ref, dict) and ref.get("assessment_type") == "operational_learning_suitability"
+    )
 
 
 def _should_suppress_assessment_ref(value: object) -> bool:

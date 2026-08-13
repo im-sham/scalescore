@@ -5,6 +5,7 @@ from scalescore.models.scaling import (
     OperationalLearningCompletenessState,
     OperationalLearningDimension,
     OperationalLearningDimensionScore,
+    OperationalLearningEvidenceBasis,
     OperationalLearningGovernanceDependencyInput,
     OperationalLearningGovernanceDependencyState,
     OperationalLearningGovernanceStateStatus,
@@ -106,6 +107,9 @@ def score_operational_learning_suitability(
     training_threshold_met = (
         not hard_blocked
         and eval_threshold_met
+        and inputs.governance_dependency_state is not None
+        and inputs.governance_dependency_state.evidence_basis
+        == OperationalLearningEvidenceBasis.GOVERNANCE_OWNER_EVIDENCE
         and training_score >= _TRAINING_THRESHOLD
         and score_by_dimension[OperationalLearningDimension.REPEATABILITY] >= 75.0
         and score_by_dimension[OperationalLearningDimension.SOP_CLARITY] >= 70.0
@@ -274,15 +278,16 @@ def _score_redaction_manageability(
     ):
         readiness = inputs.governance_dependency_state.redaction_readiness
         score = _REDACTION_READINESS_SCORE[readiness]
+        basis_label = _evidence_basis_label(inputs.governance_dependency_state)
         rationale = {
             OperationalLearningCompletenessState.COMPLETE: (
-                "Governance dependency inputs indicate redaction readiness is complete."
+                f"{basis_label} indicates redaction readiness is complete."
             ),
             OperationalLearningCompletenessState.PARTIAL: (
-                "Governance dependency inputs indicate redaction readiness is only partial."
+                f"{basis_label} indicates redaction readiness is only partial."
             ),
             OperationalLearningCompletenessState.MISSING: (
-                "Governance dependency inputs indicate redaction readiness is still missing."
+                f"{basis_label} indicates redaction readiness is still missing."
             ),
         }[readiness]
     else:
@@ -352,40 +357,39 @@ def _build_governance_dependency_state(
     if governance_input is None:
         return OperationalLearningGovernanceDependencyState(
             status=OperationalLearningGovernanceStateStatus.INCOMPLETE,
-            summary="Governance dependency state was not supplied for operational-learning scoring.",
+            summary=(
+                "Operational Learning evidence attribution and dependency state were not "
+                "supplied for scoring."
+            ),
         )
 
     incomplete_labels = _governance_incomplete_labels(governance_input)
     partial_labels = _governance_partial_labels(governance_input)
+    basis_label = _evidence_basis_label(governance_input)
 
     if incomplete_labels:
-        summary = (
-            "Governance dependency state is incomplete for "
-            + ", ".join(incomplete_labels)
-            + "."
-        )
+        summary = f"{basis_label} is incomplete for " + ", ".join(incomplete_labels) + "."
         status = OperationalLearningGovernanceStateStatus.INCOMPLETE
     elif governance_input.residual_risk_band in {RiskLevel.HIGH, RiskLevel.CRITICAL}:
         summary = (
-            "Governance dependency state is present, but residual risk remains "
+            f"{basis_label} is present, but residual risk remains "
             f"{governance_input.residual_risk_band.value}."
         )
         status = OperationalLearningGovernanceStateStatus.HIGH_RISK
     elif partial_labels:
-        summary = (
-            "Governance dependency state is partially complete for "
-            + ", ".join(partial_labels)
-            + "."
-        )
+        summary = f"{basis_label} is partially complete for " + ", ".join(partial_labels) + "."
         status = OperationalLearningGovernanceStateStatus.PARTIAL
     else:
         summary = (
-            "Governance dependency state is complete with residual risk "
-            f"{governance_input.residual_risk_band.value}."
+            f"{basis_label} is complete for Readiness diagnostics with residual risk "
+            f"{governance_input.residual_risk_band.value}; this is not Governance approval "
+            "or use authority."
         )
         status = OperationalLearningGovernanceStateStatus.READY
 
     return OperationalLearningGovernanceDependencyState(
+        evidence_basis=governance_input.evidence_basis,
+        evidence_ref_id=governance_input.evidence_ref_id,
         rights_completeness=governance_input.rights_completeness,
         provenance_completeness=governance_input.provenance_completeness,
         redaction_readiness=governance_input.redaction_readiness,
@@ -419,7 +423,7 @@ def _top_blockers(
         incomplete_labels = _governance_incomplete_labels(governance_input)
         if incomplete_labels:
             blockers.append(
-                "Governance prerequisites remain incomplete for "
+                f"{_evidence_basis_label(governance_input)} remains incomplete for "
                 + ", ".join(incomplete_labels)
                 + "."
             )
@@ -430,7 +434,8 @@ def _top_blockers(
         blockers.append("Governance safety is below the minimum floor for learning use.")
     if governance_state.status == OperationalLearningGovernanceStateStatus.HIGH_RISK:
         blockers.append(
-            "Residual governance risk remains too high for operational-learning candidacy."
+            f"{_evidence_basis_label(inputs.governance_dependency_state)} has residual risk "
+            "too high for operational-learning candidacy."
         )
 
     return _unique_items(blockers)[:3]
@@ -492,6 +497,16 @@ def _recommended_next_actions(
             "Improve redaction manageability before considering the workflow for internal training candidacy."
         )
 
+    if (
+        inputs.governance_dependency_state is not None
+        and inputs.governance_dependency_state.evidence_basis
+        == OperationalLearningEvidenceBasis.WORKFLOW_OPERATOR_REVIEW
+    ):
+        actions.append(
+            "Obtain Governance-owner evidence before considering internal training candidacy; "
+            "Workflow-operator review is not Governance approval or use authority."
+        )
+
     if governance_state.status != OperationalLearningGovernanceStateStatus.READY or (
         score_by_dimension[OperationalLearningDimension.GOVERNANCE_SAFETY] < 60.0
     ):
@@ -536,11 +551,27 @@ def _governance_partial_labels(
     ]
 
 
+def _evidence_basis_label(
+    governance_input: OperationalLearningGovernanceDependencyInput | None,
+) -> str:
+    if governance_input is None or governance_input.evidence_basis is None:
+        return "Unattributed dependency evidence"
+    if governance_input.evidence_basis == OperationalLearningEvidenceBasis.WORKFLOW_OPERATOR_REVIEW:
+        label = "Workflow-operator review evidence"
+    else:
+        label = "Governance-owner evidence"
+    if governance_input.evidence_ref_id is None:
+        return label
+    return f"{label} `{governance_input.evidence_ref_id}`"
+
+
 def _weighted_score(
     score_by_dimension: dict[OperationalLearningDimension, float],
     weights: dict[OperationalLearningDimension, float],
 ) -> float:
-    weighted_sum = sum(score_by_dimension[dimension] * weight for dimension, weight in weights.items())
+    weighted_sum = sum(
+        score_by_dimension[dimension] * weight for dimension, weight in weights.items()
+    )
     return round(weighted_sum / sum(weights.values()), 1)
 
 
