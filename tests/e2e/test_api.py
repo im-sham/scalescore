@@ -1158,6 +1158,145 @@ def test_assessment_dereference_isolated_by_authenticated_tenant() -> None:
     assert cross_tenant_response.json()["error"]["code"] == "SCALE_2000"
 
 
+def test_operator_summary_returns_exact_actionable_allowlist() -> None:
+    request_payload = _mila_workflow_assessment_payload_for_org("dev-tenant")
+    request_payload["source_findings"] = ["EXCLUDED_OPERATOR_SOURCE_FINDING"]
+    request_payload["notes"] = "EXCLUDED_OPERATOR_NOTE"
+    create_response = client.post(
+        "/api/v1/assessments/mila/workflow",
+        json=request_payload,
+        headers=_auth_headers(),
+    )
+    assert create_response.status_code == 200
+    report = create_response.json()
+
+    response = client.get(
+        f"/api/v1/assessments/{report['report_id']}/operator-summary",
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert list(payload) == [
+        "assessment_id",
+        "workflow_id",
+        "workflow_name",
+        "accountable_owner",
+        "readiness_score",
+        "readiness_grade",
+        "pillars",
+        "top_trust_gaps",
+        "remediation_actions",
+        "source_assessment_generated_at",
+        "workflow_ref",
+        "assessment_ref",
+        "diagnostic_only",
+        "no_decision_authority",
+    ]
+    assert payload["assessment_id"] == report["report_id"]
+    assert payload["workflow_id"] == report["workflow_context"]["workflow_id"]
+    assert payload["workflow_name"] == report["workflow_context"]["name"]
+    assert payload["accountable_owner"] == report["workflow_context"]["owner"]
+    assert payload["readiness_score"] == report["workflow_readiness_score"]
+    assert payload["readiness_grade"] == report["workflow_readiness_grade"]
+    assert [pillar["pillar"] for pillar in payload["pillars"]] == [
+        "workflow_stability",
+        "system_and_dependency_resilience",
+        "human_oversight_and_ownership",
+        "control_and_evidence_readiness",
+        "automation_fit_and_blast_radius",
+    ]
+    assert len(payload["pillars"]) == 5
+    assert payload["top_trust_gaps"] == report["top_trust_gaps"]
+    assert [action["action"] for action in payload["remediation_actions"]] == report[
+        "prioritized_remediation_actions"
+    ]
+    assert [action["ordinal"] for action in payload["remediation_actions"]] == list(
+        range(1, len(payload["remediation_actions"]) + 1)
+    )
+    assert payload["workflow_ref"] == {
+        key: report["workflow_ref"]["ref"][key]
+        for key in ("ref_id", "external_uri", "snapshot_id", "version")
+    }
+    assert payload["assessment_ref"] == {
+        key: report["assessment_ref"]["ref"][key]
+        for key in ("ref_id", "external_uri", "snapshot_id", "version")
+    }
+    assert payload["diagnostic_only"] is True
+    assert payload["no_decision_authority"] is True
+    serialized = json.dumps(payload)
+    assert "EXCLUDED_OPERATOR_SOURCE_FINDING" not in serialized
+    assert "EXCLUDED_OPERATOR_NOTE" not in serialized
+    excluded_keys = {
+        "source_findings",
+        "notes",
+        "key_findings",
+        "executive_summary",
+        "immediate_actions",
+        "top_risks",
+        "recommendations",
+        "constraints",
+        "control_refs",
+        "operational_learning_suitability",
+        "claims_suitability",
+        "org_rollup",
+    }
+    assert excluded_keys.isdisjoint(payload)
+
+
+def test_operator_summary_missing_and_cross_tenant_are_not_found() -> None:
+    tenant_a_id = f"tenant-a-{uuid4().hex[:8]}"
+    tenant_a_headers = _signup_and_auth_headers(tenant_id=tenant_a_id)
+    tenant_b_headers = _signup_and_auth_headers(tenant_id=f"tenant-b-{uuid4().hex[:8]}")
+    create_response = client.post(
+        "/api/v1/assessments/mila/workflow",
+        json=_mila_workflow_assessment_payload_for_org(tenant_a_id),
+        headers=tenant_a_headers,
+    )
+    assert create_response.status_code == 200
+    assessment_id = create_response.json()["report_id"]
+
+    owner_response = client.get(
+        f"/api/v1/assessments/{assessment_id}/operator-summary",
+        headers=tenant_a_headers,
+    )
+    cross_tenant_response = client.get(
+        f"/api/v1/assessments/{assessment_id}/operator-summary",
+        headers=tenant_b_headers,
+    )
+    missing_response = client.get(
+        f"/api/v1/assessments/missing-{uuid4().hex}/operator-summary",
+        headers=tenant_b_headers,
+    )
+
+    assert owner_response.status_code == 200
+    assert cross_tenant_response.status_code == missing_response.status_code == 404
+    assert cross_tenant_response.json()["error"]["code"] == "SCALE_2000"
+    assert missing_response.json()["error"]["code"] == "SCALE_2000"
+
+
+def test_operator_summary_fails_closed_for_organization_assessment(tmp_path: Path) -> None:
+    _write_dataset(tmp_path)
+    headers = _auth_headers()
+    create_response = client.post(
+        "/api/v1/assessments",
+        params={"dataset_path": str(tmp_path)},
+        headers=headers,
+    )
+    assert create_response.status_code == 200
+
+    response = client.get(
+        f"/api/v1/assessments/{create_response.json()['report_id']}/operator-summary",
+        headers=headers,
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"] == {
+        "code": "SCALE_2002",
+        "message": "Assessment is not a complete workflow diagnostic",
+    }
+
+
 def test_create_mila_workflow_assessment_preserves_diagnostic_control_refs() -> None:
     control_refs = [
         _control_ref_payload(control_key="approval_gate"),

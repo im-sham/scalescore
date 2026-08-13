@@ -247,6 +247,25 @@ Current compatibility rules:
   `cache_policy: summary_snapshot`, and nonempty `external_uri`,
   `snapshot_id`, and `version`; rejects unknown envelope or nested-ref fields;
   and validates the bounded projection through the strict contract binding.
+- `GET /api/v1/assessments/{assessment_id}/operator-summary` returns a
+  Readiness-owned allowlist derived only from the tenant-scoped persisted
+  workflow assessment. It contains workflow identity, optional accountable
+  owner, readiness score/grade, the five canonical pillar summaries, ordered
+  trust gaps, locally numbered remediation actions, the source assessment
+  timestamp, and allowlisted identity/dereference fields from existing
+  WorkflowRef and AssessmentRef values. It omits absent owner/reference fields.
+  Organization-only and structurally incomplete workflow reports fail closed
+  with `SCALE_2002`; missing and cross-tenant IDs both return `SCALE_2000`.
+  Completeness includes finite 0-100 readiness and pillar scores, nonblank
+  pillar grade/rationale and diagnostic list items, workflow-readiness
+  AssessmentRef semantics, and full shared-field alignment of carried
+  workflow/assessment references with the persisted report and workflow
+  identity.
+  The response sets `diagnostic_only` and `no_decision_authority` to `true`.
+  It does not carry source findings, notes, raw/source payloads, document
+  contents/profile identifiers, credentials, full reports, Governance
+  decisions, Operational Learning activation, export eligibility, production
+  readiness, or release authority.
 - Both direct workflow endpoints accept optional `workflow_evidence` to deepen
   pillar scoring from source evidence. Canonical `ControlRef`
   `implementation_state` and `linkage_state` are diagnostic only. They never
@@ -305,6 +324,7 @@ Current compatibility rules:
 | `POST` | `/api/v1/assessments/schedules/{schedule_id}/resume` | `assessment:create` | Resume scheduled assessment |
 | `GET` | `/api/v1/assessments` | `assessment:read` | Pagination via `limit`, `offset` |
 | `GET` | `/api/v1/assessments/{assessment_id}` | `assessment:read` | Retrieve saved report |
+| `GET` | `/api/v1/assessments/{assessment_id}/operator-summary` | `assessment:read` | Tenant-scoped, operator-safe workflow diagnostic allowlist; fails closed for organization-only or incomplete workflow assessments |
 | `GET` | `/api/v1/assessments/{assessment_id}/export/pdf` | `report:export` | Download PDF, including claims suitability when present |
 | `POST` | `/api/v1/assessments/{assessment_id}/sync/opsorchestra` | `report:export` | Push report, workflow, AssessmentRef, and suitability summaries to configured OpsOrchestra outbound URL |
 

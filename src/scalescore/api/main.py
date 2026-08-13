@@ -58,6 +58,7 @@ from scalescore.core.auth.jwt import TokenPayload
 from scalescore.core.auth.roles import Permission
 from scalescore.core.exceptions import AssessmentNotFoundError
 from scalescore.core.logging import get_logger, setup_logging
+from scalescore.core.operator_summary import OperatorSummary, build_operator_summary
 from scalescore.core.rate_limit import RateLimiter, RateLimiterUnavailable, get_rate_limiter
 from scalescore.core.reporting import render_report_pdf
 from scalescore.core.scheduled_assessment import (
@@ -1347,6 +1348,31 @@ async def get_assessment(
         resource_id=assessment_id,
     )
     return report
+
+
+@app.get(
+    "/api/v1/assessments/{assessment_id}/operator-summary",
+    response_model=OperatorSummary,
+    response_model_exclude_none=True,
+)
+async def get_assessment_operator_summary(
+    assessment_id: str,
+    current_user: CanReadAssessments,
+    repository: AssessmentRepositoryDep,
+) -> OperatorSummary:
+    report = repository.get_report(assessment_id, tenant_id=current_user.tenant_id)
+    if report is None:
+        raise AssessmentNotFoundError(assessment_id)
+
+    summary = build_operator_summary(report)
+    audit_log(
+        AuditEventType.ASSESSMENT_VIEWED,
+        actor_id=current_user.sub,
+        tenant_id=current_user.tenant_id,
+        resource_type="assessment_operator_summary",
+        resource_id=assessment_id,
+    )
+    return summary
 
 
 @app.get("/api/v1/assessments/{assessment_id}/export/pdf")
