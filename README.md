@@ -135,8 +135,29 @@ Development installs use `-e ".[dev]"` with the matching development file;
 dashboard installs use `-e ".[frontend]"` with the matching frontend file.
 The twelve target-specific application constraint sets reproduce these three
 accepted Readiness graphs without allowing frontend-only dependencies to
-contaminate the core service graph. They are not cross-platform lock files,
-do not define a production image, and do not establish rollback retention.
+contaminate the core service graph. They remain application constraints rather
+than cross-platform locks. The production artifact separately derives
+`requirements/production-linux-x86_64-python3.12.txt` from the accepted Linux
+x86_64 Python 3.12 runtime graph and requires hashes for every distribution.
+
+## Production Artifact
+
+ADR-0018 defines one shared, non-root Linux x86_64 Python 3.12 image for the
+core API and optional worker. Streamlit and the `frontend` extra are excluded.
+The image defaults to the API command; select the worker command only when the
+async configuration requires a separate worker process:
+
+```bash
+docker build --platform linux/amd64 --tag scalescore:local .
+docker run --rm --publish 8000:8000 scalescore:local api
+docker run --rm scalescore:local worker --help
+```
+
+CI verifies production-lock drift, image startup and health, the worker command,
+the final installed runtime inventory, exact bidirectional CycloneDX package/version
+parity, strict Grype High/Critical blocking including unfixed findings, immutable
+digests, and 30-day rollback-artifact retention. This artifact contract does not
+authorize or select deployment, orchestration, provider, credentials, or traffic.
 
 ## Shared Request Limiter
 

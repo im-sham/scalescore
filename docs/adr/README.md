@@ -39,9 +39,9 @@ Decisions covering error handling, observability, security, and infrastructure.
 | [ADR-0011](./0011-authentication-authorization-strategy.md) | Authentication and Authorization Strategy | Accepted | Jan 2026 |
 | [ADR-0012](./0012-background-job-processing.md) | Background Job Processing | Accepted | Jan 2026 |
 
-### Domain & Quality (ADR-0013 to ADR-0017)
+### Domain, Quality & Delivery (ADR-0013 to ADR-0018)
 
-Decisions covering testing, domain-specific engines, and data integrity.
+Decisions covering testing, domain-specific engines, data integrity, and deployable artifacts.
 
 | ID | Title | Status | Date |
 |----|-------|--------|------|
@@ -50,6 +50,7 @@ Decisions covering testing, domain-specific engines, and data integrity.
 | [ADR-0015](./0015-report-immutability-versioning.md) | Report Immutability and Versioning | Accepted | Jan 2026 |
 | [ADR-0016](./0016-user-management-strategy.md) | User Management Strategy | Proposed | Feb 2026 |
 | [ADR-0017](./0017-open-source-auth-provider-strategy.md) | Open-Source Auth Provider Strategy | Accepted | Feb 2026 |
+| [ADR-0018](./0018-production-container-artifact.md) | Production Container Artifact | Accepted | Jul 2026 |
 
 ## ADR Lifecycle
 

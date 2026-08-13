@@ -46,7 +46,12 @@ jobs:
         run: python scripts/compile_dependency_constraints.py --check
 
       - name: Run Ruff
-        run: ruff check src tests scripts/run_tests.py scripts/compile_dependency_constraints.py scripts/check_mypy_baseline.py
+        run: >-
+          ruff check src tests scripts/run_tests.py
+          scripts/compile_dependency_constraints.py
+          scripts/compile_production_lock.py
+          scripts/verify_runtime_sbom_parity.py
+          scripts/check_mypy_baseline.py
 
       - name: Run mypy monotonic baseline gate
         env:
